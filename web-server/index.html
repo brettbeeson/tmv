@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Time Made Visible</title>
+
+    <script src="js/jquery-3.3.1.min.js"></script>
+    <script src="js/popper.min.js"></script>
+    <script src="js/bootstrap.min.js"></script>
+
+    <script src="js/dash.all.min.js"></script>
+    <script src="js/video.js"></script>
+    <script src="js/videojs-dash.js"></script>
+    <script src="js/moment-with-locales.js"></script>
+    <script src="js/bootstrap-datetimepicker.js"></script>
+    <script src="js/aws-sdk-2.283.1.js"></script>
+    <link rel="stylesheet" href="css/bootstrap.min.css">
+    <link rel="stylesheet" href="css/bootstrap-datetimepicker.css">
+    <link rel="stylesheet" href="css/video-js.css">
+
+    <link rel="stylesheet" href="index.css">
+    <script src="app.js" type="module"></script>
+</head>
+<body>
+<nav class="navbar navbar-dark bg-dark text-light">
+    <h3>Time Made Visible</h3>
+</nav>
+<div class="container-fluid h-100">
+    <div class="row flex-column-reverse flex-sm-row">
+        <div class="col-sm-3" id="browser">
+            <h4 class="pl-2 pt-1">Camera</h4>
+            <form class="needs-validation">
+                <div class="form-group row">
+                    <div class="col-md-8">
+                        <label class="sr-only" for="camera-selector">Camera</label>
+                        <input type="text" class="form-control" id="camera-selector" placeholder="Camera not selected"
+                               required>
+                        <div id="camera-invalid" class="invalid-feedback">
+                            Could not find that camera.
+                        </div>
+                    </div>
+                    <div class="col-auto">
+                        <button type="submit" id="camera-select" class="btn btn-primary">Select</button>
+                    </div>
+                </div>
+            </form>
+
+            <div class="list-group"> <!-- list-group-flush -->
+                <h4 class="pl-2 pt-1">Photos</h4>
+                <a data-toggle="list" class="list-group-item list-group-item-action" id="latest-image">Latest</a>
+                <a data-toggle="list" class="list-group-item list-group-item-action image-hours-ago" data-hours="1">1h Ago</a>
+                <a data-toggle="list" class="list-group-item list-group-item-action image-hours-ago" data-hours="2">2h Ago</a>
+                <a data-toggle="list" class="list-group-item list-group-item-action image-hours-ago" data-hours="3">3h Ago</a>
+                <a data-toggle="list" class="list-group-item list-group-item-action image-hours-ago" data-hours="6">6h Ago</a>
+                <a data-toggle="list" class="list-group-item list-group-item-action image-hours-ago" data-hours="12">12h Ago</a>
+                <a data-toggle="list" class="list-group-item list-group-item-action image-hours-ago" data-hours="24">24h Ago</a>
+
+                <h4 class="pl-2 pt-1">Videos </h4>
+                <a data-toggle="list" class="list-group-item list-group-item-action" id="latest-video">Latest</a>
+                <a data-toggle="list" class="list-group-item list-group-item-action rel-link" data-link="longer-videos/yesterday-video/">Yesterday</a>
+                <a data-toggle="list" class="list-group-item list-group-item-action rel-link" data-link="longer-videos/weekly-video/">Weekly</a>
+                <a data-toggle="list" class="list-group-item list-group-item-action rel-link" data-link="longer-videos/monthly-video/">Monthly</a>
+                <a data-toggle="list" class="list-group-item list-group-item-action rel-link" data-link="longer-videos/complete-video/">Complete</a>
+
+                <h4 class="pl-2 pt-1">Files</h4>
+                <div class="current-dir m-2"></div>
+                <div class="browser-view list-group"></div>
+            </div>
+            <button type="button" class="btn my-3 btn-outline-primary" id="refresh">Refresh</button>
+        </div>
+        <div class="col-sm-9" id="preview">
+            <div class="pt-1 sticky-top">
+                <div id="image-shower-div" class="d-none">
+                    <div class="row">
+                        <img id="image-shower" class="img-fluid sticky-top"
+                             style="background: linear-gradient(180deg, rgba(0, 0, 0, 0.8), rgba(255, 255, 255, 0));"/>
+                    </div>
+                    <div class="row justify-content-center">
+                        <figcaption class="figure-caption" id="image-caption">Caption</figcaption>
+                    </div>
+
+                    <div class="row justify-content-center">
+                        <div class="btn-group " px-1
+                        " role="group">
+                        <button type="button" class="btn btn-secondary nav-image-hours" data-hours="-24"><< Day</button>
+                    </div>
+                    <div class="btn-group px-1" role="group">
+                        <button type="button" class="btn btn-secondary nav-image-hours" data-hours="-1"><< Hour</button>
+                    </div>
+                    <div class="btn-group px-1" role="group">
+                        <button type="button" class="btn btn-secondary nav-image-minutes" data-minutes="-1"><< Minute
+                        </button>
+                    </div>
+                    <div class="btn-group px-1" role="group">
+                        <button type="button" class="btn btn-secondary nav-image-minutes" data-minutes="1">Minute >>
+                        </button>
+                    </div>
+                    <div class="btn-group px-1" role="group">
+                        <button type="button" class="btn btn-secondary nav-image-hours" data-hours="1">Hour >></button>
+                    </div>
+                    <div class="btn-group px-1" role="group">
+                        <button type="button" class="btn btn-secondary nav-image-hours" data-hours="24">Day >></button>
+                    </div>
+                </div>
+            </div>
+            <div id="video-player-div" class="d-none">
+                <div class="row">
+                    <video id="video-player" data-setup='{"fluid": true}'
+                           class="video-js vjs-default-skin sticky-top embed-responsive embed-responsive-16by9"
+                           controls>
+                    </video>
+                </div>
+                <div class="row justify-content-center">
+                    <figcaption class="figure-caption" id="video-caption"></figcaption>
+                </div>
+
+                <div class="row justify-content-center">
+                    <div class="btn-group px-1" role="group">
+                        <button type="button" class="btn btn-secondary nav-video-days" data-days="-7"><< Week</button>
+                    </div>
+                    <div class="btn-group px-1" role="group">
+                        <button type="button" class="btn btn-secondary nav-video-days" data-days="-1"><< Day</button>
+                    </div>
+                    <div class="btn-group px-1" role="group">
+                        <button type="button" class="btn btn-secondary nav-video-days" data-days="1">Day >></button>
+                    </div>
+                    <div class="btn-group px-1" role="group">
+                        <button type="button" class="btn btn-secondary nav-video-days" data-days="7">Week >></button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+</body>
+</html>

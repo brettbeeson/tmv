@@ -1,0 +1,16 @@
+[Unit]
+Description=Time Made Visible Image Uploader
+After=network.target
+# Try to restart forever!
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+Restart=always
+# Wait a bit before restart
+RestartSec=60
+User=pi
+ExecStart=/usr/local/bin/tmv-s3-upload --daemon --config-file /etc/tmv/camera.toml --log-level=DEBUG
+
+[Install]
+WantedBy=multi-user.target

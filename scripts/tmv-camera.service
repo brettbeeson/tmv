@@ -1,0 +1,20 @@
+[Unit]
+Description=Time Made Visible Camera
+After=network.target
+# Try to restart forever!
+StartLimitIntervalSec=0
+# Optionally, reboot if x fails within 60 seconds
+#StartLimitIntervalSec=60
+#StartLimitBurst=5
+#StartLimitAction=reboot.
+
+[Service]
+Type=simple
+Restart=always
+# Wait a bit before restart
+RestartSec=60
+User=pi
+ExecStart=/usr/local/bin/tmv-camera --config-file /etc/tmv/camera.toml --log-level=DEBUG
+
+[Install]
+WantedBy=multi-user.target

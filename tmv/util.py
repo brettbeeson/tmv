@@ -1,0 +1,481 @@
+
+# pylint: disable=line-too-long, logging-fstring-interpolation, dangerous-default-value, logging-not-lazy
+
+from re import search, sub
+from pathlib import Path
+import time  # not "from" to allow monkeypatch
+from shutil import copyfile
+import datetime
+from datetime import datetime as dt, timezone, timedelta, date
+from subprocess import CalledProcessError, PIPE, run
+import argparse
+import logging
+import os
+import glob
+import socket
+import unicodedata
+import subprocess
+from enum import Enum
+
+import dateutil
+import toml
+
+
+class LOG_LEVELS(Enum):
+    """ Convenience for argparse / logging modules """
+    DEBUG = 'DEBUG'
+    INFO = 'INFO'
+    WARNING = 'WARNING'
+    ERROR = 'ERROR'
+    CRITICAL = 'CRITICAL'
+
+    @staticmethod
+    def choices():
+        return [l.name for l in list(LOG_LEVELS)]
+
+
+LOG_LEVEL_STRINGS = ['CRITICAL', 'ERROR', 'WARNING', 'INFO', 'DEBUG']
+
+LOGGER = logging.getLogger("tmv.util")
+
+LOG_FORMAT = '%(asctime)s %(levelname)-8s %(filename)s %(message)s'
+LOG_FORMAT_DETAILED = '%(asctime)s %(levelname)-8s pid %(process)s in %(filename)s at %(funcName)s: %(message)s'
+
+# Like RFC3339 but replace ':' with '-' to not wreck filenames
+DATETIME_FORMAT = "%Y-%m-%dT%H-%M-%S"
+DATE_FORMAT = "%Y-%m-%d"
+TIME_FORMAT = "%H:%M:%S"
+HH_MM = "%H:%M"
+
+
+class Tomlable:
+    """
+    Convenience class for configuring classes via Toml
+    """
+
+    def configs(self, config_string):
+        config_dict = toml.loads(config_string)
+        self.configd(config_dict)
+
+    def config(self, config_pathname):
+        config_dict = toml.load(config_pathname)
+        self.configd(config_dict)
+
+    def configd(self, config_dict):
+        raise NotImplementedError
+
+    def setattr_from_dict(self, attr_name: str, new_attrs: dict, default_value=None):
+        """ If attr_name exists in self, set it to new_attrs[name_of_attr]
+            Note that attr_names are made safe. For example, "this-name" is changed to "this_name" 
+            default_value: if specified, use this if not in dict; otherwise do nothing (see dict.getattr())
+            """
+        try:
+            # throws if doesn't exist in new attrs
+            attr_value = new_attrs[attr_name]
+            safe_attr_name = attr_name.replace("-", "_")
+            setattr(self, safe_attr_name, attr_value)
+        except AttributeError:      # doesn't exist in self: ignore with warning
+            LOGGER.warning("Ignoring unknown setting: '{}'".format(attr_name))
+        except KeyError:            # doesn't exist in new attrs
+            if default_value:
+                setattr(self, attr_name, default_value)
+
+
+def log_level_string_to_int(log_level_string):
+
+    if log_level_string not in LOG_LEVEL_STRINGS:
+        message = 'invalid choice: {0} (choose from {1})'.format(
+            log_level_string, LOG_LEVEL_STRINGS)
+        raise argparse.ArgumentTypeError(message)
+
+    log_level_int = getattr(logging, log_level_string, logging.INFO)
+    # check the logging log_level_choices have not changed from our expected
+    # values
+    assert isinstance(log_level_int, int)
+
+    return log_level_int
+
+
+def td2str(td):
+    """ Return a str from a timedelta, in iso-ish style. """
+    if isinstance(td, timedelta):
+        return td.strftime(TIME_FORMAT)
+    else:
+        raise TypeError
+
+
+def dt2str(d):
+    """ Return a str from a datetime or date, in RFC3399-ish style (YYYY-MM-DDTHH-MM). Timezones ignored. """
+    if isinstance(d, dt):
+        return d.strftime(DATETIME_FORMAT)
+    elif isinstance(d, date):
+        return d.strftime(DATE_FORMAT)
+    else:
+        raise TypeError
+
+
+def dt2iso(d):
+    """ https://stackoverflow.com/questions/8556398/generate-rfc-3339-timestamp-in-python
+    eg '2015-01-16T16:52:58.547366+01:00'
+    """
+    local_time = d(timezone.utc).astimezone()
+    return local_time.isoformat()
+
+
+def str2dt(filename: str, throw=True) -> dt:
+    """Returns the datetime of string.
+       Uses first 14 digits = 4,2,2,2,2,2 and ignores non-digits.
+       Expects RFC3399 order of %Y%m%d%H%M%S
+       If no time is given, 00:00:00 is returned as the datetime's time.
+      """
+    datetime_pattern = '%Y%m%d%H%M%S'
+    datetime_length = 14
+    date_pattern = "%Y%m%d"
+    date_length = 8
+    datetime_digits = ''
+    date_digits = ''
+
+    for c in os.path.basename(filename):
+        if c.isdigit():
+            datetime_digits = datetime_digits + c
+    datetime_digits = datetime_digits[0:datetime_length]
+    date_digits = datetime_digits[0:date_length]
+    try:
+        file_datetime = dt.strptime(datetime_digits, datetime_pattern)
+        return file_datetime
+    except ValueError:
+        try:
+            # LOGGER.warning(e)
+            file_date_only = dt.strptime(date_digits, date_pattern)
+            return file_date_only
+        except ValueError:
+            if throw:
+                raise
+            return None
+
+
+def today_at(hours, minutes=0, seconds=0):
+    return dt.combine(dt.today(), datetime.time(hours, minutes, seconds))
+
+
+def tomorrow_at(hours, minutes=0, seconds=0):
+    return dt.combine(dt.today(), datetime.time(hours, minutes, seconds)) + timedelta(days=1)
+
+
+def penultimate_unique(l):
+    rl = list(reversed(l))
+    try:
+        return next(i for i in rl if i != rl[0])
+    except StopIteration:
+        return None
+
+
+def list_of_dates(start: datetime, end: datetime):
+    dates = []
+    delta = end - start
+    for i in range(delta.days + 1):
+        day = start + timedelta(days=i)
+        dates.append(day.date())
+    return dates
+
+
+def unlink_safe(f):
+    # pylint: disable=broad-except
+    try:
+        os.unlink(f)
+        return True
+    except BaseException:
+        return False
+
+
+def file_by_day(file_list, dest, move):
+    """ Given a list of files, move/copy then to YYYY-MM-DD/ directories in the cwd, based on the timestamp of file_list elements"""
+    n_errors = 0
+    n_moved = 0
+    LOGGER.debug("Reading dates of {} files...".format(len(file_list)))
+    for fn in file_list:
+        try:
+            fn = str(fn)  # handle Path
+            try:
+                # Filename date
+                datetime_taken = str2dt(fn)
+            except ValueError:
+                # Try to get EXIF
+                datetime_taken = exif_datetime_taken(fn)
+            # got a date. Move it
+            n_moved += 1
+            folder_name = os.path.join(dest, str(datetime_taken.date()))
+            move_to = os.path.join(folder_name, os.path.basename(fn))
+            if not os.path.exists(folder_name):
+                os.mkdir(folder_name)
+            LOGGER.info("Copying {} to {}".format(fn, folder_name))
+            copyfile(fn, move_to)
+
+            if move:
+                LOGGER.info("Deleting {}".format(fn))
+                os.unlink(fn)
+        # pylint: disable=broad-except
+        except Exception as exc:
+            n_errors += 1
+            LOGGER.warning("Error getting date for %s: %s" % (fn, exc))
+
+    LOGGER.debug("Got {} dated file from {} files with {} errors".format(
+        n_moved, len(file_list), n_errors))
+    if n_errors:
+        LOGGER.warning(
+            "No dates available for {}/{}. Ignoring them.".format(n_errors, len(file_list)))
+
+
+def files_from_glob(file_glob: list):
+    """
+        Return a list of files from a list of globs
+        e.g files_from_glob(([*.jpg,*.JPG"]) = ["1.jpg","2.jpg","3.JPG"]
+    """
+    assert isinstance(file_glob, list)
+    file_list = []
+    for fg in file_glob:
+        file_list.extend(glob.glob(fg))
+    # LOGGER.info("Globbed %d files" % (len(file_list)))
+    return file_list
+
+
+def exif_datetime_taken(filename) -> datetime:
+    """ Get datetime from EXIF"""
+    f = open(filename, 'rb')
+    # pylint: disable=undefined-variable
+    tags = exifread.process_file(f, details=False)
+    f.close()
+    datetime_taken_exif_str = tags["EXIF DateTimeOriginal"]
+    return dt.strptime(
+        str(datetime_taken_exif_str), r'%Y:%m:%d %H:%M:%S')
+
+
+def magic_filename():
+    home_files = [f for f in os.listdir(Path.home()) if f[0] != "."]
+    home_files.sort()
+    return home_files[0]
+
+
+def setattrs_from_dict(o, settings):
+    """ Given a dictionary of settings, set object's attributes, where they
+        exist """
+    for k, v in settings.items():
+        try:
+            getattr(o, k)           # throw if doesn't exist
+            setattr(o, k, v)
+        except AttributeError:      # doesn't exist in object: ignore
+            LOGGER.warning("Ignoring unknown setting {}:{}".format(k, v))
+        # except Exception as e:  # find "missing item attribute"
+        #    LOGGER.warning("Could not set {}:{}. Exception: {}".format(k, v, e))
+
+
+def file_by_day_console():
+    parser = argparse.ArgumentParser("File files into dated subfolders")
+    parser.add_argument("file_glob", nargs='+')
+    parser.add_argument('--log-level', default='WARNING', dest='log_level', type=log_level_string_to_int, nargs='?',
+                        help='Set the logging output level. {0}'.format(LOG_LEVEL_STRINGS))
+    parser.add_argument("--dryrun", action='store_true', default=False)
+    parser.add_argument("--move", action='store_true', default=False,
+                        help="After successful copy, delete the original")
+    parser.add_argument("--dest", default='.',
+                        help="root folder to store filed files(!)")
+
+    args = (parser.parse_args())
+    LOGGER.setLevel(args.log_level)
+    logging.basicConfig(format='%(levelname)s:%(message)s')
+
+    file_list = files_from_glob(args.file_glob)
+    if not os.path.exists(args.dest):
+        os.mkdir(args.dest)
+    file_by_day(file_list, args.dest, args.move)
+
+
+def list_of_dates_console():
+    parser = argparse.ArgumentParser(
+        "Generate a list of dates", add_help="Generate a list of dates in ISO format (2011-02-28) between two arbitary dates")
+    parser.add_argument("start")
+    parser.add_argument("end")
+    args = (parser.parse_args())
+    start = dateutil.parser.parse(args.start)
+    end = dateutil.parser.parse(args.end)
+    if start is None or end is None:
+        raise SyntaxError("Couldn't understand dates: {}, {}".format(
+            start, end))
+    dates = list_of_dates(start, end)
+    for d in dates:
+        print(d)
+
+
+def not_modified_for(file, period):
+    """
+    Return only when the file hasn't be modified for 'period'
+    """
+    last_mod = dt.now()
+
+    while dt.now() - last_mod < period:
+        time.sleep(0.1)
+        try:
+            stats = Path(file).stat()
+        except FileNotFoundError:
+            # oh no, must of been deleted
+            return
+        last_mod = dt.fromtimestamp(stats.st_mtime)
+    # LOGGER.debug("Waited for {:.1f}s".format(
+    #    (dt.now()-start).total_seconds()))
+    return
+
+
+def check_internet(host="8.8.8.8", port=53, timeout=5):
+    """
+    Host: 8.8.8.8 (google-public-dns-a.google.com)
+    OpenPort: 53/tcp
+    Service: domain (DNS/TCP)
+    """
+    try:
+        socket.setdefaulttimeout(timeout)
+        socket.socket(socket.AF_INET, socket.SOCK_STREAM).connect((host, port))
+        return True
+    except socket.error as exc:
+        LOGGER.debug(exc)
+        return False
+
+
+def run_and_capture(cl: list, log_filename=None):
+    """
+    Only for python <=3.6. Use "capture" keyword for >3.6
+    cl: list of parameters, or str (will be split on " "; quotes are respected
+    log_filename: on process error (i.e. runs but fails), log it's output
+    """
+    if isinstance(cl, str):
+        cl = cl.split(" ")  # shlex
+    try:
+        proc = run(cl, encoding="UTF-8", stdout=PIPE, stderr=PIPE, check=False)
+    except OSError as e:
+        raise OSError("Subprocess failed to even run: {}. Cause: {}".format(' '.join(cl), str(e)))
+
+    if proc.returncode != 0:
+        if log_filename:
+            Path(log_filename).write_text(f"*** command ***\n{cl}\n{' '.join(cl)}\n*** returned ***\n{proc.returncode}\n" +
+                                          f"*** stdout ***\n{proc.stdout}\n*** stderr ***\n{proc.stderr}\n")
+        raise CalledProcessError(proc.returncode, cl, proc.stdout, proc.stderr)
+
+    return str(proc.stdout), str(proc.stderr)
+
+
+def cpe2str(cpe):
+    return f"Subprocess ran but failed. command: '{' '.join(cpe.cmd)}' return: {cpe.returncode} stdout: {cpe.stdout} stderr: {cpe.stderr}"
+
+
+def subprocess_stdout(cl):
+    """
+      Only for python <=3.6. Use "capture" keyword for >3.6
+      Throws OSError or CalledProcessError
+    """
+    if isinstance(cl, str):
+        cl = cl.split(" ")
+    try:
+        proc = run(cl, encoding="UTF-8", stdout=PIPE, stderr=PIPE, check=True)
+    except OSError as e:
+        raise OSError(
+            "Subprocess failed to run: {}. Cause: {}".format(' '.join(cl), str(e)))
+
+    return str(proc.stdout)
+
+
+def add_stem_suffix(p: Path, s: str) -> Path:
+    """ eg. ("/path/to/file.ext","-suffix") -> ("/path/to/file-suffix.ext")"""
+    return p.parent / Path(p.stem + s + p.suffix)
+
+
+def slugify(value, allow_unicode=False):
+    """
+    from: https://github.com/django/django/blob/master/django/utils/text.py
+    Convert to ASCII if 'allow_unicode' is False. Convert spaces to hyphens.
+    Remove characters that aren't alphanumerics, underscores, or hyphens.
+    Convert to lowercase. Also strip leading and trailing whitespace.
+    """
+    value = str(value)
+    if allow_unicode:
+        value = unicodedata.normalize('NFKC', value)
+    else:
+        value = unicodedata.normalize('NFKD', value).encode(
+            'ascii', 'ignore').decode('ascii')
+    value = sub(r'[^\w\s-]', '', value.lower()).strip()
+    return sub(r'[-\s]+', '-', value)
+
+
+def next_mark(delta: timedelta, instant):
+    """
+    Return the next mark. For example instant = 11:00:01, delta = 5, returns 11:00:05
+    """
+    assert timedelta(days=1) >= delta >= timedelta(
+        seconds=1)  # rounding may break
+    round_to = delta.total_seconds()
+    seconds = (instant - dt.min).seconds
+    rounded_seconds = (seconds) // round_to * \
+        round_to  # // is a floor division
+    rounded_time = instant + \
+        timedelta(0, rounded_seconds - seconds, -instant.microsecond)
+    if rounded_time == instant:
+        return rounded_time
+    else:
+        return rounded_time + delta
+    # return instant + timedelta(0, rounded_seconds - seconds + round_to, -instant.microsecond)
+
+
+def sleep_until(mark: dt, instant: dt):
+    delta = mark - instant
+    if delta.total_seconds() > 0:
+        # logger.debug("Sleep for {:.1f}s".format(delta.total_seconds()))
+        time.sleep(delta.total_seconds())
+
+
+def service_details(service):
+    """
+    Return systemd service detail
+        active
+        inactive
+        activating
+        deactivating
+        failed
+        not-found
+        dead
+    """
+    # stderr ignored; return can be non-zero
+    p = run(["systemctl", "status", service], encoding='UTF-8', stdout=subprocess.PIPE, check=False)
+    output = p.stdout
+    service_regx = r"Loaded:.*\/(.*service);"
+    status_regx = r"Active:(.*) since (.*);(.*)"
+    deets = {}
+    for line in output.splitlines():
+        service_search = search(service_regx, line)
+        status_search = search(status_regx, line)
+
+        if service_search:
+            deets['service'] = service_search.group(1)
+        elif status_search:
+            deets['status'] = status_search.group(1).strip()
+            deets['since'] = status_search.group(2).strip()
+            deets['uptime'] = status_search.group(3).strip()
+
+    return deets
+
+
+def strptimedelta(s: str, fmt=HH_MM):
+    hm = dt.strptime(s, fmt)
+    return timedelta(hours=hm.hour, minutes=hm.minute)
+
+
+def prev_mark(delta: timedelta, instant):
+    """
+    Return the previous mark. For example instant = 11:00:01, delta = 5, returns 11:00:00
+    """
+    assert timedelta(days=1) >= delta >= timedelta(seconds=1)  # rounding may break
+    round_to = delta.total_seconds()
+    seconds = (instant - dt.min).seconds
+    rounded_seconds = (seconds) // round_to * round_to  # // is a floor division
+    rounded_time = instant + timedelta(0, rounded_seconds - seconds, -instant.microsecond)
+    if rounded_time == instant:
+        return rounded_time
+    else:
+        return rounded_time - delta

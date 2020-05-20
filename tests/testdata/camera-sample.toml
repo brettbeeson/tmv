@@ -1,0 +1,41 @@
+[transfer]
+destination = "s3://tmv.brettbeeson.com.au/data/HOSTNAME/daily-videos"
+move = true
+endpoint = 'http://home.brettbeeson.com.au:9000'
+profile = 'minio'
+
+[location]
+city = 'Brisbane'
+
+[camera]
+interval = 30
+inactive_threshold = 600.0
+file_by_date = true
+file_root = "/home/pi/tmv-data/"
+overlays = [ "spinny", "image_name"] #,"settings"]
+camera_inactive_action = "WAIT" # "POWER_OFF"
+on = 'dim'
+off = 'dark'
+
+[camera.sensor]
+max_age = 120.0
+freq = 60.0
+dark = 0.05
+light = 0.2
+power_off = 1800.0 
+
+[camera.picam.LIGHT]
+iso = 200
+exposure_mode = "auto"
+resolution = '1280x720'
+
+[camera.picam.DIM]
+iso = 400
+exposure_mode = "night"
+resolution = '1280x720'
+
+[camera.picam.DARK]
+framerate = 1 
+iso = 800
+exposure_mode = "verylong"
+resolution = '1280x720'

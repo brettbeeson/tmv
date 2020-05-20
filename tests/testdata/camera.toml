@@ -1,0 +1,23 @@
+
+[location]
+# location details are only required for suncalc (i.e. using sunrise|sunset|dawn|dusk as triggers)
+# if not specified, an IP based auto-look will be attempted
+# city = "Brisbane"
+
+
+[camera]
+
+# 10:00:00 : timed in local time
+# "sunrise|sunset|dawn|dusk" : suncalc via position
+# "light|dim|dark" : sensor via camera
+off = 07:00:00 
+on = 18:00:00
+
+# boolean: sense lowlight and use a dedicated mode
+sense_lowlight = true 
+
+# turn off when not capturing. otherwise just do nothing. 
+# PiJuice will be used to turn off, and turn on
+inactive_camera_action = 'WAIT'
+
+

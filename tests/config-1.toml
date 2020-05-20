@@ -1,0 +1,154 @@
+###############################################################################
+# TMV: camera and upload configuration. 
+###############################################################################
+
+[location]
+
+#
+# City : 'auto' or a well-known city name for a local lookup
+#
+city = 'Brisbane'
+
+
+#
+# Physical or software buttons to control uploading, etc
+# - required
+# - alternatively, for hardware-based
+#    [switches]
+#        [switches.camera]
+#            pins = [10]    
+#        [switches.s3-upload]
+#            pins = [11,12]    
+
+[switches]
+    [switches.camera]
+        file = '/etc/tmv/camera-switch'
+    [switches.upload]
+        file = '/etc/tmv/upload-switch'
+
+###############################################################################
+# Where to upload the images, using tmv-s3-upload
+###############################################################################
+[transfer]
+#
+# S3 destination URL. 
+# It must be set: usually just change BUCKET-NAME-TO-SET
+#
+# The following substiutions are made:
+# UUID :  automatic identifier, probably unique
+# HOSTNAME : hostname of machine
+# (Source location is "file_root" in [camera])
+#
+destination = "s3://BUCKET-NAME-TO-SET/data/HOSTNAME/daily-photos"
+
+#
+# Remove files after copy.
+# If false, files remain and will be re-uploaded when transfer is re-started
+# They won't be continuously uploaded in daemon mode, as it does a batch upload,
+# then checks only for new files
+#
+# move=true
+
+# file_filter="*"
+# extraargs  = {
+#   ACL = 'public-read',
+# }
+# profile = 'aws-profile-name-with-my-credentials'
+# endpoint = 'http://my.s3server.com:9000'
+
+###############################################################################
+# All about the camera, using tmv-camera
+###############################################################################
+[camera]
+#
+# Where to save images
+#
+file_root = "/tmp/tmv"
+
+#
+# Time in seconds between images
+#
+interval = 10.0
+
+#
+# Should be store under file_root/(eg)2020-12-31/
+#
+file_by_date = true
+
+#
+# The minimum time, in seconds, we'll power down/sleep/etc if camera inactive
+#
+inactive_threshold = 1800.0
+
+#
+#   WAIT: just time.sleep()
+#   EXCEPTION: raise PowerOff
+#   POWER_OFF: ask pijuice to turn off (will wakeup at the right time)
+#   EXIT: call system exit
+#
+camera_inactive_action = "WAIT"
+
+#
+# on:
+#   10:00:00 : turn on at this time
+#   'dawn'|'sunrise'|'sunset'|'dusk' : calculate based on position on on Earthy
+#   'dim'|'light'|'dark' : use the camera as a light sensor to determine this
+# off:
+#   as for 'on'. Type has to match (e.g. 10:00:00 and 12:12:00 works ok)
+#
+on = true
+off = false
+
+#
+# [ "spinny", "image_name", "settings",]
+#
+overlays = []
+
+#
+#   light   : pixel average above which it is light
+#   dark    : pixel average below which it is dark
+#   freq    : interval, in seconds, between light sensings
+#   max_age : the maximum age, in seconds, of light level readings.
+#             older readings are discarded
+#             to change the level, all recent images must have the same level
+#  power_off :
+#             if we poweroff via sensor reading (e.g. off = 'Dim'), how long,
+#             in seconds, to stay off for?
+#             important! make sure this is longer than inactive_threshold or we
+#             won't turn off
+#
+[camera.sensor]
+power_off = 3600.0
+dark = 0.05
+freq = 60.0
+light = 0.2
+save_images = false
+
+#
+#   LIGHT|DIM|DARK: settings passed to picam to override the defaults, which are:
+#       awb_mode= 'auto',
+#       exposure_mode= 'auto',
+#       framerate= 0.033 # 30 fps
+#       hflip= False,
+#       iso= 0,
+#       meter_mode= 'average',
+#       rotation= 0,
+#       sharpness= 0,
+#       shutter_speed= 0,
+#       sensor_mode= 0,
+#       saturation= 0,
+#       still_stats= False,
+#       zoom= [0.0, 0.0, 1.0, 1.0],
+#       vflip = False
+#
+[camera.picam.LIGHT]
+iso = 200
+exposure_mode = "auto"
+
+[camera.picam.DIM]
+iso = 800
+exposure_mode = "night"
+
+[camera.picam.DARK]
+iso = 1600
+exposure_mode = "verylong"

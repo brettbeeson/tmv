@@ -1,0 +1,8 @@
+# http://pylint-messages.wikidot.com/all-messages
+[MASTER]
+disable=
+    C0114, # missing-module-docstring
+    C0116, # missing-function-docstring 
+    W1202, # logging
+    C0301, # long lines are cool
+    C0103, # invalid

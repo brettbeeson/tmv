@@ -1,0 +1,17 @@
+.current-dir a:hover {
+        text-decoration: underline !important;
+}
+.video-js {
+        background-color: white;
+}
+.list-group-item.disabled {
+        text-decoration: line-through !important;
+}
+.growl {
+        opacity: 0.95;
+}
+
+.bootstrap-datetimepicker-widget {
+        overflow: visible;
+        z-index: 9999;
+}

@@ -1,0 +1,11 @@
+[Unit]
+Description=Sync pi to PjJuice hardware RTC 
+
+[Service]
+ExecStart=/sbin/hwclock -s
+# This might be optional, as default user is root(?)
+#User=root
+#Group=root
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,21 @@
+# delete_images_older_than = 
+
+[daily-videos]
+# minterpolate = False
+# fps = 25
+# speedup = None
+
+[recap-videos]
+# any-name = { label = human readable, days = from now() to now() - X days, [ speedup = auto or X]}
+create.week = { label = "Last 7 days", days = 7 , speedup=30}
+create.month = { label ="Last 30 days", days = 30 }
+create.all = { label = "From beginning", days = 0 }
+create = {
+    { label = "Last 7 days", days = 7 , speedup=30},
+    { label ="Last 30 days", days = 30 },
+    { label = "From beginning", days = 0 }
+}
+
+[diagonal-videos]
+
+

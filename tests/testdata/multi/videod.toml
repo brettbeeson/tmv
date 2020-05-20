@@ -1,0 +1,27 @@
+# delete_images_older_than = 
+
+locations = [
+    "cam1","cam2","cam3"
+]
+
+[daily-videos]
+# minterpolate = False
+# fps = 25
+# speedup = None
+
+[recap-videos]
+# create = [{ label, days, [ speedup : 0 for auto]}]
+#create = [
+#    { label = "Last 7 days", days = 7 , speedup=30},
+#    { label ="Last 30 days", days = 30 },
+#    { label = "From beginning", days = 0 }
+#]
+
+[preview-videos]
+#   filters.scale="128:-1"
+#   filters.fps = "fps=5"
+#   filters.setpts = "0.25*PTS"
+#    dest_path = "previews"
+
+# [diagonal-videos]
+# not implemented
