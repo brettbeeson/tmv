@@ -14,6 +14,7 @@ Testing on a PiZeroW. This is only one of many options on how to setup.
 - Do a `apt upgrade && apt dist-upgrade`
 - Optionally, install a WiFi provisioner such as [RaspAP](https://github.com/billz/raspap-webgui)
 - Optionally, install `sudo pip install -U tzupdate` to update your timezone if you travel
+- Optionally, use a [PiJuice](https://github.com/PiSupply/PiJuice) to power it. Install API via `sudo apt install pijuice-base` to 
 
 #### SSH to the Pi from a linux desktop
 ```
@@ -21,7 +22,7 @@ scp -r .ssh pi@raspberrypi.local:.
 ssh pi@raspberrypi.local
 ```
 
-#### Now on the Pi Zero W with a PiJuiceZero
+#### Now on the Pi Zero W
 ```
 # install TMV and dependancies
 sudo apt install -y python3-pip git pijuice-base python3-picamera RPi.GPIO
@@ -29,8 +30,8 @@ sudo apt install -y python3-pip git pijuice-base python3-picamera RPi.GPIO
 sudo apt install -y libjpeg-dev libopenjp2-7 libtiff5
 git clone https://github.com/brettbeeson/tmv
 cd tmv
-#sudo python3 -m pip install timemv # production
-sudo python3 setup.py develop   # dev
+sudo python3 -m pip install timemv # production
+#sudo python3 setup.py develop   # dev
 sudo scripts/install-tmv-camera.sh # install systemd services                
 ```
 ### Configure Camera
