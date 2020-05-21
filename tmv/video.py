@@ -62,7 +62,7 @@ from dateutil.parser import parse
 from tmv.util import LOG_FORMAT, add_stem_suffix, dt2str, HH_MM, neighborhood, FONT_FILE
 from tmv.util import LOG_LEVELS, cpe2str, run_and_capture, str2dt, strptimedelta, subprocess_stdout, unlink_safe
 from tmv.videotools import valid
-from tmv.exceptions import SignalException, VideoMakerError
+from tmv.exceptions import SignalException, VideoMakerError, ImageError
 
 
 LOGGER = logging.getLogger(__name__)
@@ -102,8 +102,8 @@ class SliceType(Enum):
 class VideoMaker:
     """
      Abstract base class for further makers. Maybe a composite or adaptor pattern would be better?
-     Some kind of 'arranger' is passed in
-     Filters too passed in?
+     Some kind of 'arranger' is passed in (to 'group by' arbitary times)
+     Filters too passed in (for times, days of week, etc)
      """
 
     VIDEO_SUFFIX = ".mp4"
@@ -178,11 +178,14 @@ class VideoMaker:
                     if tlf.valid():
                         self.images.append(tlf)
                     else:
-                        raise Exception("Ignoring invalid image: {}".format(tlf))
+                        raise ImageError("Invalid image")
 
+            except ImageError as exc:
+                n_errors += 1
+                LOGGER.warning(f"Ignoring {Path(fn).absolute()}: {exc}")
             except Exception as exc:
                 n_errors += 1
-                LOGGER.warning(f"Exception getting image's datetime: {exc})")
+                LOGGER.warning(f"Ignoring exception getting datetime of {Path(fn).absolute()}: {exc}")
 
         LOGGER.info(f"Got images for {len(self.images)}/{len(self._file_list)} files, and {n_errors} failures")
         if n_errors:

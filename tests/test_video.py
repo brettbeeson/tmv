@@ -272,6 +272,20 @@ def test_console_diagonal(setup_module, caplog):
     for f in Path("/tmp/tmv/").rglob("diagonal*"):
         os.remove(f)
 
+    fn = "diagonal-cross-auto-fps25.mp4"
+    cl = [
+        "--output", fn,
+        "--slice", "Diagonal",
+           "--sliceage", "1 hour",
+        "--log-level", "DEBUG",
+        str(CAL_CROSS_IMAGES)
+    ]
+    with pytest.raises(SystemExit) as exc:
+        video_compile_console(cl)
+    assert exc.value.code == 0
+    assert frames(fn) == pytest.approx(365, abs=1)  # one a day
+    assert fps(fn) == 25
+
     fn = "diagonal-90days.mp4"
 
     cl = [

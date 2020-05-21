@@ -13,7 +13,7 @@ from _datetime import datetime as dt, timedelta
 
 from tmv.exceptions import ConfigError, SignalException
 from tmv.util import LOG_FORMAT_DETAILED, LOG_LEVEL_STRINGS, Tomlable, dt2str, log_level_string_to_int, next_mark, sleep_until, slugify, str2dt
-from tmv.video import VideoMakerDiagonal, VideoMaker, VideoMakerDay, ffmpeg_run, video_join
+from tmv.video import VideoMakerDiagonal, VideoMaker, VideoMakerDay, ffmpeg_run, video_join, strptimedelta
 import tmv
 
 
@@ -22,7 +22,7 @@ LOGGER = logging.getLogger(__name__)
 
 class Task(Tomlable):
     """
-    todo: Add 'period' to enable some tasks to run more or less frequently than others
+    todo: Add 'period' to enable some tasks to run more or less frequently than others?
     """
 
     def __init__(self, src_path, dest_path):
@@ -39,9 +39,21 @@ class Task(Tomlable):
     def run(self):
         raise NotImplementedError
 
+    def configd(self, config_dict):
+        """ Parse common Task config items """
+        # overwrite default specified in constructor
+        self.src_path = config_dict.get("src_path",self.src_path)       
+        self.dest_path = config_dict.get("dest_path",self.dest_path)
+        # to consider: try to avoid as the "run()" method would sometimes not run
+        # probably need a "ready()" method in this class
+        # self.interval = config_dict.get("interval",self.dest_path)
+
+        
+       
+
 
 class DailyVideosTask(Task):
-    """ 
+    """
     Make daylong videos from daily dirs of files. Only make if necessary.
     src:
     ./daily-photos/YYYY-MM-DD/*.jpg
@@ -77,18 +89,22 @@ class DailyVideosTask(Task):
                     LOGGER.info("Creating daily-video: {}".format(filename.absolute()))
                     # ?? touch the preview file so that if we fail, we don't keep trying later runs?
                     filename.touch()
-                    video = vm.write_videos(str(filename), fps=self.fps, force=True, speedup=self.speedup)
+                    vm.write_videos(str(filename), fps=self.fps, force=True, speedup=self.speedup)
 
-            except ValueError as e:
-                LOGGER.warning("Ignoring directory {}: not a date format.".format(day_dir))
+            except ValueError as exc:
+                LOGGER.warning(f"Ignoring directory {day_dir}: not a date format: {exc}")
 
     def configd(self, config_dict):
+        super().configd(config_dict)
         self.setattr_from_dict("minterpolate", config_dict)
         self.setattr_from_dict("speedup", config_dict)
         self.setattr_from_dict("fps", config_dict)
 
 
 class RecapVideosTask(Task):
+    """
+    Concat videos together to recap from past to now.
+    """
 
     def __init__(self, src_path, dest_path):
         super().__init__(src_path, dest_path)
@@ -111,10 +127,11 @@ class RecapVideosTask(Task):
         """
         Override default with config_dict['create'] settings.
         """
+        super().configd(config_dict)
         if 'create' in config_dict:
             for label_days_pair in config_dict['create']:
                 if not all(k in label_days_pair for k in ('label', 'days')):
-                    raise ConfigError("Need 'label' and 'days' for each item in {}", config_dict['create'])
+                    raise ConfigError(f"Need 'label' and 'days' for each item in {config_dict['create']}")
             self.recaps = config_dict['create']
 
     def run(self):
@@ -157,7 +174,7 @@ class DiagonalVideosTask(Task):
     # src_path / 2001-01-01/*.jpg
     #          / 2001-01-02/*.jpg
     #           ...
-    # dest_path = diagonal-AUTO-NAME.jpg 
+    # dest_path = diagonal-AUTO-NAME.jpg
     """
 
     def __init__(self, src_path, dest_path):
@@ -166,32 +183,45 @@ class DiagonalVideosTask(Task):
         self.fps = 25
         self.speedup = None
         self.priority = 50
+        self.sliceage = None
 
     def configd(self, config_dict):
-        raise NotImplementedError
+        super().configd(config_dict)        
+        if 'sliceage' in config_dict:
+            self.sliceage = strptimedelta(config_dict['sliceage'])
 
     def run(self):
+        """
+        Diagonal videos should only be made irregularly
+        Hence check daily-photos (src_path) and add a day 
+        """
         self.dest_path.mkdir(parents=True, exist_ok=True)
         vm = VideoMakerDiagonal()
-        video_filename = "diagonal" + VideoMaker.VIDEO_SUFFIX
+        video_filename = "diagonal-all" + VideoMaker.VIDEO_SUFFIX
         video_path = self.dest_path / video_filename
-        vm.file_list = list(self.src_path.glob("**/*.jpg"))
-        vm.load_videos()
-        LOGGER.debug("Creating diagonal-video: {}".format(video_path.absolute()))
-        # ?? touch the preview file so that if we fail, we don't keep trying later runs?
-        video_path.touch()
-        videos = vm.write_videos(str(video_path), fps=self.fps, force=True, speedup=self.speedup)
+        if video_path.is_file() and \
+            dt.fromtimestamp(video_path.stat().st_mtime) + timedelta(hours=24) >= dt.fromtimestamp(self.src_path.stat().st_mtime) :
+            # exists, newer: no update
+            pass
+        else:
+            vm.sliceage = self.sliceage
+            vm.file_list = list(self.src_path.glob("**/*.jpg"))
+            vm.load_videos()
+            LOGGER.debug("Creating diagonal-video: {}".format(video_path.absolute()))
+            # ?? touch the preview file so that if we fail, we don't keep trying later runs?
+            video_path.touch()
+            vm.write_videos(str(video_path), fps=self.fps, force=True, speedup=self.speedup)
 
 
 class PreviewVideosTask(Task):
     """
     Apply ffmpeg -i 2020-05-06.mp4 -vf "scale=128:-1, fps=fps=10, setpts=0.25*PTS" 2020-05-06-preview.mp4
-    to src_path and put them in dest_path with the same name. 
+    to src_path and put them in dest_path with the same name.
     Examples:
     # put ./bob.mp4 in ./previews/bob.mp4
-    PreviewVideosTask(".","previews") 
+    PreviewVideosTask(".","previews")
     # will fail as will not overwrite
-    PreviewVideosTask(".",".") 
+    PreviewVideosTask(".",".")
     """
 
     def __init__(self, src_path, dest_path):
@@ -212,6 +242,7 @@ class PreviewVideosTask(Task):
         filters.setpts = "0.25*PTS"
         dest_path = "previews"
         """
+        super().configd(config_dict)        
         if 'filters' in config_dict:
             for k, v in config_dict['filters'].items():
                 self.filters[k] = v
@@ -232,7 +263,7 @@ class PreviewVideosTask(Task):
                 ffmpeg_run(str(v), str(preview_filename), vf=self.filters)
 
 
-class VideoMakerDaemon(Tomlable):
+class TaskRunner(Tomlable):
     """
     Scan directories in cwd and calls VideoMaker to create videos. Various tasks can be performed.
     """
@@ -242,10 +273,10 @@ class VideoMakerDaemon(Tomlable):
         self.raise_task_exceptions = False
 
     def __str__(self):
-        return f"VideoMakerDaemon: tasks={self.tasks}"
+        return f"TaskRunner: tasks={self.tasks}"
 
     def __repr__(self):
-        return f"VideoMakerDaemon: tasks={self.tasks}"
+        return f"TaskRunner: tasks={self.tasks}"
 
     def configd(self, config_dict):
         if 'log_level' in config_dict:
@@ -260,7 +291,7 @@ class VideoMakerDaemon(Tomlable):
             self.tasks['PreviewVideosTask'] = PreviewVideosTask(".", "previews")  # default
             self.tasks['PreviewVideosTask'].configd(config_dict['preview-videos'])
         if 'diagonal-videos' in config_dict:
-            self.tasks['DiagonalVideosTask'] = DailyVideosTask("daily-photos", "diagonal-videos")
+            self.tasks['DiagonalVideosTask'] = DiagonalVideosTask("daily-photos", "diagonal-videos")
             self.tasks['DiagonalVideosTask'].configd(config_dict['diagonal-videos'])
         if 'on-demand-videos' in config_dict:
             raise NotImplementedError
@@ -288,7 +319,10 @@ class VideoMakerDaemon(Tomlable):
         return succeded, failed
 
 
-class VideoMakerDaemonManager(Tomlable):
+class TaskRunnerManager(Tomlable):
+    """
+    In a single directory run a list of tasks to make videos, etc.
+    """
 
     DEFAULT_INTERVAL = timedelta(seconds=60)
 
@@ -299,10 +333,10 @@ class VideoMakerDaemonManager(Tomlable):
         self.interval = self.DEFAULT_INTERVAL
 
     def __str__(self):
-        return f"VideoMakerDaemonManager: locations={self.vds} file_root={self.file_root} interval:{self.interval}"
+        return f"TaskRunnerManager: locations={self.vds} file_root={self.file_root} interval:{self.interval}"
 
     def __repr__(self):
-        return f"VideoMakerDaemonManager: locations={self.locations} file_root={self.file_root}"
+        return f"TaskRunnerManager: locations={self.locations} file_root={self.file_root}"
 
     def configd(self, config_dict):
         self.setattr_from_dict('file_root', config_dict)
@@ -312,9 +346,11 @@ class VideoMakerDaemonManager(Tomlable):
             self.interval = timedelta(seconds=config_dict['interval'])
 
         self.setattr_from_dict('locations', config_dict)
-        # Make instances for each location, and pass the config to each daemon (they will ignore our  keys)
+        # Make instances for each location
+        # Pass the same config to each daemon (they will ignore our  keys)
+        # They can override if they want
         for l in self.locations:
-            self.vds[l] = VideoMakerDaemon()
+            self.vds[l] = TaskRunner()
             self.vds[l].configd(config_dict)
 
     def run(self, runs):
@@ -324,12 +360,12 @@ class VideoMakerDaemonManager(Tomlable):
 
         original_cwd = os.getcwd()
         file_root_path = Path(self.file_root).absolute()
-        LOGGER.debug(f"Starting VideoMakerDaemon: {str(self)}")
+        LOGGER.debug(f"Starting TaskRunner: {str(self)}")
 
         for _ in range(0, runs):
             s_total = 0
             sleep_until(next_mark(self.interval, dt.now()), dt.now())
-            # run each VideoMakerDaemon in sequence (not really a 'daemon', huh?)
+            # run each TaskRunner in sequence (not really a 'daemon', huh?)
             for l, vd in self.vds.items():
                 try:
                     if (file_root_path / l).is_dir():
@@ -338,7 +374,7 @@ class VideoMakerDaemonManager(Tomlable):
                         s, f = vd.run_tasks()
                         s_total += s
                         if s_total == 0 or f > 0:
-                            LOGGER.warning(f"VideoMakerDaemon at {Path(l).absolute()} failed {f} tasks and succeeded in {s} tasks")
+                            LOGGER.warning(f"TaskRunner at {Path(l).absolute()} failed {f} tasks and succeeded in {s} tasks")
                 except BaseException as exc:
                     LOGGER.warning(exc)
                     LOGGER.debug(exc, exc_info=exc)
@@ -382,7 +418,7 @@ def videod_console(cl_args=sys.argv[1:]):
             shutil.copy(resource_filename(__name__, 'resources/videod.toml'), args.config_file)
             LOGGER.warning("Writing default config file to {}.".format(args.config_file))
 
-        manager = VideoMakerDaemonManager()
+        manager = TaskRunnerManager()
         manager.config(args.config_file)
         tmv.video.LOGGER.setLevel(LOGGER.getEffectiveLevel() + 10)  # less logging for video when running as daemon
         manager.run(args.runs)

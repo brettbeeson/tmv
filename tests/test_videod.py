@@ -1,9 +1,10 @@
+# pytest tricks stuff pylint
+# pylint: disable=import-error, protected-access, unused-argument, redefined-outer-name. unused-argument, global-statement
 import shutil
 from distutils.dir_util import copy_tree  # instead of sh(it)utils
 import os
 from tempfile import mkdtemp
 from pathlib import Path
-from inspect import getsourcefile
 from multiprocessing import Process
 from datetime import datetime as dt, timedelta
 import logging
@@ -13,19 +14,32 @@ from freezegun import freeze_time
 import pytest
 
 from tmv.videotools import VideoInfo, frames, fps
-from tmv.videod import LOGGER, VideoMakerDaemon, videod_console, VideoMakerDaemonManager
-from tmv.util import LOG_FORMAT_DETAILED, LOG_FORMAT
+from tmv.videod import LOGGER, TaskRunner, videod_console, TaskRunnerManager
+from tmv.util import LOG_FORMAT_DETAILED, LOG_FORMAT, file_by_day
+from tmv.images import cal_cross_images
 
 
-def datadir():
-    mydir = Path(getsourcefile(lambda: 0)).absolute().parent
-    return mydir / "testdata"
+TEST_DATA = Path(__file__).parent / "testdata"
+
+# 365 days @ 1h with a moving cross
+CAL_CROSS_IMAGES = str(cal_cross_images(TEST_DATA) / "*.jpg")
 
 
 @pytest.fixture()
 def setup_test():
     os.chdir(mkdtemp())
-    copy_tree(datadir() / "single", ".")
+    copy_tree(TEST_DATA / "single", ".")
+    logging.basicConfig(format=LOG_FORMAT)
+    LOGGER.setLevel(logging.DEBUG)
+    LOGGER.info("Setting cwd to {}".format(os.getcwd()))
+
+
+@pytest.fixture()
+def setup_test_cal_cross():
+    os.chdir(mkdtemp())
+    copy_tree(cal_cross_images(TEST_DATA), "daily-photos")
+    crosses = list(str(c) for c in Path("daily-photos").glob("*.jpg"))
+    file_by_day(crosses, dest="daily-photos", move=True)
     logging.basicConfig(format=LOG_FORMAT)
     LOGGER.setLevel(logging.DEBUG)
     LOGGER.info("Setting cwd to {}".format(os.getcwd()))
@@ -34,7 +48,7 @@ def setup_test():
 @pytest.fixture()
 def setup_multi_test():
     os.chdir(mkdtemp())
-    copy_tree(datadir() / "multi", ".")
+    copy_tree(TEST_DATA / "multi", ".")
     logging.basicConfig(format=LOG_FORMAT_DETAILED)
     LOGGER.setLevel(logging.DEBUG)
 
@@ -42,19 +56,19 @@ def setup_multi_test():
 @pytest.fixture()
 def daily_photos():
     os.chdir(mkdtemp())
-    copy_tree(datadir() / "single" / "daily-photos", "daily-photos")
+    copy_tree(TEST_DATA / "single" / "daily-photos", "daily-photos")
     logging.basicConfig(format=LOG_FORMAT)
     LOGGER.setLevel(logging.DEBUG)
     LOGGER.info("Setting cwd to {}".format(os.getcwd()))
 
 
 def test_config(setup_test):
-    vd = VideoMakerDaemon()
+    vd = TaskRunner()
     c = """
     [daily-videos]
-    #minterpolate = False
-    #fps = 25
-    #speedup = None
+    # minterpolate = False
+    # fps = 25
+    # speedup = None
 
     [recap-videos]
     recaps = [
@@ -68,7 +82,7 @@ def test_config(setup_test):
 
 
 def test_daily(setup_test):
-    vd = VideoMakerDaemon()
+    vd = TaskRunner()
     c = """
     [daily-videos]
     """
@@ -101,12 +115,12 @@ def test_daily(setup_test):
 def test_recap_videos(setup_test):
     # daily-videos are : 2019-10-22, 23, 24
     with freeze_time(parse("2019-10-24 23:00:00")):
-        vd = VideoMakerDaemon()
+        vd = TaskRunner()
         c = """
-        #[daily-videos]
-        #minterpolate = False
-        #fps = 25
-        #speedup = None
+        # [daily-videos]
+        # minterpolate = False
+        # fps = 25
+        # speedup = None
 
         [recap-videos]
         # any-name = { label = human readable, days = from now() to now() - X days, [ speedup = auto or X]}
@@ -115,7 +129,7 @@ def test_recap_videos(setup_test):
             { label ="Last 2 days", days = 2 },
             { label = "From beginning", days = 0 }
         ]
-        #[diagonal-videos]
+        # [diagonal-videos]
         """
         vd.configs(c)
         vd.raise_task_exceptions = True
@@ -141,7 +155,7 @@ def test_preview_videos(setup_test):
         filters.fps = "fps=5"
         filters.setpts = "0.25*PTS"
         """
-    vd = VideoMakerDaemon()
+    vd = TaskRunner()
     vd.configs(c)
     vd.run_tasks()
     assert Path("daily-videos/previews/2019-10-22.mp4").is_file
@@ -152,13 +166,38 @@ def test_preview_videos(setup_test):
     assert fps_o == 25
     assert fps_p == 5
     assert frames_p == pytest.approx((fps_p / fps_o) * 0.25 * frames_o, abs=5)
-    #assert False, "Output at " + os.getcwd()
+    # assert False, "Output at " + os.getcwd()
     # run again - should NOT make previews of previews!
     run1_files = list(Path(".").glob("**/*.mp4"))
     vd.run_tasks()
     run2_files = list(Path(".").glob("**/*.mp4"))
     assert run1_files == run2_files, f"{run1_files} != {run2_files}"
 
+
+def test_diagonal_videos(setup_test_cal_cross):
+    logging.basicConfig(format=LOG_FORMAT)
+    logging.getLogger("tmv.video").setLevel(logging.DEBUG)
+    
+    c = """
+        [diagonal-videos]
+        sliceage = "1 hour"
+        """
+    vd = TaskRunner()
+    vd.configs(c)
+    vd.run_tasks()
+    f = Path("diagonal-videos/diagonal-all.mp4")
+    assert f.is_file()
+    video_run1 = f.stat()
+    # check we don't run again
+    vd.run_tasks()
+    video_run2 = f.stat()
+    assert video_run1 == video_run2
+    # Check # frames
+    vi = VideoInfo(f)
+    assert vi.frames == pytest.approx(365, abs=1)
+    fi = VideoInfo(f)
+    assert fi.fps == 25
+    
 
 def test_console(daily_photos):
     # Default config should:
@@ -173,14 +212,15 @@ def test_console(daily_photos):
             Path("videod.toml").unlink()
         except FileNotFoundError:
             pass
-        with pytest.raises(SystemExit) as exc:
+        with pytest.raises(SystemExit):
             videod_console(["--runs", "3", "--log-level", "DEBUG"])
+
 
 def test_recap_speeds(setup_test):
     # 2019-10-22.mp4  2019-10-23.mp4  2019-10-24.mp4  previews
     with freeze_time(parse("2019-10-24 23:00:00")):
         print(f"getcwd={os.getcwd()}")
-        vd = VideoMakerDaemon()
+        vd = TaskRunner()
         c = """
         [recap-videos]
         create = [
@@ -188,10 +228,11 @@ def test_recap_speeds(setup_test):
             { label = "Last 3 days", days = 3, speed = 3 },
         ]
         """
-        
+
         vd.configs(c)
         logging.getLogger("tmv.video").setLevel(logging.DEBUG)
         vd.run_tasks()
+
 
 def test_recap_after_finish(daily_photos):
     # daily-videos are : 2019-10-22, 23, 24
@@ -201,7 +242,7 @@ def test_recap_after_finish(daily_photos):
     with freeze_time(parse("2010-01-04 00:00:00")):
         try:
             Path("videod.toml").unlink()
-        except:
+        except Exception:
             pass
         with pytest.raises(SystemExit) as exc:
             videod_console(["--runs", "1", "--log-level", "DEBUG"])
@@ -225,7 +266,7 @@ def test_sched(setup_test):
         [recap-videos]
         # null
         """
-    vd = VideoMakerDaemon()
+    vd = TaskRunner()
     vd.interval = timedelta(seconds=1)
     vd.configs(c)
     for _ in range(0, 4):
@@ -246,7 +287,7 @@ def test_multi(setup_multi_test):
     with open("videod.toml", "w") as f:
         print(c, file=f)
 
-    VideoMakerDaemonManager.DEFAULT_INTERVAL = timedelta(seconds=1)
+    TaskRunnerManager.DEFAULT_INTERVAL = timedelta(seconds=1)
     # run (3 process+1 master)
     with pytest.raises(SystemExit) as exc:
         videod_console(["--runs", "3", "--log-level", "DEBUG"])
@@ -286,7 +327,7 @@ def test_multi_stop(setup_multi_test):
     with open("videod.toml", "w") as f:
         print(c, file=f)
 
-    VideoMakerDaemonManager.DEFAULT_INTERVAL = timedelta(seconds=1)
+    TaskRunnerManager.DEFAULT_INTERVAL = timedelta(seconds=1)
     console = Process(target=videod_console, args=(
         ["--runs", "2", "--log-level", "DEBUG"],))
     console.start()
@@ -304,14 +345,15 @@ def test_multi_stop(setup_multi_test):
     assert len(list(Path("cam2/recap-videos").glob("*.mp4"))) == 3
     assert len(list(Path("cam2/recap-videos/previews").glob("*.mp4"))) == 3
 
+
 def test_errors(setup_test, caplog):
     logging.getLogger("tmv.videod").setLevel(logging.DEBUG)
-    vd = VideoMakerDaemon()
+    vd = TaskRunner()
     c = """
         [daily-videos]
         """
     vd.configs(c)
-    
+
     dud_file = Path("daily-photos/wrong-0place-not-an-image.moose")
     dud_image = Path("daily-photos/2000-01-01/no-date.jpg")
     null_image = Path("daily-photos/2000-01-01/2000-01-01T00-00-01.jpg")
@@ -319,7 +361,7 @@ def test_errors(setup_test, caplog):
     dud_file.touch()
     dud_image.touch()
     vd.run_tasks()
-    assert 'Ignoring invalid image' in caplog.text
+    assert 'Ignoring exception' in caplog.text
     d1 = Path("daily-videos/2000-01-01.mp4")
     d2 = Path("daily-videos/2000-01-02.mp4")
     d3 = Path("daily-videos/2000-01-03.mp4")
@@ -327,7 +369,7 @@ def test_errors(setup_test, caplog):
     d2.unlink()
 
     caplog.clear()
-    vd = VideoMakerDaemon()
+    vd = TaskRunner()
     c = """
         [recap-videos]
         """
@@ -340,5 +382,5 @@ def test_errors(setup_test, caplog):
     v1 = Path("recap-videos/last-7-days.mp4")
     v2 = Path("recap-videos/last-30-days.mp4")
     v3 = Path("recap-videos/complete.mp4")
-        
+
     assert v1.is_file() and v2.is_file() and v3.is_file()

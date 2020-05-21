@@ -10,6 +10,8 @@ class CameraError(Exception):
 class VideoMakerError(Exception):
     """ Problem making images into a video """
 
+class ImageError(Exception):
+    """ Problem with an image """
 
 class ConfigError(TMVError):
     """ TOML or config error """

@@ -212,11 +212,11 @@ def file_by_day(file_list, dest, move):
             move_to = os.path.join(folder_name, os.path.basename(fn))
             if not os.path.exists(folder_name):
                 os.mkdir(folder_name)
-            LOGGER.info("Copying {} to {}".format(fn, folder_name))
+            LOGGER.debug("Copying {} to {}".format(fn, folder_name))
             copyfile(fn, move_to)
 
             if move:
-                LOGGER.info("Deleting {}".format(fn))
+                LOGGER.debug("Deleting {}".format(fn))
                 os.unlink(fn)
         # pylint: disable=broad-except
         except Exception as exc:

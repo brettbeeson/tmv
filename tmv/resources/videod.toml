@@ -31,7 +31,14 @@ log_level = 'INFO'
 # Each uncommented [task] will run with the defaults shown
 ###############################################################################
 
+# 
+# All tasks optionally take the following. They have defaults.
+# Specify dest_dir
+# 
+# src_dir 
+# dest_dir
 [daily-videos]
+
 # minterpolate = False
 # fps = 25
 # speedup = None
@@ -57,6 +64,7 @@ log_level = 'INFO'
 #   filters.setpts = "0.25*PTS"
 #    dest_path = "previews"
 
-# [diagonal-videos]
-# not implemented
+[diagonal-videos]
+# when not specified the default is auto
+# sliceage = '1 hour'
 
