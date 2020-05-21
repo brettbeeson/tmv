@@ -4,9 +4,7 @@ from distutils.dir_util import copy_tree
 import os
 import shutil
 import logging
-from datetime import timedelta
-from datetime import date
-from datetime import time
+from datetime import timedelta, date, time, datetime as dt
 from pathlib import Path
 from tempfile import mkdtemp
 import pytest
@@ -14,10 +12,14 @@ import pytest
 from tmv.video import VideoMakerDay, VideoMakerConcat
 from tmv.video import video_compile_console
 from tmv.util import files_from_glob, LOG_FORMAT
-from tmv.videotools import fps, frames
+from tmv.videotools import VideoInfo, fps, frames
 from tmv.exceptions import VideoMakerError
+from tmv.images import cal_cross_images
 
 TEST_DATA = Path(__file__).parent / "testdata"
+
+# 365 days @ 1h with a moving cross
+CAL_CROSS_IMAGES = str(cal_cross_images(TEST_DATA) / "*.jpg")
 
 
 @pytest.fixture(scope="module")
@@ -50,7 +52,7 @@ def test_vsync_cont(setup_module):
     print("DISCONTINUOUS SET | CFR-PADDED")
     mm.files_from_glob((TEST_DATA / "discont-stamped/*.jpg"))  # 228 files
     mm.load_videos()
-    nfiles = len(mm.tl_videos[0].tl_files)
+    nfiles = len(mm.videos[0].images)
 
     assert nfiles == 228
 
@@ -59,15 +61,15 @@ def test_vsync_cont(setup_module):
                     vsync="cfr-even", force=True, speedup=60)
     f = frames("dis-cfr-even.mp4")
     print("Write {} and read {}. fps_avg={} fps_max={}"
-          .format(nfiles, f, mm.tl_videos[0].fps_video_avg(speedup=60), mm.tl_videos[0].fps_video_max(speedup=60)))
+          .format(nfiles, f, mm.videos[0].fps_video_avg(speedup=60), mm.videos[0].fps_video_max(speedup=60)))
 
     print("DISCONTINUOUS SET | VFR")
     mm.write_videos(filename="dis-vfr.mp4",
                     vsync="vfr", force=True, speedup=60)
-    nfiles = len(mm.tl_videos[0].tl_files)
+    nfiles = len(mm.videos[0].images)
     f = frames("dis-vfr.mp4")
     print("Write {} and read {}. fps_avg={} fps_max={}"
-          .format(nfiles, f, mm.tl_videos[0].fps_video_avg(speedup=60), mm.tl_videos[0].fps_video_max(speedup=60)))
+          .format(nfiles, f, mm.videos[0].fps_video_avg(speedup=60), mm.videos[0].fps_video_max(speedup=60)))
     assert f == 228, "Got {} frames instead of expected 404".format(f)
 
     print("CONTINUOUS SET | CFR")
@@ -79,8 +81,8 @@ def test_vsync_cont(setup_module):
         vsync="cfr-even",
         force=True,
         speedup=60)
-    m = mm.tl_videos[0]
-    nfiles = len(m.tl_files)
+    m = mm.videos[0]
+    nfiles = len(m.images)
     f = frames("con-cfr-even.mp4")
     print("Write {} and read {}. fps_avg={} fps_max={}"
           .format(nfiles, f, m.fps_video_avg(speedup=60), m.fps_video_max(speedup=60)))
@@ -88,8 +90,8 @@ def test_vsync_cont(setup_module):
     print("CONTINUOUS SET | VFR")
     mm.write_videos(filename="con-vfr.mp4",
                     vsync="vfr", force=True, speedup=60)
-    nfiles = len(mm.tl_videos[0].tl_files)
-    m = mm.tl_videos[0]
+    nfiles = len(mm.videos[0].images)
+    m = mm.videos[0]
     f = frames("con-vfr.mp4")
     print("Write {} and read {}. fps_avg={} fps_max={} "
           .format(nfiles, f, m.fps_video_avg(speedup=60), m.fps_video_max(speedup=60) / 60))
@@ -109,15 +111,6 @@ def test_rename(setup_module):
     mm.rename_images()
 
 
-def test_Stamp(setup_module):
-    shutil.rmtree("temp-stamped", ignore_errors=True)
-    shutil.copytree(TEST_DATA / "tostamp", "temp-stamped")
-    mm = VideoMakerDay()
-    mm.files_from_glob("temp-stamped/*.jpg")
-    mm.load_videos()
-    mm.stamp_images()
-
-
 def txestDayMaker():
     mm = VideoMakerDay()
     mm.cache = False
@@ -125,8 +118,8 @@ def txestDayMaker():
     mm.load_videos()
     mm.save_videos()
     # print("%s"%mm)
-    # [print(m) for m in  mm.tl_videos]
-    assert len(mm.tl_videos) == 3
+    # [print(m) for m in  mm.videos]
+    assert len(mm.videos) == 3
 
 
 def txestDayHourMaker():
@@ -141,12 +134,12 @@ def txestDayHourMaker():
     mm.save_videos()
 
     print("%s" % mm)
-    # [print(m) for m in  mm.tl_videos]
-    assert len(mm.tl_videos) == 1
-    assert len(mm.tl_videos[0].tl_files) == 122
-    assert mm.tl_videos[0].tl_files[29].datetimeTaken.date() == date(
+    # [print(m) for m in  mm.videos]
+    assert len(mm.videos) == 1
+    assert len(mm.videos[0].images) == 122
+    assert mm.videos[0].images[29].datetimeTaken.date() == date(
         2015, 7, 3)
-    assert mm.tl_videos[0].tl_files[30].datetimeTaken.date() == date(
+    assert mm.videos[0].images[30].datetimeTaken.date() == date(
         2015, 7, 4)
 
 
@@ -263,8 +256,7 @@ def test_console_concat(setup_module):
     cl = [
         "--output", fn,
         "--log-level", "DEBUG",
-        str(TEST_DATA / "365days1h-cross/*.jpg")
-    ]
+        CAL_CROSS_IMAGES]
     with pytest.raises(SystemExit) as exc:
         video_compile_console(cl)
     assert exc.value.code == 0
@@ -273,35 +265,78 @@ def test_console_concat(setup_module):
     copy_tree(".", "/tmp/tmv")
 
 
-def test_console_diagonal(setup_module):
+def test_console_diagonal(setup_module, caplog):
+    """
+    Use cal_cross to do numeric and visual tests 
+    """
     for f in Path("/tmp/tmv/").rglob("diagonal*"):
         os.remove(f)
 
     fn = "diagonal-90days.mp4"
+
     cl = [
         "--output", fn,
         "--slice", "Diagonal",
+        "--speedup", "1000000",
+        "--end", "2000-04-01T00-00-00",
         "--log-level", "DEBUG",
-        str(TEST_DATA / "365days1h-cross/*.jpg")
+        CAL_CROSS_IMAGES
     ]
     with pytest.raises(SystemExit) as exc:
         video_compile_console(cl)
     assert exc.value.code == 0
-   # assert frames(fn) == 8761
+    vi = VideoInfo(fn)
+    assert vi.real_duration.total_seconds() == pytest.approx(
+        timedelta(days=90).total_seconds(), abs=3600*10)
+    assert vi.real_start == dt(2000, 1, 1, 0, 0, 0)
+    assert vi.duration.total_seconds() == pytest.approx(
+        timedelta(days=90).total_seconds()/1000000, abs=1)
+    assert vi.fps == 25
+
+    fn = "diagonal-cross-1h.mp4"
+    cl = [
+        "--output", fn,
+        "--slice", "Diagonal",
+        "--sliceage", "1 hour",
+        "--log-level", "DEBUG",
+        str(CAL_CROSS_IMAGES)
+    ]
+    with pytest.raises(SystemExit) as exc:
+        video_compile_console(cl)
+    assert exc.value.code == 0
+    assert frames(fn) == pytest.approx(365, abs=1)  # one a day
     assert fps(fn) == 25
 
-    fn = "diagonal-cross.mp4"
+    fn = "diagonal-cross-1h-limited.mp4"
     cl = [
         "--output", fn,
         "--slice", "Diagonal",
+        "--sliceage", "1 hour",
+        "--start-time", "06:00",
+        "--end-time", "18:00",
         "--log-level", "DEBUG",
-        str(TEST_DATA / "90days1h/*.jpg")
+        str(CAL_CROSS_IMAGES)
     ]
     with pytest.raises(SystemExit) as exc:
         video_compile_console(cl)
     assert exc.value.code == 0
-    #assert frames(fn) == 896
+    # still one a day, just tighter band
+    assert frames(fn) == pytest.approx(365, abs=1)
     assert fps(fn) == 25
+
+    caplog.clear()
+    fn = "diagonal-cross-auto.mp4"
+    cl = [
+        "--output", fn,
+        "--slice", "Diagonal",
+        "--log-level", "DEBUG",
+        "--fps", "5",
+        str(CAL_CROSS_IMAGES)
+    ]
+    with pytest.raises(SystemExit) as exc:
+        video_compile_console(cl)
+    assert exc.value.code == 0
+    assert fps(fn) == 5
 
     copy_tree(".", "/tmp/tmv")
 
@@ -317,7 +352,7 @@ def test_console_hour(setup_module):
         "--start-time", "11:00",
         "--end-time", "13:00",
         "--log-level", "DEBUG",
-        str(TEST_DATA / "365days1h-cross/*.jpg")
+        CAL_CROSS_IMAGES
     ]
     with pytest.raises(SystemExit) as exc:
         video_compile_console(cl)
@@ -353,14 +388,20 @@ def test_metadata(setup_module):
         video_compile_console(cl)
     assert exc.value.code == 0
 
-def test_console_autoname(setup_module, capout):
+
+def no_test_console_autoname(setup_module, capsys):
     cl = [
         "--log-level", "DEBUG",
+        "--filenames",
         str(TEST_DATA / "90days1h/*.jpg")
     ]
-    capout.clear()
+
+    fn = "2020-02-21T06_to_2020-05-16T17.mp4"
+
     with pytest.raises(SystemExit) as exc:
         video_compile_console(cl)
+    l = capsys.readouterr()
+    assert l.out.strip() == '2020-02-21T06_to_2020-05-16T17.mp4'
     assert exc.value.code == 0
     assert frames(fn) == 896
     assert fps(fn) == 25

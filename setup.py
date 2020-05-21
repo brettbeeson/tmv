@@ -4,7 +4,7 @@ with open("README.md", "r") as fh:
     long_description = fh.read()
 
     extras = {
-        'advanced': ['ascii_graph']
+        'advanced': ['ascii_graph','datetimerange']
     }
 
 setuptools.setup(
@@ -39,7 +39,7 @@ setuptools.setup(
         "License :: OSI Approved :: MIT License",
         "Operating System :: OS Independent",
     ],
-    install_requires=['astral', 'toml', 'python-dateutil',
+    install_requires=['astral', 'toml', 'python-dateutil','pytimeparse',
                       'Pillow', 'watchdog', 'boto3', 'freezegun', 'nptime'],
     python_requires='>=3.6',
     extras_require=extras,

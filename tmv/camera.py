@@ -25,22 +25,22 @@ from astral.geocoder import database, lookup  # Get co-ordinates from city name
 from astral.sun import sun
 
 from tmv.util import penultimate_unique, next_mark, LOG_FORMAT, LOG_LEVELS
-from tmv.util import Tomlable, setattrs_from_dict, sleep_until
+from tmv.util import Tomlable, setattrs_from_dict, sleep_until, FONT_FILE
 from tmv.exceptions import ConfigError, PiJuiceError, SignalException, CameraError, PowerOff
 from tmv.controller import Switches, ON, OFF, AUTO
 
-logger = logging.getLogger("tmv.camera")  # __name__
+LOGGER = logging.getLogger("tmv.camera")  # __name__
 
 try:
     # optional, for controling power with a PiJuice
     from tmv.pijuice import TMVPiJuice
 except (ImportError, NameError) as exc:
-    logger.debug(exc)
+    LOGGER.debug(exc)
 
 try:
     from picamera import PiCamera
 except ImportError as exc:
-    logger.debug(exc)
+    LOGGER.debug(exc)
 
 
 class LightLevel(Enum):
@@ -194,7 +194,7 @@ class LightLevelSensor():
         constant_levels = all(level == most_recent_level for level in levels_last_two_unique)
         if most_recent_level != self._current_level and constant_levels:
             # it's been a new level for some time:  to this level
-            logger.info("LEVEL change from {} to {}".format(
+            LOGGER.info("LEVEL change from {} to {}".format(
                 self._current_level, most_recent_level))
             self._current_level = most_recent_level
         return self._current_level
@@ -427,7 +427,7 @@ class Timed(ActiveTimes):
         super().__init__(on, off)
         if (not isinstance(self._on, datetime.time) or not isinstance(self._off, datetime.time)):
             # This is ok if's a FakeDateTime!
-            logger.warning(
+            LOGGER.warning(
                 "on/off not a datetime. ({},{})".format(self._on.__class__, self._off.__class__))
 
     def active(self) -> bool:
@@ -469,7 +469,7 @@ class SunCalc(Timed):
         self.location = location
         if self.location is None:
             raise ConfigError(
-                "No location specified: required for dawn|dusk|sunrise|sunset")
+                "No city specified: required for dawn|dusk|sunrise|sunset")
         self.on_event = on.lower()
         self.off_event = off.lower()
         self.sun_events = None
@@ -525,14 +525,13 @@ class Camera(Tomlable):
             self._pijuice = None
             print(exc)
         self.location = None
-        self.city = None
         self.recent_images = []
         self.run_start = None
         self.light_sensor = LightLevelSensor(0.2, 0.05, timedelta(minutes=5), timedelta(seconds=60))
         self.light_sense_outstanding = False
         # just wait if less than this duration
         self.inactive_min = timedelta(minutes=30)
-        self.interval = timedelta(seconds=10)
+        self.interval = timedelta(seconds=60)
         self.active_timer = ActiveTimes.factory(on=True, off=False, camera=self)
         self.file_by_date = True
         self.save_images = True
@@ -565,23 +564,26 @@ class Camera(Tomlable):
         }
 
     def configd(self, config_dict):
-        if 'location' in config_dict:
-            self.setattr_from_dict('city', config_dict['location'])
-            if self.city == 'auto':
-                raise NotImplementedError(
-                    "city = 'auto' not implemented")
-            else:
-                self.location = lookup(self.city, database())
-
+        
         if 'camera' in config_dict:
             c = config_dict['camera']
+
+            if 'log_level' in c:
+                LOGGER.setLevel(c['log_level'])
 
             self.setattr_from_dict('file_by_date', c)
             self.setattr_from_dict('file_root', c)
             self.file_root = os.path.abspath(
                 os.path.expanduser(self.file_root))
             self.setattr_from_dict('overlays', c)
-
+            
+            if 'city' in c:
+                # pylint: disable=no-else-raise
+                if c['city'] == 'auto':
+                    raise NotImplementedError("city = 'auto' not implemented")
+                else:
+                    self.location = lookup(c['city'], database())
+                    
             if 'camera_inactive_action' in c:
                 self.camera_inactive_action = CameraInactiveAction[c['camera_inactive_action']]
 
@@ -589,7 +591,7 @@ class Camera(Tomlable):
                 # interval specified as seconds: convert to timedelta
                 self.interval = timedelta(seconds=c['interval'])
                 if self.interval.total_seconds() <= 2.0:
-                    logger.warning("Intervals <= 2s are not tested")
+                    LOGGER.warning("Intervals <= 2s are not tested")
 
             if 'inactive_threshold' in c:
                 # inactive_threshold specified as seconds: convert to timedelta
@@ -601,7 +603,7 @@ class Camera(Tomlable):
                 self.active_timer = ActiveTimes.factory(
                     c['on'], c['off'], self)
             else:
-                logger.warning("[camera] on and off times should be set. Defaulting to {}".format(
+                LOGGER.warning("[camera] on and off times should be set. Defaulting to {}".format(
                     self.active_timer))
             # config picam modes for light levels
             if 'picam' in c:
@@ -644,9 +646,9 @@ class Camera(Tomlable):
         """
         if self._camera is None:
             try:
-                logger.debug("Picamera() start")
+                LOGGER.debug("Picamera() start")
                 self._camera = PiCamera(led_pin=40)  # PiZero's BCM GPIO40 is the camera's LED
-                logger.debug("Picamera() returned")
+                LOGGER.debug("Picamera() returned")
             except Exception:
                 raise CameraError("No camera hardware available")
 
@@ -655,7 +657,7 @@ class Camera(Tomlable):
             # Run the light senser so we know what to do on the first loop
             set_picam(self._camera, {** self.picam_defaults, ** self.picam_sensing})
             self.capture_light(dt.now())
-            logger.debug("Firstrun: level: {}".format(self.light_sensor.level))
+            LOGGER.debug("Firstrun: level: {}".format(self.light_sensor.level))
 
         for _ in range(0, n):
             # Sleep / power off / etc if the camera is inactive
@@ -716,7 +718,7 @@ class Camera(Tomlable):
         self._camera.led = False
 
         pa = image_pixel_average(pil_image)
-        logger.info("CAPTURED mark: {} pa:{:.3f} took:{:2f}".format(mark, pa, (dt.now() - start).total_seconds()))
+        LOGGER.debug("CAPTURED mark: {} pa:{:.3f} took:{:2f}".format(mark, pa, (dt.now() - start).total_seconds()))
 
         if self.save_images:
             os.makedirs(os.path.dirname(image_filename), exist_ok=True)
@@ -734,7 +736,7 @@ class Camera(Tomlable):
         pa = image_pixel_average(pil_image)
         ll = self.light_sensor._assess_level(pa)
         self.light_sensor.add_reading(mark, pa)
-        logger.info("SENSED mark: {} pa:{:.3f} ll:{} took:{:.2f}".format(mark, pa, ll, (dt.now() - start).total_seconds()))
+        LOGGER.debug("SENSED mark: {} pa:{:.3f} ll:{} took:{:.2f}".format(mark, pa, ll, (dt.now() - start).total_seconds()))
 
         if self.light_sensor.save_images:
             self.apply_overlays(pil_image, mark)
@@ -767,10 +769,7 @@ class Camera(Tomlable):
                 text = pformat(get_picam(self._camera))
                 text += "\n\npixel_average = {:.3f}".format(image_pixel_average(im))
                 text_size = 10
-                #font_path = 'DejaVuSansMono.ttf'
-                font_path = resource_filename(__name__, 'resources/FreeSans.ttf')
-                logger.debug(f"font_path={font_path}")
-                font = ImageFont.truetype(font_path, text_size, encoding='unic')
+                font = ImageFont.truetype(FONT_FILE, text_size, encoding='unic')
                 text_box_size = draw.textsize(text=text, font=font)
                 # left top corner
                 draw.text(
@@ -789,10 +788,8 @@ class Camera(Tomlable):
             if 'image_name' in self.overlays:
                 text = os.path.basename(self.dt2basename(mark))
                 text_size = 10
-                font_path = resource_filename(__name__, 'resources/FreeSans.ttf')
-                logger.debug(f"font_path={font_path}")
-
-                font = ImageFont.truetype(font_path, text_size, encoding='unic')
+                LOGGER.debug(f"FONT_FILE={FONT_FILE}")
+                font = ImageFont.truetype(FONT_FILE, text_size, encoding='unic')
                 # Get the size of the time to write, so we can correctly place it
                 text_box_size = draw.textsize(text=text, font=font)
                 # centre text
@@ -802,8 +799,8 @@ class Camera(Tomlable):
                 draw.text(xy=(x, y), text=text,
                           fill=text_colour, font=font)
         except Exception as exc:
-            logger.warning(f"Exception adding overlays: {exc}")
-            logger.debug(f"Exception adding overlays: {exc}", exc_info=exc)
+            LOGGER.warning(f"Exception adding overlays: {exc}")
+            LOGGER.debug(f"Exception adding overlays: {exc}", exc_info=exc)
 
     def dt2dir(self, mark: datetime):
         """ Return current directory for image saves eg. ./cam1/2000-11-01/"""
@@ -841,11 +838,11 @@ class Camera(Tomlable):
             else:
                 raise PiJuiceError("No pijuice available")
         elif self.camera_inactive_action == CameraInactiveAction.WAIT:
-            logger.info(
+            LOGGER.info(
                 "Camera inactive. Waiting until {}".format(wakeup))
             sleep_until(wakeup, dt.now())
         elif self.camera_inactive_action == CameraInactiveAction.EXIT:
-            logger.info(
+            LOGGER.info(
                 "Camera inactive. Exiting. Wake at {}".format(wakeup))
             sys.exit(4)
         else:
@@ -994,21 +991,21 @@ def camera_console(cl_args=sys.argv[1:]):
     logging.getLogger("tmv.camera").setLevel(args.log_level)
     logging.basicConfig(format=LOG_FORMAT, level=args.log_level)
 
-    logger.info(f"Starting camera app. config-file: {Path(args.config_file).absolute()} ")
+    LOGGER.info(f"Starting camera app. config-file: {Path(args.config_file).absolute()} ")
 
     cam = Camera()
 
     try:
 
         if args.fake:
-            logger.warning("Using a fake camera")
+            LOGGER.warning("Using a fake camera")
             # pylint: disable=protected-access
             cam._camera = FakePiCamera()
 
         if not Path(args.config_file).is_file():
             shutil.copy(resource_filename(
                 __name__, 'resources/camera.toml'), args.config_file)
-            logger.info(
+            LOGGER.info(
                 "Writing default config file to {}.".format(args.config_file))
 
         cam.config(args.config_file)
@@ -1018,7 +1015,7 @@ def camera_console(cl_args=sys.argv[1:]):
         sws = Switches()
         sws.config(args.config_file)
         camera_switch = sws['camera']
-        logger.info(f"Setting Camera switch to: {camera_switch}")
+        LOGGER.info(f"Setting Camera switch to: {camera_switch}")
         # logger.debug(f"switches={sws}")
         if camera_switch == ON:
             cam.manual_override(True)
@@ -1030,17 +1027,17 @@ def camera_console(cl_args=sys.argv[1:]):
         cam.run(args.runs)
 
     except SignalException as e:
-        logger.info('SIGTERM, SIGINT or CTRL-C detected. Exiting gracefully.')
+        LOGGER.info('SIGTERM, SIGINT or CTRL-C detected. Exiting gracefully.')
         retval = 0
     except toml.decoder.TomlDecodeError as e:
         retval = 1
-        logger.error("Error in {}:{} ".format(args.config_file, e))
-        logger.debug(e, exc_info=e)
+        LOGGER.error("Error in {}:{} ".format(args.config_file, e))
+        LOGGER.debug(e, exc_info=e)
 
     except BaseException as e:
         retval = 1
-        logger.error(e)
-        logger.debug(e, exc_info=e)
+        LOGGER.error(e)
+        LOGGER.debug(e, exc_info=e)
     finally:
         # probably can remove?
         if cam._camera is not None:

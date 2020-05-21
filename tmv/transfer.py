@@ -4,8 +4,8 @@ import logging
 from pprint import pformat
 import sys
 from sys import argv
-import socket # gethostname, monkeypatchable
-import uuid #  getnode, monkeypatchable
+import socket  # gethostname, monkeypatchable
+import uuid  # getnode, monkeypatchable
 import argparse
 from datetime import timedelta
 from signal import SIGINT, SIGTERM, signal
@@ -44,8 +44,8 @@ class S3Uploader(FileSystemEventHandler, Tomlable):
     """
     # There is a watchdog for new files, and a backlog mechanism
     # Perhaps a simple "upload any files you see" would be better
-    # It would have the disadvantage of requiring a *move* and 
-    # But the 'backlog' state and watchdog could be removed: just poll and 
+    # It would have the disadvantage of requiring a *move* and
+    # But the 'backlog' state and watchdog could be removed: just poll and
     # upload!
     # 1. Could split the class  to have "EventUploader" and "PollingUploader"
     # 2. or on_create sets a thread-flag or simple flag or wakeup
@@ -63,12 +63,12 @@ class S3Uploader(FileSystemEventHandler, Tomlable):
             self.destination = destination
         self.file_root = file_root
         self.file_filter = "*.jpg"
-        self.move = True # generally want to move, otherwise every run we upload again
+        self.move = True  # generally want to move, otherwise every run we upload again
         self.internet_check_period = timedelta(minutes=1)
         self._s3 = None
         self.profile = profile
         self.endpoint = endpoint
-        self.backlog = False #  is there a backlog of images we should upload, due to s3 or internet down, etc?
+        self.backlog = False  # is there a backlog of images we should upload, due to s3 or internet down, etc?
         try:
             self._pj = None
             self._pj = TMVPiJuice()
@@ -77,7 +77,6 @@ class S3Uploader(FileSystemEventHandler, Tomlable):
         except BaseException as exc:
             # Not TEOTWAWKI - warn and move on
             LOGGER.warning(f"No PiJuice available: {exc}")
-
 
     @property
     def s3(self):
@@ -88,19 +87,6 @@ class S3Uploader(FileSystemEventHandler, Tomlable):
         return self._s3
 
     def configd(self, config_dict):
-        #    [camera]
-        #       file_root = /tmp/tmv-images/camera1
-        #       id = 'uuid' | 'hostname' | 'any-text-you-like
-        #   [transfer]
-        #       move = false
-        #       destination = s3://BUCKET-NAME-TO-SET/HOSTNAME/daily-photos
-        #       add_host = true
-        #       extraargs  = {
-        #           ACL = 'public-read',
-        #       }
-        #       profile = 'aws-profile-name-with-my-credentials'
-        #       endpoint = 'http://my.s3.com:9000'
-        #
         if 'transfer' in config_dict:
             config = config_dict['transfer']
             self.setattr_from_dict("move", config)
@@ -112,19 +98,18 @@ class S3Uploader(FileSystemEventHandler, Tomlable):
                 self.internet_check_period = timedelta(seconds=config['internet_check_period'])
             if "destination" in config:
                 d = config['destination']
-                self.destination = d.replace("HOSTNAME",socket.gethostname()).replace("UUID",str(uuid.getnode()))
+                self.destination = d.replace("HOSTNAME", socket.gethostname()).replace("UUID", str(uuid.getnode()))
             else:
                 raise ConfigError("No setting found for: [transfer] destination .")
+            if 'log_level' in config:
+                LOGGER.setLevel(config['log_level'])
+
         else:
             raise ConfigError("No [transfer] configuration section.")
         if 'camera' in config_dict:
             config = config_dict['camera']
+            # todo: should be in controller
             self.setattr_from_dict("file_root", config)
-            #self.setattr_from_dict("unit_id", config)
-            #if self.unit_id:
-            #    self._dest_root = str(
-            #        Path(self._dest_root) / Path(self.unit_id))
-
 
     @property
     def destination(self):
@@ -141,7 +126,7 @@ class S3Uploader(FileSystemEventHandler, Tomlable):
         self._dest_bucket = d.netloc.strip("/")
         self._dest_root = d.path.strip("/")
 
-    def upload(self, src_file_or_dir=None, dest_prefix=""): #, throw=False):
+    def upload(self, src_file_or_dir=None, dest_prefix=""):  # , throw=False):
         """
         Upload a file or directory to s3
         This appears(?) thread-safe but could have a mutex?
@@ -157,7 +142,7 @@ class S3Uploader(FileSystemEventHandler, Tomlable):
             return self._upload_file(src_file_or_dir, self.move, dest_prefix)
         else:
             raise FileNotFoundError(f"{src_file_or_dir} is not a file or dir")
-        
+
     def _upload_dir(self, src_dir, file_filter="*", move=False, dest_prefix=""):
         """
         Upload all files in a folder and subfolders, retaining their folder locations
@@ -187,7 +172,7 @@ class S3Uploader(FileSystemEventHandler, Tomlable):
         for src_file in src_files:
             src_file_rel = src_file.relative_to(src_dir)
             dest_file = self._dest_root / dest_prefix / src_file_rel
-            LOGGER.debug("Uploading file (from dir) {} to {}:{}".format(
+            LOGGER.info("Uploading file (from dir) {} to {}:{}".format(
                 src_file, self._dest_bucket, dest_file))
             try:
                 dest_file = Path(dest_file)
@@ -198,7 +183,7 @@ class S3Uploader(FileSystemEventHandler, Tomlable):
                     self._pj.blink(Blink.UPLOAD, True)
             except FileNotFoundError as exc:
                 # when uploading a directory, a file may be moved by another process: log and continue
-                LOGGER.warn(exc)
+                LOGGER.warning(exc)
             if move:
                 src_file.unlink()
             n_uploads += 1
@@ -222,7 +207,7 @@ class S3Uploader(FileSystemEventHandler, Tomlable):
         dest_prefix = Path(dest_prefix)
 
         dest_file = self._dest_root / dest_prefix / src_file.name
-        LOGGER.debug("Uploading file {} to {} {}".format(
+        LOGGER.info("Uploading file {} to {} {}".format(
             src_file, self._dest_bucket, dest_file))
         self.s3.upload_file(str(src_file), Bucket=self._dest_bucket,
                             Key=str(dest_file),
@@ -314,12 +299,9 @@ class S3Uploader(FileSystemEventHandler, Tomlable):
                 transfers += 1
         return transfers
 
-    def internet(self):
-        return check_internet()
-
     def daemon(self):
 
-        if self.internet():
+        if check_internet():
             LOGGER.debug("Starting daemon")
             observer = Observer()
             observer.schedule(self, self.file_root, recursive=True)
@@ -330,7 +312,7 @@ class S3Uploader(FileSystemEventHandler, Tomlable):
         if self._pj:
             self._pj.blink(Blink.WIFI, observer_active)
         while True:
-            the_internets = self.internet()
+            the_internets = check_internet()
             if observer_active:
                 if the_internets:
                     # all good
@@ -358,12 +340,12 @@ class S3Uploader(FileSystemEventHandler, Tomlable):
             if the_internets and self.backlog:
                 try:
                     n = self.upload()
-                    n =+ self.upload()  # pick up stragerlers which came in during the last call (post glob)!
+                    n = + self.upload()  # pick up stragerlers which came in during the last call (post glob)!
                     self.backlog = False
                     LOGGER.debug(f"Uploaded backlog of {n} files")
                 except Exception as exc:
                     LOGGER.debug(f"Failed to upload backlog: {exc}")
-            
+
             sleep(self.internet_check_period.total_seconds())
 
     # def on_any_event(self, event):
@@ -393,7 +375,7 @@ class S3Uploader(FileSystemEventHandler, Tomlable):
                 dest_prefix = Path(event.src_path).relative_to(
                     self.file_root).parent
                 # LOGGER.debug(f'dest_prefix={dest_prefix} event.src_path={event.src_path} self.file_root={self.file_root}')
-                self.upload(event.src_path, dest_prefix=dest_prefix)               
+                self.upload(event.src_path, dest_prefix=dest_prefix)
         except FileNotFoundError as exc:
             LOGGER.debug(f"Ignoring missing file to upload. Exception: {exc}")
         except BaseException as exc:
@@ -402,8 +384,6 @@ class S3Uploader(FileSystemEventHandler, Tomlable):
             LOGGER.warning(f"Ignoring unexpected exception during on_created: {exc}")
             # signal to daemon thread we should do a upload() when possible to upload the backlog
             self.backlog = True
-
-   
 
     def list_bucket_objects(self, bucket=None, prefix=None) -> [dict]:
         """
@@ -439,6 +419,7 @@ def bare_str(p):
 
 def sig_handler(signal_received, frame):
     raise SignalException
+
 
 def s3_upload_console(cl_args=argv[1:]):
     # pylint: disable=broad-except
@@ -481,7 +462,7 @@ def s3_upload_console(cl_args=argv[1:]):
             shutil.copy(resource_filename(__name__, 'resources/camera.toml'), args.config_file)
             LOGGER.info("Writing default config file to {}.".format(args.config_file))
         uploader.config(args.config_file)
-        
+
         # override config file with CLI options
         if args.profile:
             uploader.profile = args.profile
@@ -501,16 +482,16 @@ def s3_upload_console(cl_args=argv[1:]):
 
         try:
             n = uploader.upload(args.src)
-            LOGGER.debug(f"Initially uploaded {n} files")
+            LOGGER.info(f"Initially uploaded {n} files")
         except BaseException as exc:
             if not args.daemon:
                 raise
             else:
                 LOGGER.warning(f"Initial upload failed, continuing to daemon. Exception: {exc}")
-        
+
         if not args.daemon:
             sys.exit(0)
-        
+
         uploader.daemon()
 
     except SignalException:

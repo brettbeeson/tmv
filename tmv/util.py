@@ -16,9 +16,11 @@ import socket
 import unicodedata
 import subprocess
 from enum import Enum
-
-import dateutil
+from pkg_resources import resource_filename
 import toml
+import pytimeparse
+
+FONT_FILE = resource_filename(__name__, 'resources/FreeSans.ttf')
 
 
 class LOG_LEVELS(Enum):
@@ -66,7 +68,7 @@ class Tomlable:
 
     def setattr_from_dict(self, attr_name: str, new_attrs: dict, default_value=None):
         """ If attr_name exists in self, set it to new_attrs[name_of_attr]
-            Note that attr_names are made safe. For example, "this-name" is changed to "this_name" 
+            Note that attr_names are made safe. For example, "this-name" is changed to "this_name"
             default_value: if specified, use this if not in dict; otherwise do nothing (see dict.getattr())
             """
         try:
@@ -182,7 +184,8 @@ def list_of_dates(start: datetime, end: datetime):
 def unlink_safe(f):
     # pylint: disable=broad-except
     try:
-        os.unlink(f)
+        if f is not None:
+            os.unlink(str(f))
         return True
     except BaseException:
         return False
@@ -201,7 +204,8 @@ def file_by_day(file_list, dest, move):
                 datetime_taken = str2dt(fn)
             except ValueError:
                 # Try to get EXIF
-                datetime_taken = exif_datetime_taken(fn)
+                raise NotImplementedError("No exif library availble")
+                #datetime_taken = exif_datetime_taken(fn)
             # got a date. Move it
             n_moved += 1
             folder_name = os.path.join(dest, str(datetime_taken.date()))
@@ -239,17 +243,6 @@ def files_from_glob(file_glob: list):
     return file_list
 
 
-def exif_datetime_taken(filename) -> datetime:
-    """ Get datetime from EXIF"""
-    f = open(filename, 'rb')
-    # pylint: disable=undefined-variable
-    tags = exifread.process_file(f, details=False)
-    f.close()
-    datetime_taken_exif_str = tags["EXIF DateTimeOriginal"]
-    return dt.strptime(
-        str(datetime_taken_exif_str), r'%Y:%m:%d %H:%M:%S')
-
-
 def magic_filename():
     home_files = [f for f in os.listdir(Path.home()) if f[0] != "."]
     home_files.sort()
@@ -267,43 +260,6 @@ def setattrs_from_dict(o, settings):
             LOGGER.warning("Ignoring unknown setting {}:{}".format(k, v))
         # except Exception as e:  # find "missing item attribute"
         #    LOGGER.warning("Could not set {}:{}. Exception: {}".format(k, v, e))
-
-
-def file_by_day_console():
-    parser = argparse.ArgumentParser("File files into dated subfolders")
-    parser.add_argument("file_glob", nargs='+')
-    parser.add_argument('--log-level', default='WARNING', dest='log_level', type=log_level_string_to_int, nargs='?',
-                        help='Set the logging output level. {0}'.format(LOG_LEVEL_STRINGS))
-    parser.add_argument("--dryrun", action='store_true', default=False)
-    parser.add_argument("--move", action='store_true', default=False,
-                        help="After successful copy, delete the original")
-    parser.add_argument("--dest", default='.',
-                        help="root folder to store filed files(!)")
-
-    args = (parser.parse_args())
-    LOGGER.setLevel(args.log_level)
-    logging.basicConfig(format='%(levelname)s:%(message)s')
-
-    file_list = files_from_glob(args.file_glob)
-    if not os.path.exists(args.dest):
-        os.mkdir(args.dest)
-    file_by_day(file_list, args.dest, args.move)
-
-
-def list_of_dates_console():
-    parser = argparse.ArgumentParser(
-        "Generate a list of dates", add_help="Generate a list of dates in ISO format (2011-02-28) between two arbitary dates")
-    parser.add_argument("start")
-    parser.add_argument("end")
-    args = (parser.parse_args())
-    start = dateutil.parser.parse(args.start)
-    end = dateutil.parser.parse(args.end)
-    if start is None or end is None:
-        raise SyntaxError("Couldn't understand dates: {}, {}".format(
-            start, end))
-    dates = list_of_dates(start, end)
-    for d in dates:
-        print(d)
 
 
 def not_modified_for(file, period):
@@ -461,9 +417,8 @@ def service_details(service):
     return deets
 
 
-def strptimedelta(s: str, fmt=HH_MM):
-    hm = dt.strptime(s, fmt)
-    return timedelta(hours=hm.hour, minutes=hm.minute)
+def strptimedelta(s: str):
+    return timedelta(seconds=pytimeparse.parse(s))
 
 
 def prev_mark(delta: timedelta, instant):
@@ -479,3 +434,35 @@ def prev_mark(delta: timedelta, instant):
         return rounded_time
     else:
         return rounded_time - delta
+
+
+def neighborhood(iterable):
+    iterator = iter(iterable)
+    prev = None
+    item = next(iterator)  # throws StopIteration if empty.
+    for nextone in iterator:
+        yield (prev, item, nextone)
+        prev = item
+        item = nextone
+    yield (prev, item, None)
+
+
+def file_by_day_console():
+    parser = argparse.ArgumentParser("File files into dated subfolders")
+    parser.add_argument("file_glob", nargs='+')
+    parser.add_argument('--log-level', default='WARNING', dest='log_level', type=log_level_string_to_int, nargs='?',
+                        help='Set the logging output level. {0}'.format(LOG_LEVEL_STRINGS))
+    parser.add_argument("--dryrun", action='store_true', default=False)
+    parser.add_argument("--move", action='store_true', default=False,
+                        help="After successful copy, delete the original")
+    parser.add_argument("--dest", default='.',
+                        help="root folder to store filed files(!)")
+
+    args = (parser.parse_args())
+    LOGGER.setLevel(args.log_level)
+    logging.basicConfig(format='%(levelname)s:%(message)s')
+
+    file_list = files_from_glob(args.file_glob)
+    if not os.path.exists(args.dest):
+        os.mkdir(args.dest)
+    file_by_day(file_list, args.dest, args.move)

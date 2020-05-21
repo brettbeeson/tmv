@@ -1,5 +1,6 @@
+# pylint: disable=logging-fstring-interpolation,logging-not-lazy, dangerous-default-value
+
 import sys
-from sys import stderr
 from enum import Enum
 from signal import signal, SIGINT, SIGTERM
 import argparse
@@ -8,13 +9,13 @@ from pathlib import Path
 from time import sleep
 from shutil import which
 from posix import geteuid
+from subprocess import CalledProcessError
+import shutil
+from pkg_resources import resource_filename
 # to enable monkeypatching, don't import "from tmv.util", but instead:
 import tmv.util
 from tmv.util import Tomlable, service_details, LOG_FORMAT
 from tmv.exceptions import ConfigError, SignalException
-from subprocess import CalledProcessError
-import shutil
-from pkg_resources import resource_filename
 
 
 try:
@@ -28,18 +29,15 @@ LOGGER = logging.getLogger("tmv.controller")
 
 class Unit:
     """
-    subprocess/systemdctl based control of systemd units, with the same interface as psytemd.systemd1.Unit
-    Unit("tmv-camera.service")
+    subprocess/systemdctl based control of systemd units, similiar interface as psytemd.systemd1.Unit
     """
 
     def __init__(self, service_full_name):
+        """ e.g. Unit("tmv-camera.service") """
         self._service = service_full_name
 
     def __str__(self):
         return self._service
-
-    def Load(self):
-        pass
 
     @staticmethod
     def can_systemd():
@@ -52,7 +50,7 @@ class Unit:
             return False
         return True
 
-    def Active(self):
+    def active(self):
         """
         true if status is 'active (...)'
         false otherwise or non-existant
@@ -62,16 +60,16 @@ class Unit:
         except (CalledProcessError, KeyError):
             return False
 
-    def Start(self, s=None):
+    def start(self):
         # must be authorised. will throw
         LOGGER.info(f"execute: systemctl start {self._service}")
         tmv.util.run_and_capture(["systemctl", "start", self._service])
 
-    def Stop(self, s=None):
+    def stop(self):
         LOGGER.info(f"execute: systemctl stop {self._service}")
         tmv.util.run_and_capture(["systemctl", "stop", self._service])
 
-    def Restart(self, s=None):
+    def restart(self):
         LOGGER.info(f"execute: systemctl restart {self._service}")
         tmv.util.run_and_capture(["systemctl", "restart", self._service])
 
@@ -83,7 +81,7 @@ class OnOffAuto(Enum):
     AUTO = 'auto'
 
     def __str__(self):
-        return self.value
+        return str(self.value)
 
 
 ON = OnOffAuto.ON
@@ -129,8 +127,6 @@ class SoftwareSwitch():
 
     def __init__(self, switch_file: str):
         self.switch_path = Path(switch_file)
-        if not self.switch_path.is_file():
-            self.position = OFF
 
     def __str__(self):
         return str(vars(self))
@@ -140,10 +136,14 @@ class SoftwareSwitch():
 
     @property
     def position(self) -> OnOffAuto:
+        """
+        Get switch state. If no file exists, create it and default to OFF.
+        """
         try:
             return OnOffAuto[self.switch_path.read_text(encoding='UTF-8').strip('\n').upper()]
-        except BaseException as exc:
-            LOGGER.warning(exc, exc_info=exc)
+        except FileNotFoundError:
+            LOGGER.info(f"Creating {str(self.switch_path)}")
+            self.switch_path.write_text(OFF.name)
             return OFF
 
     @position.setter
@@ -156,18 +156,26 @@ class Switches(Tomlable):
     """ On/Off/Auto switches, configurable and software/hardware based"""
 
     DLFT_SW_CONFIG = """
-    [switches]
-        [switches.camera]
+    [controller.switches]
+        [controller.switches.camera]
             file = '/etc/tmv/camera-switch'
-        [switches.upload]
+        [controller.switches.upload]
             file = '/etc/tmv/upload-switch'
     """
 
+    CWD_SW_CONFIG = """
+    [controller.switches]
+        [controller.switches.camera]
+            file = 'camera-switch'
+        [controller.switches.upload]
+            file = 'upload-switch'
+    """
+
     DLFT_HW_CONFIG = """
-    [switches]
-        [switches.camera]
+    [controller.switches]
+        [controller.switches.camera]
             pins = [10]    
-        [switches.upload]
+        [controller.switches.upload]
             pins = [11,12]    
     """
 
@@ -175,15 +183,18 @@ class Switches(Tomlable):
         self.switches = {}
 
     def configd(self, config_dict):
-        if 'switches' in config_dict:
-            for s in config_dict['switches']:
-                config = config_dict['switches']
-                if 'file' in config[s]:
-                    self.switches[s] = SoftwareSwitch(config[s]['file'])
-                elif 'pins' in config[s]:
-                    self.switches[s] = HardwareSwitch(config[s]['pins'])
-                else:
-                    raise ConfigError("switch {s} is mis-configured")
+        if 'controller' in config_dict:
+            c = config_dict['controller']
+            if 'log_level' in c:
+                LOGGER.setLevel(c['log_level'])
+            if 'switches' in c:
+                for s in c['switches']:
+                    if 'file' in c['switches'][s]:
+                        self.switches[s] = SoftwareSwitch(c['switches'][s]['file'])
+                    elif 'pins' in c['switches'][s]:
+                        self.switches[s] = HardwareSwitch(c['switches'][s]['pins'])
+                    else:
+                        raise ConfigError("switch {s} is mis-configured")
 
     def __getitem__(self, switch):
         return self.switches[switch].position
@@ -223,30 +234,30 @@ class Controller:
     def reset_services(self):
         self._upload_switch_state = self.switches['upload']
         if self._upload_switch_state == ON:
-            self._upload_unit.Restart()
+            self._upload_unit.restart()
         else:
-            self._upload_unit.Stop()
+            self._upload_unit.stop()
 
         self._camera_switch_state = self.switches['camera']
         if self._camera_switch_state == ON or self._camera_switch_state == AUTO:
-            self._camera_unit.Restart()
+            self._camera_unit.restart()
         else:
-            self._camera_unit.Stop()
+            self._camera_unit.stop()
 
     def update_services(self):
         if not self.switches:
-            LOGGER.warn("No switches set: cannot update_services()")
+            LOGGER.warning("No switches set: cannot update_services()")
             return
 
         if self.switches['upload'] != self._upload_switch_state:
             self._upload_switch_state = self.switches['upload']
             LOGGER.debug(f"upload switch changed to {self._upload_switch_state}")
             if self._upload_switch_state == ON:
-                if not self._upload_unit.Active():
-                    self._upload_unit.Start()
+                if not self._upload_unit.active():
+                    self._upload_unit.start()
             elif self._upload_switch_state == OFF:
-                if self._upload_unit.Active():
-                    self._upload_unit.Stop()
+                if self._upload_unit.active():
+                    self._upload_unit.stop()
             else:
                 raise RuntimeError('Logic error')
 
@@ -255,14 +266,14 @@ class Controller:
             LOGGER.debug(
                 f"camera switch changed to {self._camera_switch_state}")
             if self._camera_switch_state == ON or self._camera_switch_state == AUTO:
-                if not self._camera_unit.Active():
+                if not self._camera_unit.active():
                     # start restart tmv-camera service if it's inactive
                     # in this service, it will use Camera class to detect this is ON/AUTO and
                     # either take photos regardless of time settings / or respect time settings
-                    self._camera_unit.Start()
+                    self._camera_unit.start()
             elif self._camera_switch_state == OFF:
-                if self._camera_unit.Active():
-                    self._camera_unit.Stop()
+                if self._camera_unit.active():
+                    self._camera_unit.stop()
             else:
                 raise RuntimeError('Logic error')
 
@@ -279,7 +290,7 @@ def controller_console(cl_args=sys.argv[1:]):
     """
     Run as a service, polling switchs and stopping/starting services
     """
-    retval = 0
+    # pylint: disable=broad-except
     signal(SIGINT, sig_handler)
     signal(SIGTERM, sig_handler)
     parser = argparse.ArgumentParser(
@@ -305,40 +316,64 @@ def controller_console(cl_args=sys.argv[1:]):
         s.config(args.config_file)
         c = Controller(s)
         LOGGER.debug("Using controller {}".format(c))
-        c.reset_services()     
+        c.reset_services()
         while True:
             c.update_services()
             sleep(1)
-    except SignalException as e:
+    except SignalException:
         LOGGER.info('SIGTERM, SIGINT or CTRL-C detected. Exiting gracefully.')
-        retval = 0
-    except BaseException as e:
-        retval = 1
-        LOGGER.error(e)
-        LOGGER.debug(e, exc_info=e)
-
-    sys.exit(retval)
+        sys.exit(0)
+    except BaseException as exc:
+        LOGGER.error(exc)
+        LOGGER.debug(exc, exc_info=exc)
+        sys.exit(1)
 
 
 def control_console(cl_args=sys.argv[1:]):
-    parser = argparse.ArgumentParser(
-        "Allow software input to 'press' switchs.")
-    parser.add_argument('-c', '--config-file')
-    parser.add_argument('-v', '--verbose', action="store_true")
-    parser.add_argument('camera', type=OnOffAuto, choices=list(OnOffAuto))
-    parser.add_argument('upload', type=OnOffAuto, choices=list(OnOffAuto))
-    args = (parser.parse_args(cl_args))
-    switches = Switches()
-    if args.config_file:
-        switches.config(args.config_file)
-    else:
-        switches.configs(Switches.DLFT_SW_CONFIG)
+    try:
+        parser = argparse.ArgumentParser(
+            "Allow software input to 'press' switchs.")
+        parser.add_argument('-c', '--config-file')
+        parser.add_argument('-v', '--verbose', action="store_true")
+        parser.add_argument('-r', '--restart', action="store_true", help="Force services to restart. e.g. to reload config files")
+        parser.add_argument('camera', type=OnOffAuto, choices=list(OnOffAuto), nargs="?")
+        parser.add_argument('upload', type=OnOffAuto, choices=list(OnOffAuto), nargs="?")
+        args = (parser.parse_args(cl_args))
+        switches = Switches()
+        if args.config_file:
+            switches.config(args.config_file)
+        else:
+            switches.configs(Switches.DLFT_SW_CONFIG)
 
-    if args.verbose:
-        print(f"Setup switches: {switches}")
+        if args.verbose:
+            print(f"State state of switches: {switches}")
+        if args.restart:
+            if args.verbose:
+                print("Restarting tmv-controller")
+            ctlr = Unit("tmv-controller.service")
+            ctlr.restart()
+        if args.camera:
+            switches['camera'] = args.camera
+        if args.upload:
+            switches['upload'] = args.upload
+        if not args.camera and not args.upload:
+            print(f"{switches['camera']} {switches['upload']}")
+        if args.verbose:
+            print(f"Finish state of switches: {switches}")
+        sys.exit(0)
 
-    switches['camera'] = args.camera
-    switches['upload'] = args.upload
-
-    if args.verbose:
-        print(f"Set switches: {switches}")
+    except PermissionError as exc:
+        print(f"{exc}: check your file access  permissions. Try root.", file=sys.stderr)
+        if args.verbose:
+            raise  # to get stack trace
+        sys.exit(10)
+    except CalledProcessError as exc:
+        print(f"{exc}: check your execute systemd permissions. Try root.", file=sys.stderr)
+        if args.verbose:
+            raise  # to get stack trace
+        sys.exit(20)
+    except Exception as exc:
+        print(exc, file=sys.stderr)
+        if args.verbose:
+            raise  # to get stack trace
+        sys.exit(30)

@@ -2,7 +2,7 @@
 """
  Module "tmv.video" (Time Lapse Video)  Details
  -------------------------------
- TLVideos are collections of TLFiles. Each TLFile is a photo with a timestamp and duration.
+ Videos are collections of TLFiles. Each TLFile is a photo with a timestamp and duration.
  Duration is the timedelta to the next frame.
 
  _real suffix is the original images, in real time
@@ -37,6 +37,8 @@
 
 
 # pylint: disable=logging-fstring-interpolation,logging-not-lazy, dangerous-default-value
+# check this:
+# pylint: disable=broad-except
 
 import os
 import os.path
@@ -49,59 +51,21 @@ import sys
 import itertools
 import logging
 import imghdr
-
+from signal import signal, SIGINT, SIGTERM
 from collections import OrderedDict
 from pathlib import Path
 from datetime import datetime as dt, timedelta, time
 from nptime import nptime
 from dateutil.parser import parse
-from PIL import ImageFont
-from PIL import Image
-from PIL import ImageDraw
 
+#from tmv.videotools import valid
+from tmv.util import LOG_FORMAT, add_stem_suffix, dt2str, HH_MM, neighborhood, FONT_FILE
+from tmv.util import LOG_LEVELS, cpe2str, run_and_capture, str2dt, strptimedelta, subprocess_stdout, unlink_safe
 from tmv.videotools import valid
-from tmv.util import LOG_FORMAT, LOG_LEVEL_STRINGS, add_stem_suffix, dt2str, DATETIME_FORMAT, prev_mark, HH_MM
-from tmv.util import LOG_LEVELS, cpe2str, log_level_string_to_int, run_and_capture, str2dt, strptimedelta, subprocess_stdout, unlink_safe
-from tmv.exceptions import VideoMakerError
+from tmv.exceptions import SignalException, VideoMakerError
 
 
 LOGGER = logging.getLogger(__name__)
-
-# following imports are optional for extra functionality
-
-try:
-    import exifread
-except ImportError as e:
-    LOGGER.debug(e)
-
-try:
-    from ascii_graph import Pyasciigraph    # graph command
-except ImportError as e:
-    LOGGER.debug(e)
-
-
-def exif_datetime_taken(filename) -> dt:
-    f = open(filename, 'rb')
-    tags = exifread.process_file(f, details=False)
-    f.close()
-    datetime_taken_exif_str = tags["EXIF DateTimeOriginal"]
-    return dt.strptime(
-        str(datetime_taken_exif_str), r'%Y:%m:%d %H:%M:%S')
-
-
-def str_to_class(classname):
-    return getattr(sys.modules[__name__], classname)
-
-
-def neighborhood(iterable):
-    iterator = iter(iterable)
-    prev = None
-    item = next(iterator)  # throws StopIteration if empty.
-    for nextone in iterator:
-        yield (prev, item, nextone)
-        prev = item
-        item = nextone
-    yield (prev, item, None)
 
 
 class VSyncType(Enum):
@@ -144,22 +108,39 @@ class VideoMaker:
 
     VIDEO_SUFFIX = ".mp4"
 
+    @staticmethod
+    def Factory(makername: str):
+        return getattr(sys.modules[__name__], "VideoMaker" + makername)()
+
+    @staticmethod
+    def group_by_day(images):
+        grouped_images = OrderedDict()
+        for day, dayFiles in itertools.groupby(
+                images, lambda x: x.taken.date()):
+            # print ("Day {}".format(day))
+            grouped_images[day] = []
+            for tlf in sorted(dayFiles):
+                grouped_images[day].append(tlf)
+            #    print ("\t{}".format(tlf.filename))
+        # grouped_images = sorted(grouped_images)
+        return grouped_images
+
     def __init__(self):
-        self.tl_videos = []
+        self.videos = []
         self.speedup = 60
         self.fps_requested = None
         self.file_glob = ""
         self._file_list = []
-        self.tl_files = []
+        self.images = []
         self.motion = False
         self.start_time = time.min
         self.end_time = time.max
-        self.sliceage = timedelta(hours=1)
+        self.sliceage = None
         self.start = dt.min
         self.end = dt.max
 
     def __str__(self):
-        return f"{type(self).__name__}: tl_videos:{self.tl_videos}  speedup:{self.speedup}" + \
+        return f"{type(self).__name__}: videos:{self.videos}  speedup:{self.speedup}" + \
                f"fps_requested:{self.fps_requested} sliceage:{self.sliceage,} _file_list:{len(self._file_list)}"
 
     @property
@@ -173,16 +154,16 @@ class VideoMaker:
 
     def ls(self):
         s = ""
-        for m in self.tl_videos:
+        for m in self.videos:
             s = s & m.ls()
         return s
 
     def read_image_times(self):
-        self.tl_files = []
+        self.images = []
         n_errors = 0
         LOGGER.debug(f"Reading dates of {len(self._file_list)} files...")
         if not self._file_list:
-            raise VideoMakerError("No image files found")
+            raise VideoMakerError("No image files found in command-line")
 
         for fn in self._file_list:
             # Using second resolution can lead to *variable* intervals. For instance, if the interval is 4.1s,
@@ -190,18 +171,12 @@ class VideoMaker:
             # It's therefore better to use constant frame rate, or to adjust this function
             # to millisecond resolution and/or round
             try:
-                try:
-                    # Filename date
-                    datetime_taken = str2dt(fn)
-                except ValueError:
-                    # Try to get EXIF
-                    datetime_taken = exif_datetime_taken(fn)
-
+                datetime_taken = str2dt(fn)
                 if (self.end_time >= datetime_taken.time() >= self.start_time and
                         self.end >= datetime_taken >= self.start):
                     tlf = TLFile(fn, datetime_taken)
                     if tlf.valid():
-                        self.tl_files.append(tlf)
+                        self.images.append(tlf)
                     else:
                         raise Exception("Ignoring invalid image: {}".format(tlf))
 
@@ -209,14 +184,14 @@ class VideoMaker:
                 n_errors += 1
                 LOGGER.warning(f"Exception getting image's datetime: {exc})")
 
-        LOGGER.debug(f"Got images for {len(self.tl_files)}/{len(self._file_list)} files, and {n_errors} failures")
+        LOGGER.info(f"Got images for {len(self.images)}/{len(self._file_list)} files, and {n_errors} failures")
         if n_errors:
             LOGGER.warning(f"No dates available for {n_errors}/{len(self._file_list)} files. Ignoring them.")
-        return self.tl_files.sort()
+        return self.images.sort()
 
     def files_from_glob(self, file_glob: (str, list)):
         """
-         from a glob-string or list of them, return a list of filenames matching the globs
+         From a glob-string or list of them, add the filenames of images matching the globs
          """
         if not isinstance(file_glob, list):
             file_glob = [file_glob]
@@ -230,7 +205,7 @@ class VideoMaker:
         LOGGER.debug("Processing %d files" % (len(self._file_list)))
 
     def load_videos(self):
-        del self.tl_videos[:]
+        del self.videos[:]
         self.read_image_times()
 
     def write_videos(self, filename=None, vsync="cfr-even", speedup=None, fps=None,
@@ -238,12 +213,11 @@ class VideoMaker:
 
         i = 0
         written_filenames = []
-        filename = str(filename)
-        for m in self.tl_videos:
+        for m in self.videos:
             # if multiple videos and fixed filename, add a suffix
             i = i + 1
-            if len(self.tl_videos) > 1 and filename is not None:
-                fn = add_stem_suffix(m.default_video_filename(), str(i).zfill(len(str(self.tl_videos))))
+            if len(self.videos) > 1 and filename is not None:
+                fn = add_stem_suffix(m.default_video_filename(), str(i).zfill(len(str(self.videos))))
             else:
                 fn = filename
 
@@ -255,30 +229,25 @@ class VideoMaker:
 
     def delete_images(self):
         n = 0
-        for m in self.tl_videos:
+        for m in self.videos:
             if m.written:
-                for tlf in m.tl_files:
+                for tlf in m.images:
                     os.unlink(tlf.filename)
                     n += 1
         return n
 
     def stamp_images(self):
         n = 0
-        for m in self.tl_videos:
-            for tlf in m.tl_files:
+        for m in self.videos:
+            for tlf in m.images:
                 tlf.stamp()
                 n += 1
         return n
 
-    def graph_intervals(self, interval):
-        for m in self.tl_videos:
-            m.graph_intervals(interval)
-        return
-
     def rename_images(self):
         n = 0
-        for m in self.tl_videos:
-            for tlf in m.tl_files:
+        for m in self.videos:
+            for tlf in m.images:
                 tlf.rename()
                 n += 1
         return n
@@ -291,7 +260,7 @@ class VideoMakerConcat(VideoMaker):
 
     def load_videos(self):
         VideoMaker.load_videos(self)
-        self.tl_videos.append(TLVideo(self.tl_files))
+        self.videos.append(Video(self.images))
 
 
 class VideoMakerHour(VideoMaker):
@@ -300,12 +269,12 @@ class VideoMakerHour(VideoMaker):
     """
 
     def __str__(self):
-        return f"{type(self).__name__}: videos:{len(self.tl_videos)}  SpeedUp:{self.speedup}" + \
+        return f"{type(self).__name__}: videos:{len(self.videos)}  SpeedUp:{self.speedup}" + \
                f"file_list:{len(self._file_list)} range={self.start_time} to {self.end_time}"
 
     def ls(self):
         s = ""
-        for m in self.tl_videos:
+        for m in self.videos:
             s += m.ls()
         return s
 
@@ -314,151 +283,124 @@ class VideoMakerHour(VideoMaker):
 
     def load_videos(self):
         VideoMaker.load_videos(self)
-        groupedByTimeTLFiles = self.group_by_time(self.tl_files)
+        groupedByTimeTLFiles = self.group_by_time(self.images)
         # @todo remove out-of-time hours???
         for h in groupedByTimeTLFiles:
             LOGGER.debug("VideoMakerHourly: Loading video for {} with {} files from {} total files ".format(h, len(
-                groupedByTimeTLFiles[h]), len(self.tl_files)))
+                groupedByTimeTLFiles[h]), len(self.images)))
 
-            tlm = TLVideo(groupedByTimeTLFiles[h])
-            self.tl_videos.append(tlm)
-            # pprint.pprint(grouped_tl_files)
+            tlm = Video(groupedByTimeTLFiles[h])
+            self.videos.append(tlm)
+            # pprint.pprint(grouped_images)
 
     @staticmethod
     def group_by_time(localTLFiles):
-        grouped_tl_files = OrderedDict()
+        grouped_images = OrderedDict()
         for day_hour, day_files in itertools.groupby(localTLFiles,
                                                      lambda x: dt.combine(x.taken.date(),
                                                                           time(x.taken.hour, 0, 0, 0))):
             LOGGER.debug("Hour {day_hour}")
-            grouped_tl_files[day_hour] = []
+            grouped_images[day_hour] = []
             for tlf in sorted(day_files):
-                grouped_tl_files[day_hour].append(tlf)
+                grouped_images[day_hour].append(tlf)
             #    print ("\t{}".format(tlf.filename))
-            # grouped_tl_files = sorted(grouped_tl_files)
-        return grouped_tl_files
+            # grouped_images = sorted(grouped_images)
+        return grouped_images
 
 
 class VideoMakerDay(VideoMaker):
     """ Seperate video for each day """
 
     def __str__(self):
-        return f"{type(self).__name__}: tl_videos:{self.tl_videos}  speedup:{self.speedup}" + \
+        return f"{type(self).__name__}: videos:{self.videos}  speedup:{self.speedup}" + \
             f"fps_requested:{self.fps_requested} sliceage:{self.sliceage,} _file_list:{len(self._file_list)}"
 
     def ls(self):
         s = ""
-        for m in self.tl_videos:
+        for m in self.videos:
             s += m.ls()
         return s
 
     def load_videos(self):
         VideoMaker.load_videos(self)
-        grouped_by_day_tl_files = self.group_by_day(self.tl_files)
-        for day in grouped_by_day_tl_files:
+        grouped_by_day_images = self.group_by_day(self.images)
+        for day in grouped_by_day_images:
             LOGGER.debug("Loading video for {} with {} files".format(
-                day, len(grouped_by_day_tl_files[day])))
-            self.tl_videos.append(TLVideo(grouped_by_day_tl_files[day]))
+                day, len(grouped_by_day_images[day])))
+            self.videos.append(Video(grouped_by_day_images[day]))
 
-    @staticmethod
-    def group_by_day(localTLFiles):
-        grouped_tl_files = OrderedDict()
-        for day, dayFiles in itertools.groupby(
-                localTLFiles, lambda x: x.taken.date()):
-            # print ("Day {}".format(day))
-            grouped_tl_files[day] = []
-            for tlf in sorted(dayFiles):
-                grouped_tl_files[day].append(tlf)
-            #    print ("\t{}".format(tlf.filename))
-        # grouped_tl_files = sorted(grouped_tl_files)
-        return grouped_tl_files
-
-
-class VideoMakerDiagonal(VideoMakerDay):
+    
+class VideoMakerDiagonal(VideoMaker):
     """ Diagonal slice through a chart of X-axis days and Y-axis hours
         e.g. over a year and 01:00 to 12:00, video has Jan @ 1:00, Feb @ 2:00 ... Dec @ 12:00
+        todo: should not derive from Day
         """
 
     def load_videos(self):
         VideoMaker.load_videos(self)
 
-        daily = self.group_by_day(self.tl_files)
-
-        start_time = nptime.from_time(min([s.taken.time() for s in self.tl_files]))
-        end_time = nptime.from_time(max([s.taken.time() for s in self.tl_files]))
+        daily = self.group_by_day(self.images)
+        if len(self.images) == 0:
+            return
+            #raise VideoMakerError("No images meet the criteria specified")
+        
+        start_time = nptime.from_time(min([s.taken.time() for s in self.images]))
+        end_time = nptime.from_time(max([s.taken.time() for s in self.images]))
         day_length = end_time - start_time
-        start_date = min([s.taken.date() for s in self.tl_files])
-        end_date = max([s.taken.date() for s in self.tl_files])
-
+        start_date = min([s.taken.date() for s in self.images])
+        end_date = max([s.taken.date() for s in self.images])
         # Note that len (daily) = end_date - start_date + 1, iff continuous
 
         # daily_advance is how much to advance the clock each day
         # like the 'descent angle' on the time v hours graph.
         daily_advance = day_length / len(daily)
+        # use this as the sliceage unless manually set. it will produce a continuous video
+        # i.e. the cross moves down smoothly
+        sliceage = self.sliceage or daily_advance
+
         LOGGER.debug(f"start_time={start_time} end_time={end_time}")
         LOGGER.debug(f"start_date={start_date} end_date={end_date}")
-        LOGGER.debug(f"days={len(daily)} sliceage={self.sliceage} daily_advance={daily_advance}")
+        LOGGER.info(f"Diagonal: days={len(daily)} sliceage={sliceage} (specified: {self.sliceage}) daily_advance={daily_advance}")
 
         TIME_FORMAT = "%H:%M"  # %S
         mark = start_time
-        sliced_tl_files = []
+        sliced_images = []
         for day in sorted(daily.keys()):
-            day_slice = [tlf for tlf in daily[day] if mark < tlf.taken.time() < mark + self.sliceage]
-            sliced_tl_files.extend(day_slice)
-            LOGGER.debug(f"Day:{day} Slice:{ mark.strftime(TIME_FORMAT)}->{(mark+self.sliceage).strftime(TIME_FORMAT)}" + f" {len(day_slice)}/{len(daily[day])} files")
+            day_slice = [tlf for tlf in daily[day] if mark <= tlf.taken.time() <= mark + sliceage]
+            sliced_images.extend(day_slice)
+            LOGGER.debug(f"Day:{day} Slice:{ mark.strftime(TIME_FORMAT)}->{(mark+sliceage).strftime(TIME_FORMAT)}" + f" {len(day_slice)}/{len(daily[day])} files")
             mark += daily_advance
-        sliced_tl_files.sort()
-        self.tl_videos.append(TLVideo(sliced_tl_files))
+        sliced_images.sort()
+        self.videos.append(Video(sliced_images))
 
 
-class TLVideo:
+class Video:
     """
     A video is a collection of images for writing, with associated fps, etc.
     """
-    # minutes. Gaps greater than this are considered disjoint
-    disjointThreshold = timedelta(hours=1)
-    # self.motionTimeDeltaMax = datetime.timedelta(hours=1)  # if longer than
-    # this, cannot really compute motion
 
-    def __init__(self, tl_files):
-        self.tl_files = tl_files
+    def __init__(self, images):
+        self.disjoint_threshold = timedelta.max  # Gaps greater than this are considered disjoint - the gap is closed
+        self.images = images
         self.calc_gaps()
 
     def __str__(self):
-        return "TLVideo: filename:{} frames:{} spfReal:{:.1f}".format(
-            self.default_video_filename(), len(self.tl_files), self.spf_real_avg())
+        return "Video: filename:{} frames:{} spfReal:{:.1f}".format(
+            self.default_video_filename(), len(self.images), self.spf_real_avg())
 
     def ls(self):
         s = ""
-        for tlf in self.tl_files:
+        for tlf in self.images:
             s += str(tlf) + "\n"
         return s
 
-    # Plot ascii frequency of photos per bin (defaults: 1 hour)
-    def graph_intervals(self, interval):
-        freq = {}
-        for tlf in self.tl_files:
-            rounded = prev_mark(tlf.taken, interval.total_seconds())
-            if rounded not in freq:
-                freq[rounded] = 0
-            freq[rounded] += 1
-            # print("{}:{}".format(hour,tlf.taken))
-        graphable = []
-        for h in sorted(freq):
-            # print("{}:{}".format(h,freq[h]))
-            graphable.append(tuple((h.isoformat(), freq[h])))
-            # print (graphable)
-        graph = Pyasciigraph()
-
-        for line in graph.graph('Frequency per {}'.format(interval), graphable):
-            print(line)
-
-    # Set duration_real for each frame. This is the time difference between this and the next's frame timeTaken
-    # Gaps are used for VFR videos
     def calc_gaps(self):
-        if len(self.tl_files) <= 1:
+        """
+        Set duration_real for each frame. This is the time difference between this and the next's frame.
+        """
+        if len(self.images) <= 1:
             return
-        for prev, item, next_item in neighborhood(self.tl_files):
+        for prev, item, next_item in neighborhood(self.images):
             if next_item is not None:
                 item.duration_real = next_item.taken - item.taken
 
@@ -468,29 +410,34 @@ class TLVideo:
                 item.is_last = True
                 item.duration_real = prev.duration_real
 
-            if item.duration_real > self.disjointThreshold:
+            if item.duration_real > self.disjoint_threshold:
                 # if there is a massive disjoint in the images' datetakens, skip this in the video
                 # (ie. set duration_real from BIG to a small value)
-                item.duration_real = timedelta(
-                    milliseconds=1000)  # (seconds=666)
+                LOGGER.warning(f"Closing disjoint gap of {item}")
+                item.duration_real = timedelta(milliseconds=1000)
 
     # Since frames' time may be disjoint, add the gaps between all frames; see
     # "calc_gaps"
+
     def duration_real(self):
         dr = timedelta()
-        for tlf in self.tl_files:
+        for tlf in self.images:
             dr += tlf.duration_real
         return dr
 
-    def first(self):
-        if len(self.tl_files) < 1:
+    @property
+    def start(self):
+        """ instant of first image """
+        if len(self.images) < 1:
             return None
-        return self.tl_files[0].taken
+        return self.images[0].taken
 
-    def last(self):
-        if len(self.tl_files) < 1:
+    @property
+    def end(self):
+        """ instant of last image """
+        if len(self.images) < 1:
             return None
-        return self.tl_files[-1].taken
+        return self.images[-1].taken
 
     def duration_video(self, speedup):
         # Run-around to avoid "TypeError: unsupported operand type(s) for /:
@@ -505,19 +452,19 @@ class TLVideo:
         return self.fps_real_avg() * speedup
 
     def fps_real_avg(self):
-        if len(self.tl_files) == 0:
+        if len(self.images) == 0:
             return 0
         if self.duration_real().total_seconds() == 0:
             return 0
-        return len(self.tl_files) / self.duration_real().total_seconds()
+        return len(self.images) / self.duration_real().total_seconds()
 
     def fps_real_max(self):
-        if len(self.tl_files) == 0:
+        if len(self.images) == 0:
             return 0
         if self.duration_real().total_seconds() == 0:
             return 0
         min_frame_duration = min(
-            self.tl_files,
+            self.images,
             key=lambda x: x.duration_real).duration_real.total_seconds()
         return 1 / min_frame_duration
 
@@ -529,13 +476,13 @@ class TLVideo:
     def write_video(self, filename=None, force=False, vsync="cfr-even", motion_blur=False,
                     dry_run=False, fps=None, speedup=None):
         pts_factor = 1
-        if len(self.tl_files) <= 1:
+        if len(self.images) <= 1:
             raise VideoMakerError(f"Less than one image to write for {filename}")
         if not filename:
             filename = self.default_video_filename()
         if not force and os.path.isfile(filename):
             LOGGER.info("Not overwriting {}".format(filename))
-            return False
+            return None
         if vsync == 'vfr':
             # input frame rate is defined by the duration of each frame
             if fps:
@@ -558,13 +505,13 @@ class TLVideo:
             if fps:
                 if speedup:
                     implied_speedup = self.duration_real().total_seconds() / \
-                        len(self.tl_files) * fps
+                        len(self.images) * fps
                     pts_factor = implied_speedup / speedup
                     if not 1000 > pts_factor > 0.001:
                         raise VideoMakerError(f"pts of {pts_factor} is out of a sane range")
                 else:
                     # use this fps value. calc speedup for reporting only
-                    speedup = self.duration_real().total_seconds() / len(self.tl_files) * fps
+                    speedup = self.duration_real().total_seconds() / len(self.images) * fps
             elif speedup:
                 fps = self.fps_video_avg(speedup)
             else:
@@ -583,8 +530,8 @@ class TLVideo:
             raise NotImplementedError()
         else:
             raise VideoMakerError("Unknown type of vsync: {}".format(vsync))
-        LOGGER.debug("creating video: {} src-frames: {} speedup:{} fps_video:{} video:{}s real:{}s pts:{:.3f}".format(
-            filename, len(self.tl_files), speedup, fps, self.duration_video(speedup).total_seconds(), self.duration_real().total_seconds(), pts_factor))
+        LOGGER.info("creating video: {} src-frames: {} speedup:{:.1f} fps_video:{:.1f} video:{}s real:{}s pts:{:.3f}".format(
+            filename, len(self.images), speedup, fps, self.duration_video(speedup).total_seconds(), self.duration_real().total_seconds(), pts_factor))
 
         # dfs = max(5, int(fps / 2.0))  # deflicker size. smooth across 0.5s
 
@@ -600,14 +547,14 @@ class TLVideo:
                 "-vf", "deflicker,setpts=PTS*{:.3f}".format(pts_factor), "-preset", "veryfast"]
 
         safe = "0"  # 0 = disable safe 1 = enable safe filenames
-        start_date = min([s.taken for s in self.tl_files])
-        metadata1 = "comment=description has real start as str and real duration in seconds"
+        start_date = min([s.taken for s in self.images])
+        #metadata1 = "comment=description has real start as str and real duration in seconds"
         metadata2 = "author=TimeMakeVisible"
         metadata3 = f"description={dt2str(start_date)},{self.duration_real().total_seconds():.0f}"
         the_call = ["ffmpeg", "-hide_banner", "-loglevel", "verbose", "-y", "-f", "concat", "-vsync", vsync, "-safe", safe]
         the_call.extend(input_parameters)
         the_call.extend(["-i", list_filename])
-        the_call.extend(["-metadata", metadata1])
+        #the_call.extend(["-metadata", metadata1])
         the_call.extend(["-metadata", metadata2])
         the_call.extend(["-metadata", metadata3])
         the_call.extend(output_parameters)
@@ -615,21 +562,24 @@ class TLVideo:
 
         if dry_run:
             LOGGER.info("Dryrun: {}\n".format(' '.join(the_call)))
-            return
+            return filename
 
-        log_path = Path(Path(filename).stem + ".ffmpeg")
+        log_path = Path(Path(filename).name + ".log")
+
+        # log file created on failure only
+        # delete file list in all cases (could leave in debug mode)
         try:
             run_and_capture(the_call, log_path)
-            Path(list_filename).unlink()
+            return filename
         except CalledProcessError:
             LOGGER.warning(f"failed subprocess call logged to {log_path.absolute()}")
             raise
-
-        # other exception - no command was run - leave log with only the call
+        finally:
+            unlink_safe(list_filename)
 
     def write_images_list_vfr(self, filename, speedup):
         f = open(os.path.basename(filename) + ".images", 'w')
-        for tlf in self.tl_files:
+        for tlf in self.images:
             f.write("file '" + tlf.filename + "'\n")
             f.write(
                 "duration " + str(timedelta(seconds=tlf.duration_real.total_seconds() / speedup)) + "\n")
@@ -641,17 +591,17 @@ class TLVideo:
     #
     def write_images_list_cfr(self, video_filename):
         f = open(os.path.basename(video_filename) + ".images", 'w')
-        for tlf in self.tl_files:
+        for tlf in self.images:
             f.write("file '" + tlf.filename + "'\n")
         f.close()
         return os.path.basename(video_filename) + ".images"
 
     def default_video_filename(self):
-        if len(self.tl_files) == 0:
+        if len(self.images) == 0:
             return ""
             # bn = "empty"
         else:
-            bn = self.tl_files[0].taken.strftime("%Y-%m-%dT%H") + "_to_" + self.tl_files[
+            bn = self.images[0].taken.strftime("%Y-%m-%dT%H") + "_to_" + self.images[
                 -1].taken.strftime("%Y-%m-%dT%H")
         return bn + ".mp4"
 
@@ -661,34 +611,6 @@ class TLFile:
     Time-aware image
     """
     i = 0  # Simple counter, static
-
-    def stamp(self):
-        """ Draw a moving circle on the image for continuity in video checking """
-        assert os.path.exists(self.filename)
-        img = Image.open(self.filename)
-        draw = ImageDraw.Draw(img)
-        font = ImageFont.truetype(
-            "/usr/share/fonts/truetype/freefont/FreeMono.ttf", 20)
-
-        draw.pieslice([(0, 0), (100, 100)], self.ith %
-                      360, self.ith %
-                      360, fill=None, outline=None)
-        draw.arc([(0, 0), (100, 100)], 0, 360)
-        w, h = img.size
-        # draw.text((  (self.ith*10) % w, h - 10), "*", (255, 255, 255), font=font)
-        draw.text((w - 40, h - 40), str(self.ith), (255, 255, 255), font=font)
-        draw.text((w - 300, h - 60), self.filename, (255, 255, 255), font=font)
-        LOGGER.debug("Stamping: {} : {}x{}".format(self.filename, w, h))
-        img.save(self.filename, )
-
-    # Get the exif date and rename the file to that
-    def rename(self, pattern="%Y-%m-%dT%H-%M-%S"):
-        assert os.path.exists(self.filename)
-        dtt = exif_datetime_taken(self.filename)
-        date_filename = os.path.join(os.path.dirname(self.filename),
-                                     dtt.strftime(pattern) + os.path.splitext(self.filename)[1])
-        LOGGER.debug("Renaming {} to {}".format(self.filename, date_filename))
-        os.rename(self.filename, date_filename)
 
     # Quick header check to see if valid
     def valid(self):
@@ -823,22 +745,29 @@ def ffmpeg_concat_rel_speed(filenames, filenames_file, output_file, rel_speed, f
             "Failed on ffmpeg concat. Check log:{} Called:'{}' Return:{}".format(log_filename, ' '.join(the_call), r))
 
 
+def sig_handler(signal_received, frame):
+    raise SignalException
+
+
 def video_compile_console(cl_args=sys.argv[1:]):
+    signal(SIGINT, sig_handler)
+    signal(SIGTERM, sig_handler)
+
     parser = argparse.ArgumentParser("TMV Compiler", description="Compile timelapse videos from images. Outputs filename(s) of resultant video(s).")
     parser.add_argument("file_glob", nargs='+', help="Multiple image files or glob strings. e.g. 1.jpg '2*.jpg' 3.jpg")
-    parser.add_argument("--start", "-s",type=parse, default=dt.min, help="eg. \"2 days ago\", 2000-01-20T16:00:00")
-    parser.add_argument("--end", "-e",type=parse, default=dt.max, help="eg. Today, 2000-01-20T16:00:00")
-    parser.add_argument("--start-time", "-st", type=lambda s: dt.strptime(s, HH_MM).time(), default=time.min, help="Consider only images after HH:MM each day")
-    parser.add_argument("--end-time", "-se", type=lambda s: dt.strptime(s, HH_MM).time(), default=time.max, help="Consider images before HH:MM each day")
+    parser.add_argument("--start", type=lambda s: parse(s, ignoretz=True), default=dt.min, help="Local datetime. eg. \"2 days ago\", 2000-01-20T16:00:00")
+    parser.add_argument("--end", type=lambda s: parse(s, ignoretz=True), default=dt.max, help="Local datetime. eg. Today, 2000-01-20T16:00:00")
+    parser.add_argument("--start-time", type=lambda s: dt.strptime(s, HH_MM).time(), default=time.min, help="Consider only images after HH:MM each day")
+    parser.add_argument("--end-time", type=lambda s: dt.strptime(s, HH_MM).time(), default=time.max, help="Consider images before HH:MM each day")
     parser.add_argument('--log-level', '-ll', default='WARNING', type=lambda s: LOG_LEVELS(s).name, choices=LOG_LEVELS.choices())
     parser.add_argument("--force", "-f", action='store_true', default=False, help="Force overwrite of existing videos")
     parser.add_argument("--slice", choices=SliceType.names(), default="Concat")
-    parser.add_argument("--fps", "-fps", default=25, type=int, help="Output images at this Frames Per Second. (Implies --vsync cfr).")
-    parser.add_argument("--speedup", "-su", default=None, type=int, help="Speed up video by this much: it's the ratio of real:video duration")
+    parser.add_argument("--fps", default=25, type=int, help="Output images at this Frames Per Second. (Implies --vsync cfr).")
+    parser.add_argument("--speedup", "-s", default=None, type=int, help="Speed up video by this much: it's the ratio of real:video duration")
     parser.add_argument("--vsync", default="cfr-even", choices=['cfr-even', 'cfr-padded', 'vfr'], type=str, help="cfr-even uses start and end time, and makes frames are equally spaced. cfr-padded uses maximum framerate and pads slow bits. vfr uses exact time of each frame (less robust)")
-    parser.add_argument("--sliceage", default=timedelta(hours=1), type=strptimedelta, help="For Diagonal slice types, HH:MM to show each day")
-    parser.add_argument("--motion-blur","-mb", action='store_true', default=False, help="FFMPEG Filter to motion-blur video to reduce jerkiness. Ya jerk.")
-    parser.add_argument("--output", "-o",type=str, help="Output here. Create this file (an extension is added) or folder (if multiple files are written)")
+    parser.add_argument("--sliceage", default=None, type=strptimedelta, help="For Diagonal slice types, HH:MM to show each day. Default to auto-slice, the value to make a 'smooth' slice")
+    parser.add_argument("--motion-blur", "-b", action='store_true', default=False, help="FFMPEG Filter to motion-blur video to reduce jerkiness. Ya jerk.")
+    parser.add_argument("--output", "-o", type=str, help="Output here. Create this file (an extension is added) or folder (if multiple files are written)")
     parser.add_argument('--filenames', action="store_true", help="Write the videos created to stdout")
     parser.add_argument("--dry-run", action='store_true', default=False)
     # parser.add_argument("--filter-motion", action='store_true', default=False,    #                    help="Image selection to include only motiony images")
@@ -848,7 +777,7 @@ def video_compile_console(cl_args=sys.argv[1:]):
         LOGGER.setLevel(args.log_level)
         logging.basicConfig(format=LOG_FORMAT)
 
-        mm = str_to_class("VideoMaker" + args.slice.title())()  # gutsy or stupid?
+        mm = VideoMaker.Factory(args.slice.title())
         mm.files_from_glob(args.file_glob)
         mm.start_time = args.start_time
         mm.end_time = args.end_time
@@ -869,6 +798,9 @@ def video_compile_console(cl_args=sys.argv[1:]):
         LOGGER.debug(cpe2str(exc), exc_info=exc)
         sys.exit(2)
     # pylint:disable=broad-except
+    except SignalException as exc:
+        LOGGER.debug("Caught a signal, exiting")
+        print("Exiting gracefully.")
     except Exception as exc:
         print(f"Exception: {exc}", file=sys.stderr)
         LOGGER.debug(f"Exception: {exc}", exc_info=exc)
@@ -879,8 +811,8 @@ def video_compile_console(cl_args=sys.argv[1:]):
 
 def video_join_console():
     parser = argparse.ArgumentParser("Combine timelapse videos")
-    parser.add_argument("start", "-s",type=parse, default=dt.min, help="eg. \"2 days ago\", 2000-01-20T16:00:00")
-    parser.add_argument("end", "-e",type=parse, default=dt.max, help="eg. Today, 2000-01-20T16:00:00")
+    parser.add_argument("start", "-s", type=lambda s: parse(s, ignoretz=True), default=dt.min, help="eg. \"2 days ago\", 2000-01-20T16:00:00")
+    parser.add_argument("end", "-e", type=lambda s: parse(s, ignoretz=True), default=dt.max, help="eg. Today, 2000-01-20T16:00:00")
     parser.add_argument('--log-level', '-ll', default='WARNING', type=lambda s: LOG_LEVELS(s).name, nargs='?', choices=LOG_LEVELS.choices())
     parser.add_argument("input_movies", nargs="+", help="All possible movie files to search")
     parser.add_argument("--output", help="Force the output filename, instead of automatically assigned based on dates.")
@@ -931,9 +863,9 @@ def video_join_console():
             ffmpeg_concat_rel_speed(
                 video_files_in_range, videos_filename, args.output, float(args.speed_rel), 25)
         unlink_safe(videos_filename)
-        exit(0)
+        sys.exit(0)
     except Exception as exc:
-        print(e, file=sys.stderr)
-        LOGGER.error(e)
+        print(exc, file=sys.stderr)
+        LOGGER.error(exc)
         LOGGER.debug(f"Exception: {exc}", exc_info=exc)
-        exit(1)
+        sys.exit(1)

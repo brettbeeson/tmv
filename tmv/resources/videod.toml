@@ -1,8 +1,35 @@
-# delete_images_older_than = 
+###############################################################################
+# TMV: Videod configuration
+###############################################################################
 
+#
+# Path to root of files, relative to cwd or (better for daemons) absolute
+#
+file_root = "."
+
+#
+# Directories ('cameras') under file_root to run the task within. 
+# A list of relative paths
+#
 locations = [
     "."
 ]
+
+#
+# How often to run (seconds)
+#
+#interval = 600 
+
+#
+# Choose from DEBUG, INFO, WARNING, ERROR, CRITAL
+#
+#log_level = 'WARNING'
+log_level = 'INFO'
+
+###############################################################################
+# Video : Tasks : What to do in each location
+# Each uncommented [task] will run with the defaults shown
+###############################################################################
 
 [daily-videos]
 # minterpolate = False
@@ -32,3 +59,4 @@ locations = [
 
 # [diagonal-videos]
 # not implemented
+

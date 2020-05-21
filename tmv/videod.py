@@ -1,3 +1,4 @@
+# pylint: disable=logging-fstring-interpolation
 import argparse
 import logging
 import sys
@@ -13,6 +14,7 @@ from _datetime import datetime as dt, timedelta
 from tmv.exceptions import ConfigError, SignalException
 from tmv.util import LOG_FORMAT_DETAILED, LOG_LEVEL_STRINGS, Tomlable, dt2str, log_level_string_to_int, next_mark, sleep_until, slugify, str2dt
 from tmv.video import VideoMakerDiagonal, VideoMaker, VideoMakerDay, ffmpeg_run, video_join
+import tmv
 
 
 LOGGER = logging.getLogger(__name__)
@@ -22,6 +24,7 @@ class Task(Tomlable):
     """
     todo: Add 'period' to enable some tasks to run more or less frequently than others
     """
+
     def __init__(self, src_path, dest_path):
         self.src_path = Path(src_path)
         self.dest_path = Path(dest_path)
@@ -93,15 +96,15 @@ class RecapVideosTask(Task):
         # fps is the output rate
         # speed is relative (i.e. 1 = speed of existing daily-videos)
         #                       input           output
-        # dur_real  dur_video   frames          frames           
-        #                       @60spf_real     @25fps_video   
+        # dur_real  dur_video   frames          frames
+        #                       @60spf_real     @25fps_video
         # 7 days    1 min       5040            1500               keep 30% of frames
         # 30 days   2 min       43200           3000               keep 7%
         # 1 year    5 min       525600          15000              keep 3%
         self.recaps = [
-            {'label': "Last 7 days", 'days': 7, 'speed': 3.4, 'fps':25},    
-            {'label': "Last 30 days", 'days': 30, 'speed':7.2 , 'fps':25},  
-            {'label': "Complete", 'days': 0, 'speed': 35.0, 'fps':25}     
+            {'label': "Last 7 days", 'days': 7, 'speed': 3.4, 'fps': 25},
+            {'label': "Last 30 days", 'days': 30, 'speed': 7.2, 'fps': 25},
+            {'label': "Complete", 'days': 0, 'speed': 35.0, 'fps': 25}
         ]
 
     def configd(self, config_dict):
@@ -130,8 +133,8 @@ class RecapVideosTask(Task):
         end = str2dt(Path(last_video).stem)
         # daily_video_dates
         for recap in self.recaps:
-            speed = recap.get('speed',1)
-            fps  = recap.get('fps',25)
+            speed = recap.get('speed', 1)
+            fps = recap.get('fps', 25)
             if recap['days'] > 0:
                 start = end - timedelta(days=recap['days'])
             else:
@@ -145,8 +148,8 @@ class RecapVideosTask(Task):
                 LOGGER.info("Creating recap-video: {}".format(video_path.absolute()))
                 # ?? touch the preview file so that if we fail, we don't keep trying later runs?
                 video_path.touch()
-                video_join(src_videos=daily_videos, dest_video=str(video_path), 
-                    start_datetime=start, end_datetime=end, speed_rel = speed, fps=fps)
+                video_join(src_videos=daily_videos, dest_video=str(video_path),
+                           start_datetime=start, end_datetime=end, speed_rel=speed, fps=fps)
 
 
 class DiagonalVideosTask(Task):
@@ -245,6 +248,8 @@ class VideoMakerDaemon(Tomlable):
         return f"VideoMakerDaemon: tasks={self.tasks}"
 
     def configd(self, config_dict):
+        if 'log_level' in config_dict:
+            LOGGER.setLevel(config_dict['log_level'])
         if 'recap-videos' in config_dict:
             self.tasks['RecapVideosTask'] = RecapVideosTask("daily-videos", "recap-videos")
             self.tasks['RecapVideosTask'].configd(config_dict['recap-videos'])
@@ -262,12 +267,11 @@ class VideoMakerDaemon(Tomlable):
 
     def run_tasks(self):  # , runs = sys.maxsize):
 
-        
         if not self.tasks:
             raise ConfigError("No tasks configured")
 
         ordered_tasks = {k: v for k, v in sorted(self.tasks.items(), key=lambda t: t[1].priority)}
-        failed = 0        
+        failed = 0
 
         for (taskname, task) in ordered_tasks.items():
             try:
@@ -278,8 +282,8 @@ class VideoMakerDaemon(Tomlable):
                     raise
                 else:
                     LOGGER.debug(f"Continuing other tasks after exception in task {taskname}: {exc}", exc_info=exc)
-                    failed +=1
-       
+                    failed += 1
+
         succeded = len(ordered_tasks) - failed
         return succeded, failed
 
@@ -301,10 +305,14 @@ class VideoMakerDaemonManager(Tomlable):
         return f"VideoMakerDaemonManager: locations={self.locations} file_root={self.file_root}"
 
     def configd(self, config_dict):
-        self.setattr_from_dict('locations', config_dict)
         self.setattr_from_dict('file_root', config_dict)
 
-        # Make daemons for each location, and pass the config to each daemon (they will ignore our  keys)
+        if 'interval' in config_dict:
+            # interval specified as seconds: convert to timedelta
+            self.interval = timedelta(seconds=config_dict['interval'])
+
+        self.setattr_from_dict('locations', config_dict)
+        # Make instances for each location, and pass the config to each daemon (they will ignore our  keys)
         for l in self.locations:
             self.vds[l] = VideoMakerDaemon()
             self.vds[l].configd(config_dict)
@@ -321,11 +329,12 @@ class VideoMakerDaemonManager(Tomlable):
         for _ in range(0, runs):
             s_total = 0
             sleep_until(next_mark(self.interval, dt.now()), dt.now())
+            # run each VideoMakerDaemon in sequence (not really a 'daemon', huh?)
             for l, vd in self.vds.items():
                 try:
                     if (file_root_path / l).is_dir():
                         os.chdir(file_root_path / l)
-                        LOGGER.debug(f"running tasks in cwd: {os.getcwd()}")
+                        LOGGER.debug(f"running tasks in cwd:{os.getcwd()}")
                         s, f = vd.run_tasks()
                         s_total += s
                         if s_total == 0 or f > 0:
@@ -367,8 +376,7 @@ def videod_console(cl_args=sys.argv[1:]):
                         level=args.log_level, datefmt='%Y-%m-%dT%H:%M:%S')
     # Pulls all logs back to parent from other sub processes
     # multiprocessing_logging.install_mp_handler()
-    LOGGER.info(f"Starting videomd app. config file: {args.config_file} CWD: {os.getcwd()}")
-
+    LOGGER.info(f"Starting videod app. config file:{args.config_file} cwd:{os.getcwd()}")
     try:
         if not Path(args.config_file).is_file():
             shutil.copy(resource_filename(__name__, 'resources/videod.toml'), args.config_file)
@@ -376,6 +384,7 @@ def videod_console(cl_args=sys.argv[1:]):
 
         manager = VideoMakerDaemonManager()
         manager.config(args.config_file)
+        tmv.video.LOGGER.setLevel(LOGGER.getEffectiveLevel() + 10)  # less logging for video when running as daemon
         manager.run(args.runs)
 
     except SignalException as e:

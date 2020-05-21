@@ -1,16 +1,20 @@
 # pylint: disable=import-error,protected-access
 from pathlib import Path
 import logging
+from os import chdir, getcwd
 from tmv.controller import AUTO, Controller, LOGGER, OFF, ON, Switches, control_console, Unit
 from tmv.util import LOG_FORMAT
 import tmv
+from tempfile import TemporaryDirectory
+from pkg_resources import resource_filename
 
 
 def test_software_controller_faked(monkeypatch, caplog):
     c = """
-        [switches.camera]
+    [controller]
+        [controller.switches.camera]
             file = '/etc/tmv/camera-switch'
-        [switches.upload]
+        [controller.switches.upload]
             file = '/etc/tmv/upload-switch'   
     """
 
@@ -72,8 +76,10 @@ def test_software_controller_faked(monkeypatch, caplog):
     assert 'changed' in caplog.text
     assert 'starting' not in caplog.text
 
-
-def test_switches():
+def test_control_console(capsys):
+    """
+    Requires write access to /etc/tmv/
+    """
     s = Switches()
     s.configs(Switches.DLFT_SW_CONFIG)
     cl = ["on", "off"]
@@ -84,13 +90,32 @@ def test_switches():
     control_console(cl)
     assert s['camera'] == AUTO
     assert s['upload'] == ON
+    cl = []
+
+    control_console(cl)
+    assert capsys.readouterr().out.strip() == "auto on"
+
+def test_switches():
+    temp = TemporaryDirectory() 
+    chdir(temp.name)
+    s = Switches()
+    s.configs(Switches.CWD_SW_CONFIG)
+    assert s['camera'] == OFF
+    assert s['upload'] == OFF
+    s['camera'] = ON
+    s['upload'] = OFF
+    assert s['camera'] == ON
+    assert s['upload'] == OFF
+    print(getcwd())
+    temp.cleanup()
 
 
 def test_config():
     s = Switches()
-    s.config("tmv/resources/camera.toml")
+    c = Path(resource_filename("tmv", 'resources/camera.toml')).read_text('UTF-8')
+    s.configs(c)
 
 
 def test_units_status():
-    assert Unit("syslog.service").Active()
-    assert not Unit("no-there.service").Active()
+    assert Unit("syslog.service").active()
+    assert not Unit("no-there.service").active()

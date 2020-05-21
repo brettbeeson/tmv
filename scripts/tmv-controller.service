@@ -11,8 +11,7 @@ Restart=always
 RestartSec=60
 # root required to "systemd start" other services
 User=root
-# Use --software to switch on files /run/tmv/ or without for hardware switches
-ExecStart=/usr/local/bin/tmv-controller --config-file /etc/tmv/camera.toml --log-level=DEBUG
+ExecStart=/usr/local/bin/tmv-controller --config-file /etc/tmv/camera.toml
 
 [Install]
 WantedBy=multi-user.target

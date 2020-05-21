@@ -6,8 +6,10 @@ class TMVError(Exception):
 class CameraError(Exception):
     """" Hardware camera problem"""
 
+
 class VideoMakerError(Exception):
     """ Problem making images into a video """
+
 
 class ConfigError(TMVError):
     """ TOML or config error """
@@ -23,5 +25,3 @@ class PowerOff(TMVError):
 
 class SignalException(TMVError):
     """ Camera got a sigint """
-
-

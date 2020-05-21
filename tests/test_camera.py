@@ -321,9 +321,10 @@ def test_location():
         c.configs(cf)
 
     cf = """
-    [location]
-    city = 'Brisbane'
+    
+    
     [camera]
+    city = 'Brisbane'
     on = 'dawn'
     off = 'dusk'
     """
@@ -331,9 +332,9 @@ def test_location():
     c.configs(cf)
 
     cf = """
-    [location]
-    city = 'auto'
+    
     [camera]
+    city = 'auto'
     on = 'dawn'
     off = 'dusk'
     """
@@ -514,9 +515,9 @@ def test_SunCalc(monkeypatch, setup_test):
         c = Camera()
         c.save_images = False
         c.configs("""
-        [location]
-        city = "Brisbane"
+        
         [camera]
+        city = 'Brisbane'
         interval = 600
         on = 'dawn'
         off =  'sunset' # (2000, 1, 1, 18, 46, 18, 926896, tzinfo=tzlocal())
