@@ -1,10 +1,10 @@
 # Time Made Visible
 
-TMV provides a "camera to video" timelapse system. The hardware is usually comprised of:
-- Raspberry pi camera: take photos, save to disk, upload to AWS S3. USB or battery-and-solar-powered.
-- Linux box: download photos and make videos, upload videos to AWS S3. In the cloud, at home or on the pi.
-- AWS S3: store photos and videos, store static web pages. On cloud.
-- Web App: browse S3 and display photos and videos. Runs on local browser from static files served from cloud.
+TMV provides a "camera to video" timelapse system. The system is comprised of:
+- Raspberry PiZeroW camera: take photos, save to disk, upload to S3. USB or battery-and-solar-powered.
+- MinIO or AWS S3 server: store photos and videos, store static web pages. 
+- Video Encoder: linux box that makes videos from images. Can be seperate from S3 server or combined.
+- Web App: browse S3 and display photos and videos. Runs on local browser from static files served from S3 bucket.
 
 ## Installation 
 ### Camera
