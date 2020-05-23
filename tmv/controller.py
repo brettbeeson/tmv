@@ -214,7 +214,7 @@ class Switches(Tomlable):
 
 class Controller:
     """
-    Controls Transfer and Camera services based on switches
+    Controls upload and Camera services based on switches
     Only perform actions when a switch position is changed, to avoid repeatedly polling for service status
     """
 
@@ -226,7 +226,7 @@ class Controller:
         self._upload_switch_state = None
         self._camera_switch_state = None
         self._camera_unit = Unit("tmv-camera.service")
-        self._upload_unit = Unit("tmv-s3-upload.service")
+        self._upload_unit = Unit("tmv-upload.service")
 
     def __str__(self):
         return f"Controller: switches:{self.switches} camera-state:{self._camera_switch_state} upload-state:{self._upload_switch_state}"
@@ -294,7 +294,7 @@ def controller_console(cl_args=sys.argv[1:]):
     signal(SIGINT, sig_handler)
     signal(SIGTERM, sig_handler)
     parser = argparse.ArgumentParser(
-        "Control TMV services such as camera, transfer.")
+        "Control TMV services such as camera, upload.")
     parser.add_argument('--log-level', default='INFO', dest='log_level',
                         type=tmv.util.log_level_string_to_int, nargs='?',
                         help='level: {0}'.format(tmv.util.LOG_LEVEL_STRINGS))

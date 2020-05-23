@@ -4,7 +4,7 @@ file = '/etc/tmv/camera-switch'
 [switches.upload]
 file = '/etc/tmv/upload-switch'
 
-[transfer]
+[upload]
 destination = "s3://tmv.brettbeeson.com.au/data/HOSTNAME/daily-videos"
 move = true
 endpoint = 'http://home.brettbeeson.com.au:9000'

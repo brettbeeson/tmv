@@ -1,6 +1,6 @@
 /*! jQuery UI - v1.12.1 - 2016-09-14
 * http://jqueryui.com
-* Includes: widget.js, position.js, data.js, disable-selection.js, effect.js, effects/effect-blind.js, effects/effect-bounce.js, effects/effect-clip.js, effects/effect-drop.js, effects/effect-explode.js, effects/effect-fade.js, effects/effect-fold.js, effects/effect-highlight.js, effects/effect-puff.js, effects/effect-pulsate.js, effects/effect-scale.js, effects/effect-shake.js, effects/effect-size.js, effects/effect-slide.js, effects/effect-transfer.js, focusable.js, form-reset-mixin.js, jquery-1-7.js, keycode.js, labels.js, scroll-parent.js, tabbable.js, unique-id.js, widgets/accordion.js, widgets/autocomplete.js, widgets/button.js, widgets/checkboxradio.js, widgets/controlgroup.js, widgets/datepicker.js, widgets/dialog.js, widgets/draggable.js, widgets/droppable.js, widgets/menu.js, widgets/mouse.js, widgets/progressbar.js, widgets/resizable.js, widgets/selectable.js, widgets/selectmenu.js, widgets/slider.js, widgets/sortable.js, widgets/spinner.js, widgets/tabs.js, widgets/tooltip.js
+* Includes: widget.js, position.js, data.js, disable-selection.js, effect.js, effects/effect-blind.js, effects/effect-bounce.js, effects/effect-clip.js, effects/effect-drop.js, effects/effect-explode.js, effects/effect-fade.js, effects/effect-fold.js, effects/effect-highlight.js, effects/effect-puff.js, effects/effect-pulsate.js, effects/effect-scale.js, effects/effect-shake.js, effects/effect-size.js, effects/effect-slide.js, effects/effect-upload.js, focusable.js, form-reset-mixin.js, jquery-1-7.js, keycode.js, labels.js, scroll-parent.js, tabbable.js, unique-id.js, widgets/accordion.js, widgets/autocomplete.js, widgets/button.js, widgets/checkboxradio.js, widgets/controlgroup.js, widgets/datepicker.js, widgets/dialog.js, widgets/draggable.js, widgets/droppable.js, widgets/menu.js, widgets/mouse.js, widgets/progressbar.js, widgets/resizable.js, widgets/selectable.js, widgets/selectmenu.js, widgets/slider.js, widgets/sortable.js, widgets/spinner.js, widgets/tabs.js, widgets/tooltip.js
 * Copyright jQuery Foundation and other contributors; Licensed MIT */
 
 (function( factory ) {
@@ -2310,7 +2310,7 @@ if ( $.uiBackCompat !== false ) {
 			// lose the reference to the wrapped element
 			wrapper = element.parent();
 
-			// Transfer positioning properties to the wrapper
+			// upload positioning properties to the wrapper
 			if ( element.css( "position" ) === "static" ) {
 				wrapper.css( { position: "relative" } );
 				element.css( { position: "relative" } );
@@ -2798,7 +2798,7 @@ $.fn.extend( {
 		return parseClip( this.css( "clip" ), this );
 	},
 
-	transfer: function( options, done ) {
+	upload: function( options, done ) {
 		var element = $( this ),
 			target = $( options.to ),
 			targetFixed = target.css( "position" ) === "fixed",
@@ -2813,7 +2813,7 @@ $.fn.extend( {
 				width: target.innerWidth()
 			},
 			startPosition = element.offset(),
-			transfer = $( "<div class='ui-effects-transfer'></div>" )
+			upload = $( "<div class='ui-effects-upload'></div>" )
 				.appendTo( "body" )
 				.addClass( options.className )
 				.css( {
@@ -2824,7 +2824,7 @@ $.fn.extend( {
 					position: targetFixed ? "fixed" : "absolute"
 				} )
 				.animate( animation, options.duration, options.easing, function() {
-					transfer.remove();
+					upload.remove();
 					if ( $.isFunction( done ) ) {
 						done();
 					}
@@ -3845,7 +3845,7 @@ var effectsEffectSlide = $.effects.define( "slide", "show", function( options, d
 
 
 /*!
- * jQuery UI Effects Transfer 1.12.1
+ * jQuery UI Effects upload 1.12.1
  * http://jqueryui.com
  *
  * Copyright jQuery Foundation and other contributors
@@ -3853,21 +3853,21 @@ var effectsEffectSlide = $.effects.define( "slide", "show", function( options, d
  * http://jquery.org/license
  */
 
-//>>label: Transfer Effect
+//>>label: upload Effect
 //>>group: Effects
-//>>description: Displays a transfer effect from one element to another.
-//>>docs: http://api.jqueryui.com/transfer-effect/
+//>>description: Displays a upload effect from one element to another.
+//>>docs: http://api.jqueryui.com/upload-effect/
 //>>demos: http://jqueryui.com/effect/
 
 
 
 var effect;
 if ( $.uiBackCompat !== false ) {
-	effect = $.effects.define( "transfer", function( options, done ) {
-		$( this ).transfer( options, done );
+	effect = $.effects.define( "upload", function( options, done ) {
+		$( this ).upload( options, done );
 	} );
 }
-var effectsEffectTransfer = effect;
+var effectsEffectupload = effect;
 
 
 /*!

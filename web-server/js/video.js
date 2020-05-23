@@ -39498,26 +39498,26 @@
    *        Object of properties and values to send to the web worker
    * @return {Object}
    *         Modified message with TypedArray values expanded
-   * @function createTransferableMessage
+   * @function createuploadableMessage
    */
 
 
-  var createTransferableMessage = function createTransferableMessage(message) {
-    var transferable = {};
+  var createuploadableMessage = function createuploadableMessage(message) {
+    var uploadable = {};
     Object.keys(message).forEach(function (key) {
       var value = message[key];
 
       if (ArrayBuffer.isView(value)) {
-        transferable[key] = {
+        uploadable[key] = {
           bytes: value.buffer,
           byteOffset: value.byteOffset,
           byteLength: value.byteLength
         };
       } else {
-        transferable[key] = value;
+        uploadable[key] = value;
       }
     });
-    return transferable;
+    return uploadable;
   };
   /**
    * Returns a unique string identifier for a media initialization
@@ -39580,7 +39580,7 @@
   var utils$1 =
   /*#__PURE__*/
   Object.freeze({
-    createTransferableMessage: createTransferableMessage,
+    createuploadableMessage: createuploadableMessage,
     initSegmentId: initSegmentId,
     segmentKeyId: segmentKeyId,
     hexDump: hexDump,
@@ -40387,7 +40387,7 @@
         testArray = new Uint8Array(1);
 
     try {
-      testWorker = new Worker(objURL); // Native browser on some Samsung devices throws for transferables, let's detect it
+      testWorker = new Worker(objURL); // Native browser on some Samsung devices throws for uploadables, let's detect it
 
       testWorker.postMessage(testArray, [testArray.buffer]);
     } catch (e) {
@@ -45899,10 +45899,10 @@
 
       var wireTransmuxerEvents = function wireTransmuxerEvents(self, transmuxer$$1) {
         transmuxer$$1.on('data', function (segment) {
-          // transfer ownership of the underlying ArrayBuffer
+          // upload ownership of the underlying ArrayBuffer
           // instead of doing a copy to save memory
-          // ArrayBuffers are transferable but generic TypedArrays are not
-          // @link https://developer.mozilla.org/en-US/docs/Web/API/Web_Workers_API/Using_web_workers#Passing_data_by_transferring_ownership_(transferable_objects)
+          // ArrayBuffers are uploadable but generic TypedArrays are not
+          // @link https://developer.mozilla.org/en-US/docs/Web/API/Web_Workers_API/Using_web_workers#Passing_data_by_uploadring_ownership_(uploadable_objects)
           var initArray = segment.initSegment;
           segment.initSegment = {
             data: initArray.buffer,
@@ -46954,7 +46954,7 @@
         this.transmuxer_.postMessage({
           action: 'push',
           // Send the typed-array of data as an ArrayBuffer so that
-          // it can be sent as a "Transferable" and avoid the costly
+          // it can be sent as a "uploadable" and avoid the costly
           // memory copy
           data: segment.buffer,
           // To recreate the original typed-array, we need information
@@ -48963,7 +48963,7 @@
     // incrementally decrypt the segment
 
 
-    decrypter.postMessage(createTransferableMessage({
+    decrypter.postMessage(createuploadableMessage({
       source: segment.requestId,
       encrypted: segment.encryptedBytes,
       key: keyBytes,
@@ -49785,12 +49785,12 @@
     createClass$1(SegmentLoader, [{
       key: 'resetStats_',
       value: function resetStats_() {
-        this.mediaBytesTransferred = 0;
+        this.mediaBytesuploadred = 0;
         this.mediaRequests = 0;
         this.mediaRequestsAborted = 0;
         this.mediaRequestsTimedout = 0;
         this.mediaRequestsErrored = 0;
-        this.mediaTransferDuration = 0;
+        this.mediauploadDuration = 0;
         this.mediaSecondsLoaded = 0;
       }
       /**
@@ -50674,8 +50674,8 @@
         this.mediaRequests += 1;
 
         if (simpleSegment.stats) {
-          this.mediaBytesTransferred += simpleSegment.stats.bytesReceived;
-          this.mediaTransferDuration += simpleSegment.stats.roundTripTime;
+          this.mediaBytesuploadred += simpleSegment.stats.bytesReceived;
+          this.mediauploadDuration += simpleSegment.stats.roundTripTime;
         } // The request was aborted and the SegmentLoader has already been reset
 
 
@@ -52748,26 +52748,26 @@
        *        Object of properties and values to send to the web worker
        * @return {Object}
        *         Modified message with TypedArray values expanded
-       * @function createTransferableMessage
+       * @function createuploadableMessage
        */
 
 
-      var createTransferableMessage = function createTransferableMessage(message) {
-        var transferable = {};
+      var createuploadableMessage = function createuploadableMessage(message) {
+        var uploadable = {};
         Object.keys(message).forEach(function (key) {
           var value = message[key];
 
           if (ArrayBuffer.isView(value)) {
-            transferable[key] = {
+            uploadable[key] = {
               bytes: value.buffer,
               byteOffset: value.byteOffset,
               byteLength: value.byteLength
             };
           } else {
-            transferable[key] = value;
+            uploadable[key] = value;
           }
         });
-        return transferable;
+        return uploadable;
       };
       /**
        * Our web worker interface so that things can talk to aes-decrypter
@@ -52788,7 +52788,7 @@
           /* eslint-disable no-new, handle-callback-err */
 
           new Decrypter$$1(encrypted, key, iv, function (err, bytes) {
-            self.postMessage(createTransferableMessage({
+            self.postMessage(createuploadableMessage({
               source: data.source,
               decrypted: bytes
             }), [bytes.buffer]);
@@ -53526,7 +53526,7 @@
   var Hls = void 0; // SegmentLoader stats that need to have each loader's
   // values summed to calculate the final value
 
-  var loaderStats = ['mediaRequests', 'mediaRequestsAborted', 'mediaRequestsTimedout', 'mediaRequestsErrored', 'mediaTransferDuration', 'mediaBytesTransferred'];
+  var loaderStats = ['mediaRequests', 'mediaRequestsAborted', 'mediaRequestsTimedout', 'mediaRequestsErrored', 'mediauploadDuration', 'mediaBytesuploadred'];
 
   var sumLoaderStat = function sumLoaderStat(stat) {
     return this.audioSegmentLoader_[stat] + this.mainSegmentLoader_[stat];
@@ -56020,15 +56020,15 @@
             },
             enumerable: true
           },
-          mediaTransferDuration: {
+          mediauploadDuration: {
             get: function get$$1() {
-              return _this3.masterPlaylistController_.mediaTransferDuration_() || 0;
+              return _this3.masterPlaylistController_.mediauploadDuration_() || 0;
             },
             enumerable: true
           },
-          mediaBytesTransferred: {
+          mediaBytesuploadred: {
             get: function get$$1() {
-              return _this3.masterPlaylistController_.mediaBytesTransferred_() || 0;
+              return _this3.masterPlaylistController_.mediaBytesuploadred_() || 0;
             },
             enumerable: true
           },

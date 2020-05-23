@@ -40,7 +40,7 @@ LOG_LEVEL_STRINGS = ['CRITICAL', 'ERROR', 'WARNING', 'INFO', 'DEBUG']
 
 LOGGER = logging.getLogger("tmv.util")
 
-LOG_FORMAT = '%(asctime)s %(levelname)-8s %(filename)s %(message)s'
+LOG_FORMAT = '%(asctime)s %(levelname)-8s %(filename)-8s: %(message)s'
 LOG_FORMAT_DETAILED = '%(asctime)s %(levelname)-8s pid %(process)s in %(filename)s at %(funcName)s: %(message)s'
 
 # Like RFC3339 but replace ':' with '-' to not wreck filenames
@@ -300,7 +300,7 @@ def run_and_capture(cl: list, log_filename=None):
     """
     Only for python <=3.6. Use "capture" keyword for >3.6
     cl: list of parameters, or str (will be split on " "; quotes are respected
-    log_filename: on process error (i.e. runs but fails), log it's output
+    log_filename: on process error (i.e. runs but fails), log it's output.
     """
     if isinstance(cl, str):
         cl = cl.split(" ")  # shlex

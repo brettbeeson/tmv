@@ -1,4 +1,4 @@
-# pylint: disable=line-too-long, logging-fstring-interpolation, protected-access, unused-argument
+# pylint: disable=line-too-long, logging-fstring-interpolation, protected-access, unused-argument, import-error
 from socket import gethostname
 import logging
 import threading
@@ -7,36 +7,31 @@ from pathlib import Path
 from datetime import datetime as dt, timedelta
 from time import sleep
 from pprint import pformat
-from inspect import getsourcefile
 import os
 from tempfile import mkdtemp
 import pytest
 
 from watchdog.observers import Observer
-# pylint: disable=import-error
 from tmv.util import not_modified_for
-from tmv.transfer import S3Uploader, s3_upload_console, ConfigError
+from tmv.upload import S3Uploader, upload_console, ConfigError
 
 TEST_DATA = Path(__file__).parent / "testdata"
-TEST_FILES_1 = Path("transfer_1")
-TEST_FILES_2 = Path("transfer_2")
-TEST_FILES_3 = Path("transfer_3")
+TEST_FILES_1 = Path("upload_1")
+TEST_FILES_2 = Path("upload_2")
+TEST_FILES_3 = Path("upload_3")
 
 PROFILE = 'minio'
 ENDPOINT = 'http://cat2:9000'
 BUCKET = 's3://tmv.brettbeeson.com.au'
 BUCKET_NAME = 'tmv.brettbeeson.com.au'
 
-LOGGER = logging.getLogger("tmv.transfer")
-
-def datadir():
-    return Path(getsourcefile(lambda: 0)).parent
+LOGGER = logging.getLogger("tmv.upload")
 
 
 def setup_function():
     """ setup any state specific to the execution of the given module."""
     logging.basicConfig()
-    logging.getLogger("tmv.transfer").setLevel(logging.DEBUG)
+    logging.getLogger("tmv.upload").setLevel(logging.DEBUG)
     os.chdir(mkdtemp())
     print("Setting cwd to {}".format(os.getcwd()))
     shutil.copytree(TEST_DATA / TEST_FILES_1, TEST_FILES_1)
@@ -59,7 +54,7 @@ def test_s3():
     # dir1/dir2/nfiles
     assert s3ft.rm_dest("", recursive=True) == 1
 
-    # recursively delete tmp/tests/transfer/test_files_2/
+    # recursively delete tmp/tests/upload/test_files_2/
     s3ft.rm_dest("", recursive=True)
     assert s3ft._sync(TEST_FILES_2, True, "*") == 4  # 3 jpgs + nfiles
     assert s3ft.rm_dest("", True, "*.jpg") == 3
@@ -74,7 +69,7 @@ def test_s3():
     console_args = ["--endpoint=" + ENDPOINT, "--profile=" + PROFILE, "--log-level=DEBUG", "--include=*.jpg",
                     str(TEST_FILES_2), BUCKET + "/tmp/"]
     with pytest.raises(SystemExit) as excinfo:
-        s3_upload_console(console_args)
+        upload_console(console_args)
         assert excinfo.value.code == 0
     # uploaded 3 jpgs
     assert s3ft.rm_dest("", True, "*.jpg") == 3
@@ -96,7 +91,7 @@ def test_daemon(caplog):
 
     s3ft.rm_dest("", True)
     s3ft_thread = threading.Thread(
-        target=s3_upload_console, args=(console_args,), daemon=True)
+        target=upload_console, args=(console_args,), daemon=True)
     s3ft_thread.start()  # upload 1,2,3 jpgs
     (root / "touched1.jpg").touch()  # 4
     (root / "touched2.jpg").touch()
@@ -131,7 +126,7 @@ def test_daemon_mv(caplog):
                       TEST_FILES_3.name, endpoint=ENDPOINT, profile=PROFILE)
     s3ft.rm_dest(TEST_FILES_3, True)
     s3ft_thread = threading.Thread(
-        target=s3_upload_console, args=(console_args,), daemon=True)
+        target=upload_console, args=(console_args,), daemon=True)
     s3ft_thread.start()  # upload 1,2,3 jpgs
     sleep(2)
   #  assert sum(f.is_file()
@@ -191,7 +186,7 @@ def test_config():
     [camera]
         file_root = '/tmp/tmv-images/camera1'
         image_suffix = '.jpg'
-    [transfer]
+    [upload]
         # source = camera.file_root
         destination = '""" + BUCKET + """/desto'
         extraargs.ACL = 'public-read'
@@ -205,9 +200,9 @@ def test_config():
 def test_S3Uploader():
     c = """
     [camera]
-        file_root = 'transfer_3/'
+        file_root = 'upload_3/'
         file_filter = '*.jpg'
-    [transfer]
+    [upload]
         destination = '""" + BUCKET + """/tmp/'
         extraargs.ACL = 'public-read'
         move = true
@@ -235,12 +230,12 @@ def test_S3Uploader():
     up.rm_dest("", True)
 
 
-def test_s3_Uploader_2(caplog):
+def test_upload_2(caplog):
     c = """
     [camera]
         file_root = './test_files_3/'
         image_suffix = '.jpg'
-    [transfer]
+    [upload]
         destination = '""" + BUCKET + """//'
     """
     up = S3Uploader()
@@ -262,7 +257,7 @@ def test_errors():
     [camera]
         file_root = './test_files_3/'
         image_suffix = '.jpg'
-    #[transfer]
+    #[upload]
         # source = camera.file_root
     #    destination = BUCKET + '/tmp/'
     #    extraargs.ACL = 'public-read'
@@ -273,9 +268,9 @@ def test_errors():
         up.configs(c)
 
 
-def test_s3_transfer_console(caplog):
+def test_upload_console(caplog):
     c = """
-    [transfer]
+    [upload]
     destination = "s3://bucketname/dir1"
     src = "/local/dir"
     move=true
@@ -288,21 +283,21 @@ def test_s3_transfer_console(caplog):
                     "--dry-run"]
 
     with pytest.raises(SystemExit) as excinfo:
-        s3_upload_console(console_args)
+        upload_console(console_args)
         assert excinfo.value.code == 0
     assert "*.jpg" in (caplog.records[1]).message
     Path("camera.toml").write_text(c)
     console_args = ["--log-level=DEBUG",
-                    "--config-file={}".format(datadir() / "config-1.toml"),
+                    "--config-file={}".format(TEST_DATA / "config-1.toml"),
                     "--dry-run"]
     with pytest.raises(SystemExit) as excinfo:
-        s3_upload_console(console_args)
+        upload_console(console_args)
         assert excinfo.value.code == 0
     #assert "*.png" in (caplog.records[1]).message
 
     console_args = ["--log-level=DEBUG"]
     with pytest.raises(SystemExit) as excinfo:
-        s3_upload_console(console_args)
+        upload_console(console_args)
         # assert "*.png" in (cap.records[1]).message
         assert excinfo.value.code == 1
 
@@ -310,8 +305,8 @@ def test_s3_transfer_console(caplog):
 def test_id():
     c = """
     [camera]
-        file_root = './transfer_3/'
-    [transfer]
+        file_root = './upload_3/'
+    [upload]
          destination = '""" + BUCKET + "/tmp/HOSTNAME" + "'"
 
     up = S3Uploader()
@@ -319,8 +314,8 @@ def test_id():
     assert up.destination == "tmv.brettbeeson.com.au/tmp/" + str(gethostname())
     c = """
     [camera]
-        file_root = './transfer_3/'
-    [transfer]
+        file_root = './upload_3/'
+    [upload]
          destination = '""" + BUCKET + """/tmp/xxx'
     """
     up = S3Uploader()
@@ -329,7 +324,7 @@ def test_id():
 
 
 def test_no_internet():
-    up = S3Uploader("s3://tmv.brettbeeson.com.au/tmp/", './transfer_3/')
+    up = S3Uploader("s3://tmv.brettbeeson.com.au/tmp/", './upload_3/')
     up.move = True
     up.rm_dest("", recursive=True)
     observer = Observer()
@@ -356,7 +351,7 @@ def test_no_internet():
 
 
 def test_no_internet_2(monkeypatch):
-    up = S3Uploader("s3://tmv.brettbeeson.com.au/tmp/", './transfer_3/')
+    up = S3Uploader("s3://tmv.brettbeeson.com.au/tmp/", './upload_3/')
     up.internet_check_period = timedelta(seconds=0.5)
     up.move = True
     up.rm_dest("", recursive=True)

@@ -19,9 +19,9 @@
         file = '/etc/tmv/upload-switch
 
 ###############################################################################
-# Where to upload the images, using tmv-s3-upload
+# Where to upload the images, using tmv-upload
 ###############################################################################
-[transfer]
+[upload]
 #
 # S3 destination URL. 
 # It must be set. 
@@ -35,7 +35,7 @@ destination = "s3://BUCKET-NAME-TO-SET/HOSTNAME/daily-photos"
 
 #
 # Remove files after copy.
-# If false, files remain and will be re-uploaded when transfer is re-started
+# If false, files remain and will be re-uploaded when upload is re-started
 # They won't be continuously uploaded in daemon mode, as it does a batch upload,
 # then checks only for new files
 #

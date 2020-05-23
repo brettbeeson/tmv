@@ -1026,7 +1026,7 @@ def camera_console(cl_args=sys.argv[1:]):
 
         cam.run(args.runs)
 
-    except SignalException as e:
+    except SignalException:
         LOGGER.info('SIGTERM, SIGINT or CTRL-C detected. Exiting gracefully.')
         retval = 0
     except toml.decoder.TomlDecodeError as e:

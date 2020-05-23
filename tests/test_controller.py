@@ -48,7 +48,7 @@ def test_software_controller_faked(monkeypatch, caplog):
     s['upload'] = ON
     caplog.clear()
     con.update_services()
-    assert "running ['systemctl', 'start', 'tmv-s3-upload.service']" in caplog.text
+    assert "running ['systemctl', 'start', 'tmv-upload.service']" in caplog.text
     assert "running ['systemctl', 'start', 'tmv-camera.service']" in caplog.text
 
     # don't start if already running

@@ -68755,10 +68755,10 @@ module.exports={
     "uid": "iot-2015-05-28"
   },
   "operations": {
-    "AcceptCertificateTransfer": {
+    "AcceptCertificateupload": {
       "http": {
         "method": "PATCH",
-        "requestUri": "/accept-certificate-transfer/{certificateId}"
+        "requestUri": "/accept-certificate-upload/{certificateId}"
       },
       "input": {
         "type": "structure",
@@ -68898,10 +68898,10 @@ module.exports={
         "members": {}
       }
     },
-    "CancelCertificateTransfer": {
+    "CancelCertificateupload": {
       "http": {
         "method": "PATCH",
-        "requestUri": "/cancel-certificate-transfer/{certificateId}"
+        "requestUri": "/cancel-certificate-upload/{certificateId}"
       },
       "input": {
         "type": "structure",
@@ -69904,12 +69904,12 @@ module.exports={
               "customerVersion": {
                 "type": "integer"
               },
-              "transferData": {
+              "uploadData": {
                 "type": "structure",
                 "members": {
-                  "transferMessage": {},
+                  "uploadMessage": {},
                   "rejectReason": {},
-                  "transferDate": {
+                  "uploadDate": {
                     "type": "timestamp"
                   },
                   "acceptDate": {
@@ -71291,11 +71291,11 @@ module.exports={
               "members": {
                 "certificateArn": {},
                 "certificateId": {},
-                "transferredTo": {},
-                "transferDate": {
+                "uploadredTo": {},
+                "uploadDate": {
                   "type": "timestamp"
                 },
-                "transferMessage": {},
+                "uploadMessage": {},
                 "creationDate": {
                   "type": "timestamp"
                 }
@@ -72126,10 +72126,10 @@ module.exports={
         }
       }
     },
-    "RejectCertificateTransfer": {
+    "RejectCertificateupload": {
       "http": {
         "method": "PATCH",
-        "requestUri": "/reject-certificate-transfer/{certificateId}"
+        "requestUri": "/reject-certificate-upload/{certificateId}"
       },
       "input": {
         "type": "structure",
@@ -72502,10 +72502,10 @@ module.exports={
         }
       }
     },
-    "TransferCertificate": {
+    "uploadCertificate": {
       "http": {
         "method": "PATCH",
-        "requestUri": "/transfer-certificate/{certificateId}"
+        "requestUri": "/upload-certificate/{certificateId}"
       },
       "input": {
         "type": "structure",
@@ -72522,13 +72522,13 @@ module.exports={
             "location": "querystring",
             "locationName": "targetAwsAccount"
           },
-          "transferMessage": {}
+          "uploadMessage": {}
         }
       },
       "output": {
         "type": "structure",
         "members": {
-          "transferredCertificateArn": {}
+          "uploadredCertificateArn": {}
         }
       }
     },
@@ -106937,7 +106937,7 @@ module.exports={
         }
       }
     },
-    "CheckDomainTransferability": {
+    "CheckDomainuploadability": {
       "input": {
         "type": "structure",
         "required": [
@@ -106953,13 +106953,13 @@ module.exports={
       "output": {
         "type": "structure",
         "required": [
-          "Transferability"
+          "uploadability"
         ],
         "members": {
-          "Transferability": {
+          "uploadability": {
             "type": "structure",
             "members": {
-              "Transferable": {}
+              "uploadable": {}
             }
           }
         }
@@ -107000,7 +107000,7 @@ module.exports={
         "members": {}
       }
     },
-    "DisableDomainTransferLock": {
+    "DisableDomainuploadLock": {
       "input": {
         "type": "structure",
         "required": [
@@ -107035,7 +107035,7 @@ module.exports={
         "members": {}
       }
     },
-    "EnableDomainTransferLock": {
+    "EnableDomainuploadLock": {
       "input": {
         "type": "structure",
         "required": [
@@ -107225,7 +107225,7 @@ module.exports={
                 "AutoRenew": {
                   "type": "boolean"
                 },
-                "TransferLock": {
+                "uploadLock": {
                   "type": "boolean"
                 },
                 "Expiry": {
@@ -107419,7 +107419,7 @@ module.exports={
         }
       }
     },
-    "TransferDomain": {
+    "uploadDomain": {
       "input": {
         "type": "structure",
         "required": [
@@ -138242,7 +138242,7 @@ var jmespath = require('jmespath');
  *
  * ## The `error` property
  *
- * In the event of a service error (or transfer error), the
+ * In the event of a service error (or upload error), the
  * `response.error` property will be filled with the given
  * error data in the form:
  *

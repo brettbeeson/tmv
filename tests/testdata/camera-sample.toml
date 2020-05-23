@@ -1,4 +1,4 @@
-[transfer]
+[upload]
 destination = "s3://tmv.brettbeeson.com.au/data/HOSTNAME/daily-videos"
 move = true
 endpoint = 'http://home.brettbeeson.com.au:9000'

@@ -29,10 +29,11 @@ setuptools.setup(
             "tmv-video-decompile=tmv.videotools:video_decompile_console",
             "tmv-image-tools=tmv.images:image_tools_console",
             "tmv-influx-stats=tmv.util:influx_stats_console",
-            "tmv-s3-upload=tmv.transfer:s3_upload_console",
+            "tmv-upload=tmv.upload:upload_console",
             "tmv-controller=tmv.controller:controller_console",
             "tmv-control = tmv.controller:control_console",
-        ],
+            "tmv-tunnel = tmv.monitor:tunnel_console",
+         ],
     },
     classifiers=[
         "Programming Language :: Python :: 3",

@@ -87,8 +87,8 @@ class S3Uploader(FileSystemEventHandler, Tomlable):
         return self._s3
 
     def configd(self, config_dict):
-        if 'transfer' in config_dict:
-            config = config_dict['transfer']
+        if 'upload' in config_dict:
+            config = config_dict['upload']
             self.setattr_from_dict("move", config)
             self.setattr_from_dict("extraargs", config)
             self.setattr_from_dict("file_filter", config)
@@ -100,12 +100,12 @@ class S3Uploader(FileSystemEventHandler, Tomlable):
                 d = config['destination']
                 self.destination = d.replace("HOSTNAME", socket.gethostname()).replace("UUID", str(uuid.getnode()))
             else:
-                raise ConfigError("No setting found for: [transfer] destination .")
+                raise ConfigError("No setting found for: [upload] destination .")
             if 'log_level' in config:
                 LOGGER.setLevel(config['log_level'])
 
         else:
-            raise ConfigError("No [transfer] configuration section.")
+            raise ConfigError("No [upload] configuration section.")
         if 'camera' in config_dict:
             config = config_dict['camera']
             # todo: should be in controller
@@ -260,7 +260,7 @@ class S3Uploader(FileSystemEventHandler, Tomlable):
         No elements will be deleted. No date/time checking.
         :return: N files uploaded
         """
-        transfers = 0
+        uploads = 0
         src_dir = Path(src_dir)
         dest_prefix = Path(dest_prefix)
 
@@ -296,8 +296,8 @@ class S3Uploader(FileSystemEventHandler, Tomlable):
                     Key=str(dest_file), ExtraArgs=self._ExtraArgs)
                 if self._pj:
                     self._pj.blink(Blink.UPLOAD, True)
-                transfers += 1
-        return transfers
+                uploads += 1
+        return uploads
 
     def daemon(self):
 
@@ -421,7 +421,7 @@ def sig_handler(signal_received, frame):
     raise SignalException
 
 
-def s3_upload_console(cl_args=argv[1:]):
+def upload_console(cl_args=argv[1:]):
     # pylint: disable=broad-except
     try:
         logging.basicConfig()
@@ -441,7 +441,7 @@ def s3_upload_console(cl_args=argv[1:]):
         parser.add_argument('dest', type=str, nargs="?",
                             help="e.g. s3://tmv.brettbeeson.com.au/tmp/")
         parser.add_argument('--config-file',
-                            help="Read [transfer] settings. CLI options will override them.", default="./camera.toml")
+                            help="Read [upload] settings. CLI options will override them.", default="./camera.toml")
         parser.add_argument('-i', '--include', type=str,
                             help="When src is a folder, only upload files matching this pattern. Otherwise ignored.")
         parser.add_argument('-mv', '--move', action='store_true',
