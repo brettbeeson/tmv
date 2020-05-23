@@ -25,8 +25,8 @@ SSHD_PROCESS = 'sshd'
 class SSHTunnels():
     """ List of SSH tunnels to the localhost """
 
-    def __init__(self, users=None, ports=(PORT_MIN, PORT_MAX), id_rsa=None, local_listeners_only=True):
-        self.ssh_options = ["-o", "ForwardX11=no", "-o", "StrictHostKeyChecking=no", "-o", "PasswordAuthentication=no"]
+    def __init__(self, users=None, ports=(PORT_MIN, PORT_MAX), id_rsa=None, local_listeners_only=False):
+        self.ssh_options = ["-o","ConnectTimeout=5","-o", "ForwardX11=no", "-o", "StrictHostKeyChecking=no", "-o", "PasswordAuthentication=no"]
         if id_rsa:
             if not Path(id_rsa).is_file():
                 raise FileNotFoundError(f"id_rsa specified not found: {id_rsa}")
@@ -42,26 +42,29 @@ class SSHTunnels():
         in_range_sockets = list(c for c in listening_sockets if ports[0] <= c.laddr.port <= ports[1])
         if local_listeners_only:
             in_range_sockets = list(c for c in in_range_sockets if c.laddr.ip == "127.0.0.1")
+        
+
 
         self._tunnels = []
 
         for s in in_range_sockets:
             if s.pid is None or (psutil.Process(s.pid).name() == SSHD_PROCESS):
-                tunnel = namedtuple("tunnel", ['port', 'ip', 'pid', 'process', 'host', 'rip', 'id', 'interrogated'])
-                tunnel.port = s.laddr.port
-                tunnel.ip = s.laddr.ip
-                tunnel.pid = s.pid
-                tunnel.host = None
-                tunnel.rip = None
-                tunnel.id = None
-                tunnel.interrogated = False
-                tunnel.works = False
+                if len ([t for t in self._tunnels if t.port == s.laddr.port]) == 0:
+                    tunnel = namedtuple("tunnel", ['port', 'ip', 'pid', 'process', 'host', 'rip', 'id', 'interrogated'])
+                    tunnel.port = s.laddr.port
+                    tunnel.ip = s.laddr.ip
+                    tunnel.pid = s.pid
+                    tunnel.host = None
+                    tunnel.rip = None
+                    tunnel.id = None
+                    tunnel.interrogated = False
+                    tunnel.works = False
 
-                if s.pid is not None:
-                    tunnel.process = SSHD_PROCESS
-                else:
-                    tunnel.process = None
-                self._tunnels.append(tunnel)
+                    if s.pid is not None:
+                        tunnel.process = SSHD_PROCESS
+                    else:
+                        tunnel.process = None
+                    self._tunnels.append(tunnel)
 
         if users is None:
             self.users = [getuser()]
@@ -161,7 +164,7 @@ def sig_handler(signal_received, frame):
     raise SignalException
 
 
-def sshauto_console(cl=sys.argv[1:]):
+def tunnel_console(cl=sys.argv[1:]):
     # pylint: disable=broad-except
 
     try:
@@ -169,11 +172,11 @@ def sshauto_console(cl=sys.argv[1:]):
         signal(SIGTERM, sig_handler)
 
         parser = argparse.ArgumentParser("SSHAuto")
-        parser.add_argument('--log-level', '-ll', default='WARNING', type=lambda s: LOG_LEVELS(s).name, nargs='?', choices=LOG_LEVELS.choices())
-        parser.add_argument("remote", nargs="?", help="Remote host, ip or id")
-        parser.add_argument("--users", nargs="+", help="Remote user/s to try.")
+        parser.add_argument("remote", nargs="?", help="Remote hostname, ip or id (contents of ~/.id)")
+        parser.add_argument('--log-level', default='WARNING', type=lambda s: LOG_LEVELS(s).name, nargs='?', choices=LOG_LEVELS.choices())
+        parser.add_argument("--user", action='append', help="Remote user/s to try. Multiple flags allowed.")
         parser.add_argument("--ports", type=int, nargs=2, metavar=('first', 'last'), default=(PORT_MIN, PORT_MAX))
-        parser.add_argument("--id-rsa", type=str)
+        parser.add_argument("--id-rsa", type=str,help="Filename of private key if non-standard.")
         parser.add_argument("--dry-run", action='store_true', help="Don't connect, just print connection we would have used")
 
         args = parser.parse_args(cl)
@@ -183,12 +186,12 @@ def sshauto_console(cl=sys.argv[1:]):
         if not geteuid() == 0:
             print("Running as non-root: functionality restricted", file=sys.stderr)
         else:
-            if args.users is None:
+            if args.user is None:
                 raise RuntimeError("Running as root: please specify --users to use for connections")
             if args.id_rsa is None:
                 raise RuntimeError("Running as root: please specify --id_rsa to use for connections")
 
-        ssh_tunnels = SSHTunnels(users=args.users, ports=args.ports, id_rsa=args.id_rsa)  # users=args.users, ports=args.ports)
+        ssh_tunnels = SSHTunnels(users=args.user, ports=args.ports, id_rsa=args.id_rsa)  # users=args.users, ports=args.ports)
 
         if args.remote:
             # connect
@@ -214,4 +217,4 @@ def sshauto_console(cl=sys.argv[1:]):
 
 
 if __name__ == '__main__':
-    sshauto_console()
+    tunnel_console()

@@ -4,7 +4,7 @@ with open("README.md", "r") as fh:
     long_description = fh.read()
 
     extras = {
-        'advanced': ['ascii_graph','datetimerange']
+        'advanced': ['ascii_graph','datetimerange','psutils']
     }
 
 setuptools.setup(
