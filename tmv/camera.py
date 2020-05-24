@@ -564,7 +564,7 @@ class Camera(Tomlable):
         }
 
     def configd(self, config_dict):
-        
+
         if 'camera' in config_dict:
             c = config_dict['camera']
 
@@ -576,22 +576,22 @@ class Camera(Tomlable):
             self.file_root = os.path.abspath(
                 os.path.expanduser(self.file_root))
             self.setattr_from_dict('overlays', c)
-            
+
             if 'city' in c:
                 # pylint: disable=no-else-raise
                 if c['city'] == 'auto':
                     raise NotImplementedError("city = 'auto' not implemented")
                 else:
                     self.location = lookup(c['city'], database())
-                    
+
             if 'camera_inactive_action' in c:
                 self.camera_inactive_action = CameraInactiveAction[c['camera_inactive_action']]
 
             if 'interval' in c:
                 # interval specified as seconds: convert to timedelta
                 self.interval = timedelta(seconds=c['interval'])
-                if self.interval.total_seconds() <= 2.0:
-                    LOGGER.warning("Intervals <= 2s are not tested")
+                if self.interval.total_seconds() < 10.0:
+                    LOGGER.warning("Intervals < 10s are not tested")
 
             if 'inactive_threshold' in c:
                 # inactive_threshold specified as seconds: convert to timedelta
@@ -611,8 +611,8 @@ class Camera(Tomlable):
                     if level_str in c['picam']:
                         self.picam[level_str] = c['picam'][level_str]
                         if 'framerate' in self.picam[level_str]:
-                            if self.picam[level_str]['framerate'] < 1:  # 1/6 is the minimum?
-                                raise ConfigError("framerate ={} is incorrect".format(
+                            if self.picam[level_str]['framerate'] < (1 / 5):  # 1/6 is the minimum?
+                                raise ConfigError("framerate={} is incorrect".format(
                                     self.picam[level_str]['framerate']))
 
             # config light sensor
@@ -708,6 +708,23 @@ class Camera(Tomlable):
                     sleep_until(next_sense_mark, instant)
                     self.capture_light(next_sense_mark)
 
+
+    @staticmethod
+    def save_image(pil_image, image_filename):
+        try:
+            if (pil_image.size[0] * pil_image.size[1] == 0):
+                raise RuntimeError("Image has zero width or height")
+            pil_image.verify()
+        except Exception as exc:
+            LOGGER.warning(f"{image_filename} failed verify and is not saved: {exc}")
+            return
+        if os.path.dirname(image_filename) != '':
+            os.makedirs(os.path.dirname(image_filename), exist_ok=True)
+        if 'exif' in pil_image.info:
+            pil_image.save(image_filename, exif=pil_image.info['exif'])
+        else:
+            pil_image.save(image_filename)
+        
     def capture_image(self, mark):
         image_filename = self.dt2filename(mark)
         self.recent_images.append((dt.now(), image_filename))
@@ -718,15 +735,11 @@ class Camera(Tomlable):
         self._camera.led = False
 
         pa = image_pixel_average(pil_image)
-        LOGGER.debug("CAPTURED mark: {} pa:{:.3f} took:{:2f}".format(mark, pa, (dt.now() - start).total_seconds()))
+        LOGGER.debug("CAPTURED mark: {} pa:{:.3f} took:{:.2f}".format(mark, pa, (dt.now() - start).total_seconds()))
 
         if self.save_images:
-            os.makedirs(os.path.dirname(image_filename), exist_ok=True)
             self.apply_overlays(pil_image, mark)
-            if 'exif' in pil_image.info:
-                pil_image.save(image_filename, exif=pil_image.info['exif'])
-            else:
-                pil_image.save(image_filename)
+            self.save_image(pil_image, image_filename)
 
     def capture_light(self, mark):
         image_filename = join(self.dt2dir(
@@ -740,11 +753,7 @@ class Camera(Tomlable):
 
         if self.light_sensor.save_images:
             self.apply_overlays(pil_image, mark)
-            os.makedirs(os.path.dirname(image_filename), exist_ok=True)
-            if 'exif' in pil_image.info:
-                pil_image.save(image_filename, exif=pil_image.info['exif'])
-            else:
-                pil_image.save(image_filename)
+            self.save_image(pil_image, image_filename)
 
     def capture(self) -> Image:
         """ Capture sensor buffer to an in-memory stream"""
@@ -756,18 +765,20 @@ class Camera(Tomlable):
 
     def apply_overlays(self, im: Image, mark):
         """ Add dates, spinny, etc. Inplace."""
-        if image_pixel_average(im) > 0.5:
+        pxavg = image_pixel_average(im)
+        bg_colour = (128,128,128, 128)
+        if pxavg > 0.5:
             text_colour = (0, 0, 0)
         else:
             text_colour = (255, 255, 255)
         width, height = im.size
+        draw = ImageDraw.Draw(im)
 
         try:
             if 'settings' in self.overlays:
                 # Draw the picam's settings
-                draw = ImageDraw.Draw(im)
                 text = pformat(get_picam(self._camera))
-                text += "\n\npixel_average = {:.3f}".format(image_pixel_average(im))
+                text += "\n\npixel_average = {pxavg:.3f}"
                 text_size = 10
                 font = ImageFont.truetype(FONT_FILE, text_size, encoding='unic')
                 text_box_size = draw.textsize(text=text, font=font)
@@ -775,9 +786,23 @@ class Camera(Tomlable):
                 draw.text(
                     xy=(0, 0), text=text, fill=text_colour, font=font)
                 # centre text
+            if 'simple_settings' in self.overlays:
+                # Draw some of picam's settings
+                picam = get_picam(self._camera)
+                text = f"level={self.light_sensor._current_level} avg={pxavg:.3f}"
+                text += f" ss= {picam['exposure_speed']} iso={picam['iso']} exp={picam['exposure_mode']}"
+                text_size = 10
+                font = ImageFont.truetype(FONT_FILE, text_size, encoding='unic')
+                tw, th = draw.textsize(text=text, font=font)
+                # RHS
+                x = width - tw                 
+                # one line above bottom
+                y = height - th * 2
+                #draw.rectangle(xy=(x, y, x + tw, y + th), fill=bg_colour)
+                draw.text(xy=(x, y), text=text, fill=text_colour, font=font)
             if 'spinny' in self.overlays:
                 # Draw a small circle with a minute hand, for continuity checking. Plus it looks cool.
-                draw = ImageDraw.Draw(im)
+
                 dia = 30
                 # 1px off corner x    y              x
                 bounding_box = [(1, height - dia), (dia, height - 1)]
@@ -788,7 +813,6 @@ class Camera(Tomlable):
             if 'image_name' in self.overlays:
                 text = os.path.basename(self.dt2basename(mark))
                 text_size = 10
-                LOGGER.debug(f"FONT_FILE={FONT_FILE}")
                 font = ImageFont.truetype(FONT_FILE, text_size, encoding='unic')
                 # Get the size of the time to write, so we can correctly place it
                 text_box_size = draw.textsize(text=text, font=font)

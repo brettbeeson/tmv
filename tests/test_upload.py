@@ -224,7 +224,7 @@ def test_S3Uploader():
     (TEST_FILES_3 / "new1.jpg").touch()
     (TEST_FILES_3 / "new2.jpg").touch()
     (TEST_FILES_3 / "dir1" / "new3.jpg").touch()
-    sleep(2)  # daemon runs
+    sleep(5)  # daemon runs
     files_uploaded = up.list_bucket_objects()
     assert len(files_uploaded) == 6  # 3 new files
     up.rm_dest("", True)
@@ -331,7 +331,7 @@ def test_no_internet():
     observer.schedule(up, up.file_root, recursive=True)
     observer.start()
     (TEST_FILES_3 / "touched1.jpg").touch()  # upload this
-    sleep(2)
+    sleep(5)
     assert len(up.list_bucket_objects()) == 1
     observer.stop()
     (TEST_FILES_3 / "touched2.jpg").touch()  # don't upload this
@@ -339,10 +339,10 @@ def test_no_internet():
     observer = Observer()
     observer.schedule(up, up.file_root, recursive=True)
     observer.start()
-    sleep(1)
+    sleep(3)
     assert len(up.list_bucket_objects()) == 1
     (TEST_FILES_3 / "touched3.jpg").touch()  # upload this
-    sleep(2)
+    sleep(3)
     files_uploaded = up.list_bucket_objects()
     assert len(files_uploaded) == 2
     up.upload()  # touched2 which was missed, plus original 3 for a total of 4
@@ -358,25 +358,25 @@ def test_no_internet_2(monkeypatch):
     up.upload()
     daemon = threading.Thread(target=up.daemon, daemon=True)
     daemon.start()
-    sleep(1)
-    (TEST_FILES_3 / "touched1.jpg").touch()  # upload this
     sleep(2)
+    (TEST_FILES_3 / "touched1.jpg").touch()  # upload this
+    sleep(4)
     files_uploaded = up.list_bucket_objects()
     assert len(files_uploaded) == 4
     # force internet to fail
     up.internet = lambda: False
     # internet fails in daemon
-    sleep(1)
+    sleep(4)
     (TEST_FILES_3 / "touched2.jpg").touch()  # don't upload this yet
-    sleep(1)
+    sleep(4)
     files_uploaded = up.list_bucket_objects()
     assert len(files_uploaded) == 4
     # restart - should upload touched2
     up.internet = lambda: True
-    sleep(2)
+    sleep(4)
     files_uploaded = up.list_bucket_objects()
     assert len(files_uploaded) == 5
     (TEST_FILES_3 / "touched3.jpg").touch()  # upload this
-    sleep(1)
+    sleep(3)
     files_uploaded = up.list_bucket_objects()
     assert len(files_uploaded) == 5

@@ -93,9 +93,9 @@ save_images = false
 #   LIGHT|DIM|DARK: settings passed to picam to override the defaults. See PiCamera API docs.
 #
 #    The defaults are which are:
-#       awb_mode= 'auto',
-#       exposure_mode= 'auto',
-#       framerate= 0.033 # 30 fps
+#       awb_mode= 'auto', #    'off','auto','sunlight','cloudy','shade','tungsten','fluorescent','incandescent','flash','horizon'
+#       exposure_mode= 'auto', # 'off','auto','night','nightpreview','backlight','spotlight','sports','snow','beach','verylong','fixedfps','antishake','fireworks'
+#       framerate= 30 # 1/30 max exposure time, 1/5 (5s exposure time) is the minimum.
 #       hflip= false,
 #       iso= 0,
 #       meter_mode= 'average',
@@ -109,21 +109,29 @@ save_images = false
 #       zoom= [0.0, 0.0, 1.0, 1.0],
 #       vflip = False
 #
-# Helpful options, not the default. Seperate entries for LIGHT, DIM and DARK are required.
-# rotation = 180 
-# resolution = '1280x720'
-#
+# These are set below to helpful options, not the default. 
+# Seperate entries for LIGHT, DIM and DARK are required: they are independent
+# Use "rotation = 180" to flip instead of vflip
+# Framerate notes::
+# - Max exposure time is 1 / framerate, so you must reduce framerate from 30fps to get long exposure times
+# - Framerate < 0.25 appears to freeze the whole camera
 [camera.picam.LIGHT]
 iso = 200
 exposure_mode = "auto"
+resolution = '1280x720'
 
 [camera.picam.DIM]
 iso = 800
-exposure_mode = "night"
+exposure_mode = "verylong"
+framerate = 1.0 # max ss=1
+resolution = '1280x720'
 
 [camera.picam.DARK]
 iso = 1600
-exposure_mode = "verylong"
+exposure_mode = "night"
+framerate = 0.25 # max ss=4
+resolution = '1280x720'
+
 
 ###############################################################################
 # Controller: on the camera, control services which operate the camera and uploader
@@ -141,12 +149,7 @@ log_level = 'INFO'
 # - required
 # - alternatively, for hardware-based
 #    [controller.switches]
-#        [controller.switches.camera]
-#            pins = [10]    
-#        [controller.switches.upload]
-#            pins = [11,12]    
-
-[controller.switches]
+#        [coqueenswitches]
     [controller.switches.camera]
         file = '/etc/tmv/camera-switch'
     [controller.switches.upload]

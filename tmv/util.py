@@ -21,7 +21,7 @@ import toml
 import pytimeparse
 
 FONT_FILE = resource_filename(__name__, 'resources/FreeSans.ttf')
-
+HH_MM = "%H:%M"
 
 class LOG_LEVELS(Enum):
     """ Convenience for argparse / logging modules """
@@ -40,14 +40,18 @@ LOG_LEVEL_STRINGS = ['CRITICAL', 'ERROR', 'WARNING', 'INFO', 'DEBUG']
 
 LOGGER = logging.getLogger("tmv.util")
 
-LOG_FORMAT = '%(asctime)s %(levelname)-8s %(filename)-8s: %(message)s'
-LOG_FORMAT_DETAILED = '%(asctime)s %(levelname)-8s pid %(process)s in %(filename)s at %(funcName)s: %(message)s'
+
+LOG_FORMAT = '%(levelname)-8s %(filename)-8s: %(message)s'
+LOG_FORMAT_DETAILED = '%(levelname)-8s pid %(process)s in %(filename)s,%(lineno)d (%(funcName)s): %(message)s'
+# Log time:
+#LOG_FORMAT = '%(asctime)s ' + LOG_FORMAT  
+#LOG_FORMAT_DETAILED = '%(asctime)s ' + LOG_FORMAT_DETAILED
+
 
 # Like RFC3339 but replace ':' with '-' to not wreck filenames
 DATETIME_FORMAT = "%Y-%m-%dT%H-%M-%S"
 DATE_FORMAT = "%Y-%m-%d"
 TIME_FORMAT = "%H:%M:%S"
-HH_MM = "%H:%M"
 
 
 class Tomlable:

@@ -75,5 +75,8 @@ sudo scripts/install-tmv-camera.sh
 - If running locally, a port-forward on your router and a ddyn solution can be setup for external access
 - If using Route53 a simple option is (aws-dyndns](https://github.com/famzah/aws-dyndns)
 
+### Improvements
+- Add DIM/DARK/LIGHT as an Overlay
+- Check for 0 length files
 
 Inspired by [Claude's Pi-Timolo](https://github.com/pageauc/pi-timolo/). Thanks Claude!

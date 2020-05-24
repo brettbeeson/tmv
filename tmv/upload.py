@@ -21,7 +21,7 @@ from botocore.exceptions import ClientError
 from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
 
-from tmv.util import log_level_string_to_int, LOG_LEVEL_STRINGS, Tomlable, not_modified_for, check_internet
+from tmv.util import LOG_LEVELS, Tomlable, not_modified_for, check_internet, LOG_FORMAT
 from tmv.camera import ConfigError, SignalException
 try:
     from tmv.pijuice import Blink, TMVPiJuice
@@ -172,8 +172,7 @@ class S3Uploader(FileSystemEventHandler, Tomlable):
         for src_file in src_files:
             src_file_rel = src_file.relative_to(src_dir)
             dest_file = self._dest_root / dest_prefix / src_file_rel
-            LOGGER.info("Uploading file (from dir) {} to {}:{}".format(
-                src_file, self._dest_bucket, dest_file))
+            LOGGER.info(f"Uploading file (from dir) {src_file.name} to {self._dest_bucket}:{dest_file}")
             try:
                 dest_file = Path(dest_file)
                 self.s3.upload_file(str(src_file), Bucket=self._dest_bucket,
@@ -207,8 +206,7 @@ class S3Uploader(FileSystemEventHandler, Tomlable):
         dest_prefix = Path(dest_prefix)
 
         dest_file = self._dest_root / dest_prefix / src_file.name
-        LOGGER.info("Uploading file {} to {} {}".format(
-            src_file, self._dest_bucket, dest_file))
+        LOGGER.info(f"Uploading file {src_file.name} to {self._dest_bucket} {dest_file}")
         self.s3.upload_file(str(src_file), Bucket=self._dest_bucket,
                             Key=str(dest_file),
                             ExtraArgs=self._ExtraArgs)
@@ -367,7 +365,7 @@ class S3Uploader(FileSystemEventHandler, Tomlable):
             if event.is_directory:
                 return None  # Irrelevant for uploading to s3
             if Path(event.src_path).match(self.file_filter):
-                not_modified_for(event.src_path, timedelta(seconds=1))
+                not_modified_for(event.src_path, timedelta(seconds=2))
                 # eg.
                 # src_path = /tmp/who/cares/test_files_3/dir1/dir2/file
                 # root_name = test_files_3
@@ -433,9 +431,8 @@ def upload_console(cl_args=argv[1:]):
 
         parser = argparse.ArgumentParser("S3 Upload",
                                          description="Upload files to s3. Overwrites existing. Can sense file system creations in daemon mode.")
-        parser.add_argument('-ll', '--log-level', default='INFO', dest='log_level',
-                            type=log_level_string_to_int, nargs='?',
-                            help='levels: {0}'.format(LOG_LEVEL_STRINGS))
+        parser.add_argument('--log-level', '-ll', default='WARNING', type=lambda s: LOG_LEVELS(s).name, nargs='?', 
+                            choices=LOG_LEVELS.choices())
         parser.add_argument('src', type=str, nargs="?",
                             help="Directory (recursive) or file e.g. myfile, ./ or /var/here/")
         parser.add_argument('dest', type=str, nargs="?",
@@ -454,6 +451,8 @@ def upload_console(cl_args=argv[1:]):
         parser.add_argument("--endpoint", default=None)
 
         args = parser.parse_args(cl_args)
+        
+        logging.basicConfig(format=LOG_FORMAT)
         LOGGER.setLevel(args.log_level)
 
         uploader = S3Uploader()
