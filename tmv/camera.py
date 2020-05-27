@@ -790,7 +790,7 @@ class Camera(Tomlable):
                 # Draw some of picam's settings
                 picam = get_picam(self._camera)
                 text = f"level={self.light_sensor._current_level} avg={pxavg:.3f}"
-                text += f" ss= {picam['exposure_speed']} iso={picam['iso']} exp={picam['exposure_mode']}"
+                text += f" es {picam['exposure_speed']/1000000:.3f} iso={picam['iso']} exp={picam['exposure_mode']}"
                 text_size = 10
                 font = ImageFont.truetype(FONT_FILE, text_size, encoding='unic')
                 tw, th = draw.textsize(text=text, font=font)

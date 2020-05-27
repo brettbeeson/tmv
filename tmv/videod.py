@@ -42,14 +42,11 @@ class Task(Tomlable):
     def configd(self, config_dict):
         """ Parse common Task config items """
         # overwrite default specified in constructor
-        self.src_path = config_dict.get("src_path",self.src_path)       
-        self.dest_path = config_dict.get("dest_path",self.dest_path)
+        self.src_path = config_dict.get("src_path", self.src_path)
+        self.dest_path = config_dict.get("dest_path", self.dest_path)
         # to consider: try to avoid as the "run()" method would sometimes not run
         # probably need a "ready()" method in this class
         # self.interval = config_dict.get("interval",self.dest_path)
-
-        
-       
 
 
 class DailyVideosTask(Task):
@@ -84,12 +81,13 @@ class DailyVideosTask(Task):
                     vm = VideoMakerDay()
                     # configure with toml
                     vm.file_list = list(day_dir.glob("*.jpg")) + list(day_dir.glob("*.JPG")) + list(day_dir.glob("*.jpeg")) + list(day_dir.glob("*.JPEG"))
-                    vm.load_videos()
-                    filename = self.dest_path / day_video_filename
-                    LOGGER.info("Creating daily-video: {}".format(filename.absolute()))
-                    # ?? touch the preview file so that if we fail, we don't keep trying later runs?
-                    filename.touch()
-                    vm.write_videos(str(filename), fps=self.fps, force=True, speedup=self.speedup)
+                    if len(vm.file_list) > 1:
+                        vm.load_videos()
+                        filename = self.dest_path / day_video_filename
+                        LOGGER.info("Creating daily-video: {}".format(filename.absolute()))
+                        # ?? touch the preview file so that if we fail, we don't keep trying later runs?
+                        filename.touch()
+                        vm.write_videos(str(filename), fps=self.fps, force=True, speedup=self.speedup)
 
             except ValueError as exc:
                 LOGGER.warning(f"Ignoring directory {day_dir}: not a date format: {exc}")
@@ -186,7 +184,7 @@ class DiagonalVideosTask(Task):
         self.sliceage = None
 
     def configd(self, config_dict):
-        super().configd(config_dict)        
+        super().configd(config_dict)
         if 'sliceage' in config_dict:
             self.sliceage = strptimedelta(config_dict['sliceage'])
 
@@ -200,17 +198,18 @@ class DiagonalVideosTask(Task):
         video_filename = "diagonal-all" + VideoMaker.VIDEO_SUFFIX
         video_path = self.dest_path / video_filename
         if video_path.is_file() and \
-            dt.fromtimestamp(video_path.stat().st_mtime) + timedelta(hours=24) >= dt.fromtimestamp(self.src_path.stat().st_mtime) :
+                dt.fromtimestamp(video_path.stat().st_mtime) + timedelta(hours=24) >= dt.fromtimestamp(self.src_path.stat().st_mtime):
             # exists, newer: no update
             pass
         else:
             vm.sliceage = self.sliceage
             vm.file_list = list(self.src_path.glob("**/*.jpg"))
-            vm.load_videos()
-            LOGGER.debug("Creating diagonal-video: {}".format(video_path.absolute()))
-            # ?? touch the preview file so that if we fail, we don't keep trying later runs?
-            video_path.touch()
-            vm.write_videos(str(video_path), fps=self.fps, force=True, speedup=self.speedup)
+            if len(vm.file_list) > 1:
+                vm.load_videos()
+                LOGGER.debug("Creating diagonal-video: {}".format(video_path.absolute()))
+                # ?? touch the preview file so that if we fail, we don't keep trying later runs?
+                video_path.touch()
+                vm.write_videos(str(video_path), fps=self.fps, force=True, speedup=self.speedup)
 
 
 class PreviewVideosTask(Task):
@@ -242,7 +241,7 @@ class PreviewVideosTask(Task):
         filters.setpts = "0.25*PTS"
         dest_path = "previews"
         """
-        super().configd(config_dict)        
+        super().configd(config_dict)
         if 'filters' in config_dict:
             for k, v in config_dict['filters'].items():
                 self.filters[k] = v
@@ -263,6 +262,50 @@ class PreviewVideosTask(Task):
                 ffmpeg_run(str(v), str(preview_filename), vf=self.filters)
 
 
+class MostRecent(Tomlable):
+    """
+    Add symlinks in root to the latest photo, daily-video
+    """
+
+    def __init__(self, src_path, dest_path):
+        self.src_path = Path(src_path)
+        self.dest_path = Path(dest_path)
+        self.priority = 80  # 1-100 or so, smallest first
+
+    def __str__(self):
+        return f"MostRecent:: src: {self.src_path} dest: {self.dest_path}"
+
+    def __repr__(self):
+        return self.__str__()  # + " at " + str(id(self))
+
+    def run(self):
+        # find latest photo in 'daily-images'
+        dated_dirs = sorted((Path(d) for d in Path('daily-photos').glob("????-??-??") if d.is_dir()), reverse=True)
+        last_dir = next(iter(dated_dirs), None)
+        if last_dir:
+            dated_images = sorted((Path(f) for f in last_dir.glob("*.jpg") if f.is_file()), reverse=True)
+            last_image = next(iter(dated_images))
+            if last_image:
+                link_name = f"most-recent-{last_image.name}"
+                for link in Path(".").glob("most-recent-*.jpg"):
+                    link.unlink()
+                os.symlink(str(last_image), link_name)
+    # find latest video  in 'daily-videos'
+        dated_videos = sorted((Path(v) for v in Path('daily-videos').glob("*.mp4") if v.is_file()), reverse=True)
+        last_video = next(iter(dated_videos), None)
+        if last_video:
+            link_name = f"most-recent-{last_video.name}"
+            for link in Path(".").glob("most-recent-*.mp4"):
+                link.unlink()
+            os.symlink(str(last_video), link_name)
+
+    def configd(self, config_dict):
+        pass
+
+    # def configd(self, config_dict):
+    #    super().configd(config_dict)
+
+
 class TaskRunner(Tomlable):
     """
     Scan directories in cwd and calls VideoMaker to create videos. Various tasks can be performed.
@@ -281,6 +324,9 @@ class TaskRunner(Tomlable):
     def configd(self, config_dict):
         if 'log_level' in config_dict:
             LOGGER.setLevel(config_dict['log_level'])
+        if 'most-recent' in config_dict:
+            self.tasks['MostRecentTask'] = MostRecent(".", ".")
+            self.tasks['MostRecentTask'].configd(config_dict['most-recent'])
         if 'recap-videos' in config_dict:
             self.tasks['RecapVideosTask'] = RecapVideosTask("daily-videos", "recap-videos")
             self.tasks['RecapVideosTask'].configd(config_dict['recap-videos'])
@@ -362,10 +408,12 @@ class TaskRunnerManager(Tomlable):
         file_root_path = Path(self.file_root).absolute()
         LOGGER.debug(f"Starting TaskRunner: {str(self)}")
 
-        for _ in range(0, runs):
+        for run in range(0, runs):
             s_total = 0
-            sleep_until(next_mark(self.interval, dt.now()), dt.now())
-            # run each TaskRunner in sequence (not really a 'daemon', huh?)
+            # run immediately, then sleep between runs
+            if run > 0:
+                sleep_until(next_mark(self.interval, dt.now()), dt.now())
+            # run each TaskRunner in sequence 
             for l, vd in self.vds.items():
                 try:
                     if (file_root_path / l).is_dir():

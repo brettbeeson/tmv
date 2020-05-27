@@ -112,17 +112,18 @@ save_images = false
 # These are set below to helpful options, not the default. 
 # Seperate entries for LIGHT, DIM and DARK are required: they are independent
 # Use "rotation = 180" to flip instead of vflip
-# Framerate notes::
+# Notes:
 # - Max exposure time is 1 / framerate, so you must reduce framerate from 30fps to get long exposure times
 # - Framerate < 0.25 appears to freeze the whole camera
+# - In timelapse sequence, keep iso/mode/etc the same or you'll get blips on light-level change
 [camera.picam.LIGHT]
 iso = 200
 exposure_mode = "auto"
 resolution = '1280x720'
 
 [camera.picam.DIM]
-iso = 800
-exposure_mode = "verylong"
+iso = 200
+exposure_mode = "auto"
 framerate = 1.0 # max ss=1
 resolution = '1280x720'
 

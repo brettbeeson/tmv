@@ -1,5 +1,5 @@
 #!/bin/bash
-echo EDIT /etc/systend/system/autossh.service
+echo MUST EDIT /etc/systemd/system/autossh.service
 sudo apt install autossh
 sudo cp scripts/autossh.service /etc/systemd/system/
 sudo systemctl daemon-reload 

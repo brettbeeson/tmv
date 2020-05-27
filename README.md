@@ -25,7 +25,7 @@ ssh pi@raspberrypi.local
 #### Now on the Pi Zero W
 ```
 # install TMV and dependancies
-sudo apt install -y python3-pip git pijuice-base python3-picamera RPi.GPIO
+sudo apt install -y python3-pip git python3-picamera
 # Pillow dependancies
 sudo apt install -y libjpeg-dev libopenjp2-7 libtiff5
 git clone https://github.com/brettbeeson/tmv
@@ -36,9 +36,10 @@ sudo scripts/install-tmv-camera.sh # install systemd services
 ```
 ### Configure Camera
 The camera writes images to the local storage
+- edit `/etc/tmv/camera.toml` to set file_root
 - Your can turn off the camera's LED via `echo 'disable_camera_led=1' >> /boot/config.txt`
 - (It will then only flash during taking a photo)
-- edit `/etc/tmv/camera.toml` to set file_root
+
 
 ### Optionally, Configure Camera Uploads
 The uploader runs on the camera and sends images to an s3 bucket when possible or locally caches.
@@ -52,10 +53,10 @@ Refer to the docs, but briefly:
 - `pijuice_cli` to get settings
 
 ### Start Camera
-- `sudo tmv-switch-robot auto on` to set camera to auto, and uploads to on
+- `sudo tmv-control auto on` to set camera to auto, and uploads to on
 - `journalctl -f -u 'tmv*'` to check logs in operation
 
-### Server 
+## Server 
 Tested on Ubuntu 18, but likely to work on most linux. It converts photos to videos and optionally stores them.
 - Install [Minio](https://minio.io) to store your images. You could use any s3 server either local or remote (e.g. AWS)
 - (Typically you'll store at /var/s3/my.tmv.bucket)

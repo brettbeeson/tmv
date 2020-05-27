@@ -68,3 +68,8 @@ log_level = 'INFO'
 # when not specified the default is auto
 # sliceage = '1 hour'
 
+[most-recent]
+# add symlnks to recent files
+
+[cleanup]
+# delete any files which are zero length and over an house old
