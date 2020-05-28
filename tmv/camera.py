@@ -31,6 +31,8 @@ from tmv.controller import Switches, ON, OFF, AUTO
 
 LOGGER = logging.getLogger("tmv.camera")  # __name__
 
+DFLT_CAMERA_CONFIG_FILE = "/etc/tmv/camera.toml"
+
 try:
     # optional, for controling power with a PiJuice
     from tmv.pijuice import TMVPiJuice

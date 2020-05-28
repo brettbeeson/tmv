@@ -60,6 +60,24 @@ class Unit:
         except (CalledProcessError, KeyError):
             return False
 
+    def status(self):
+        try:
+            return service_details(self._service)['status']
+        except KeyError:
+            return 'unknown'
+        
+        """
+        Return systemd service detail
+        active
+        inactive
+        activating
+        deactivating
+        failed
+        not-found
+        dead
+        """
+        
+        
     def start(self):
         # must be authorised. will throw
         LOGGER.info(f"execute: systemctl start {self._service}")
@@ -141,7 +159,7 @@ class SoftwareSwitch():
         """
         try:
             return OnOffAuto[self.switch_path.read_text(encoding='UTF-8').strip('\n').upper()]
-        except FileNotFoundError:
+        except (FileNotFoundError, KeyError):
             LOGGER.info(f"Creating {str(self.switch_path)}")
             self.switch_path.write_text(OFF.name)
             return OFF

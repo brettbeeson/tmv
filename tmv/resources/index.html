@@ -26,6 +26,11 @@
                     class="d-inline-block align-middle" alt="">
                 Time Made Visible
             </a>
+
+            <button class="btn btn-secondary" type="pill" disabled>
+                <span id="connection-spinner" class="slow-spin spinner-grow spinner-grow-sm" role="status" aria-hidden="true"></span>
+                <span id="connection-status">Connecting...</span> 
+              </button>
             <ul class="navbar-nav ml-auto">
                 <button class="navbar-toggler" type="button"
                     data-toggle="collapse"
@@ -34,7 +39,12 @@
                     <span class="navbar-toggler-icon"></span>
                 </button>
 
+
+
                 <div class="collapse navbar-collapse" id="navbarCollapse">
+
+                   
+
                     <ul class="nav nav-pills" id="pills-tab"
                         role="tablist">
                         <li class="nav-item">
@@ -52,7 +62,7 @@
                             <a class="nav-link" id="pills-logs-tab"
                                 data-toggle="pill" href="#pills-logs"
                                 role="tab" aria-controls="pills-logs"
-                                aria-selected="false">Logs</a>
+                                aria-selected="false">Console</a>
                         </li>
                     </ul>
 
@@ -63,34 +73,34 @@
 
         <nav class="navbar fixed-bottom navbar-light bg-light">
             <div class="form-group mb-2">
-                <label id="camera-switch">Camera</label>
-                <div id="camera-switch" class="btn-group btn-group-toggle"
-                    data-toggle="buttons">
-                    <label class="btn btn-secondary active">
-                        <input type="radio" name="options" id="camera-on"
-                            autocomplete="off" checked> On
+                <label for="camera-switch">Camera</label>
+                <div id="camera-switch" class="btn-group btn-group-toggle" data-toggle="buttons">
+                    <label class="btn btn-secondary">
+                        <input type="radio" value="On" name="options" id="camera-on"
+                            autocomplete="off">On
                     </label>
                     <label class="btn btn-secondary">
-                        <input type="radio" name="options" id="camera-off"
-                            autocomplete="off"> Off
+                        <input type="radio" value="Off" name="options" id="camera-off"
+                            autocomplete="off">Off
                     </label>
                     <label class="btn btn-secondary">
-                        <input type="radio" name="options" id="camera-auto"
-                            autocomplete="off"> Auto
+                        <input type="radio" value="Auto" name="options" id="camera-auto"
+                            autocomplete="off">Auto
                     </label>
                 </div>
             </div>
+            
             <div class="form-group mb-2">
                 <label for="upload-switch" class="ml-auto">Uploads</label>
                 <div id="upload-switch" class="btn-group btn-group-toggle"
                     data-toggle="buttons">
                     <label class="btn btn-secondary active">
                         <input type="radio" name="options" id="upload-on"
-                            autocomplete="off" checked> On
+                            autocomplete="off" value="On" >On
                     </label>
                     <label class="btn btn-secondary">
                         <input type="radio" name="options" id="upload-off"
-                            autocomplete="off"> Off
+                            value="Off">Off
                     </label>
                 </div>
             </div>
@@ -126,25 +136,32 @@
                                 <div id="editor" class="mb-2">
                                 </div>
                             </div>
-                            <form class="form-group row">
-                                <button class="btn btn-secondary" id="save-config-btn">Save</button>
-                                <button class="btn btn-secondary ml-2" id="restart-btn">Restart</button>
-                                <button class="btn btn-secondary ml-2" id="cancel-config-btn">Cancel</button>
-                            </form>
+                            <div class="row">
+                                <button class="btn btn-secondary" id="save">Save</button>
+                                <button class="btn btn-secondary ml-2" id="cancel">Cancel</button>
+                            </div>
+                            
                             
                          
                         </div>
                         <div class="tab-pane fade" id="pills-logs"
                             role="tabpanel" aria-labelledby="pills-logs-tab">
                             <div class="row">
-                                <h1>Log</h1>
+                                <h1>Console</h1>
                                 <textarea
                                     spellcheck="false"
                                     id="log-textarea"
                                     class="text-smaller w-100"
                                     rows="20"
-                                    columns="80"></textarea>
+                                    columns="80">...</textarea>
                             </div>
+                            
+                                <button class="btn btn-secondary" id="services">Services</button>
+                                <button class="btn btn-secondary ml-2" id="journal">Journal</button>
+                                <button class="btn btn-secondary ml-2" id="restart">Restart</button>
+                                <button class="btn btn-secondary ml-2" id="files">Files</button>
+                                
+                            
                         </div>
                     </div><!--tabs-->
                 </div><!-- col-->

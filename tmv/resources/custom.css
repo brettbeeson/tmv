@@ -1,14 +1,14 @@
 /* Show it is fixed to the top */
 body {
     padding-top: 100px;
-    padding-bottom: 50px;
+    padding-bottom: 65px;
 }
 
 /*( ACE */
 #editor { 
         position:  relative;
         width: 100%;
-        height: 40em;    
+        height: 20em;    
 }
 
 
