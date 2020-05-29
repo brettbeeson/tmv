@@ -63,6 +63,7 @@ class S3Uploader(FileSystemEventHandler, Tomlable):
             self.destination = destination
         self.file_root = file_root
         self.file_filter = "*.jpg"
+        self.latest_image = "latest-image.jpg"
         self.move = True  # generally want to move, otherwise every run we upload again
         self.internet_check_period = timedelta(minutes=1)
         self._s3 = None
@@ -110,6 +111,7 @@ class S3Uploader(FileSystemEventHandler, Tomlable):
             config = config_dict['camera']
             # todo: should be in controller
             self.setattr_from_dict("file_root", config)
+            self.setattr_from_dict("latest_image", config)
 
     @property
     def destination(self):
@@ -168,6 +170,10 @@ class S3Uploader(FileSystemEventHandler, Tomlable):
 
         src_files = sorted(i for i in Path(src_dir).rglob(
             file_filter) if i.is_file())
+        if src_dir / self.latest_image in src_files:
+            LOGGER.debug(f"Removing from list: {src_dir / self.latest_image}")
+            src_files.remove(Path(src_dir / self.latest_image))
+
 
         for src_file in src_files:
             src_file_rel = src_file.relative_to(src_dir)
@@ -204,6 +210,10 @@ class S3Uploader(FileSystemEventHandler, Tomlable):
             raise ConfigError("No destination set for upload")
         src_file = Path(src_file)
         dest_prefix = Path(dest_prefix)
+               
+        if self.latest_image == src_file.name:
+            LOGGER.debug(f"Not uploading {src_file}")
+            return
 
         dest_file = self._dest_root / dest_prefix / src_file.name
         LOGGER.info(f"Uploading file {src_file.name} to {self._dest_bucket} {dest_file}")
@@ -270,6 +280,11 @@ class S3Uploader(FileSystemEventHandler, Tomlable):
         else:
             src_files = sorted(
                 f for f in src_dir.glob(file_filter) if f.is_file())
+
+        if src_dir / self.latest_image in src_files:
+            LOGGER.debug("Removing from list: {src_file}")
+            src_files.remove(Path(src_dir / self.latest_image))
+
         dest_files = self.list_bucket_objects(
             self._dest_bucket, str(self._dest_root / dest_prefix))  # dest_dir_name
 

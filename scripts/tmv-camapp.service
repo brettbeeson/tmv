@@ -1,0 +1,18 @@
+[Unit]
+Description=TMV Camera Web App
+After=network.target
+# Try to restart forever!
+StartLimitIntervalSec=0
+
+[Service]
+User=pi
+WorkingDirectory=/home/pi/tmv
+Environment=FLASK_CONFIG=development
+Environment=FLASK_APP=tmv.camapp
+ExecStart=/usr/bin/python3 -m flask run --host 0.0.0.0 --port 5000
+Restart=always
+# Wait a bit before restart
+RestartSec=60
+
+[Install]
+WantedBy=multi-user.target

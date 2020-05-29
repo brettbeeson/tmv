@@ -111,7 +111,7 @@ def td2str(td):
 
 
 def dt2str(d):
-    """ Return a str from a datetime or date, in RFC3399-ish style (YYYY-MM-DDTHH-MM). Timezones ignored. """
+    """ Return a str from a datetime or date, in RFC3399-ish style (YYYY-MM-DDTHH-MM-SS or YYYY-MM-DD). Timezones ignored. """
     if isinstance(d, dt):
         return d.strftime(DATETIME_FORMAT)
     elif isinstance(d, date):
@@ -300,7 +300,7 @@ def check_internet(host="8.8.8.8", port=53, timeout=5):
         return False
 
 
-def run_and_capture(cl: list, log_filename=None):
+def run_and_capture(cl: list, log_filename=None,timeout=None):
     """
     Only for python <=3.6. Use "capture" keyword for >3.6
     cl: list of parameters, or str (will be split on " "; quotes are respected
@@ -309,7 +309,7 @@ def run_and_capture(cl: list, log_filename=None):
     if isinstance(cl, str):
         cl = cl.split(" ")  # shlex
     try:
-        proc = run(cl, encoding="UTF-8", stdout=PIPE, stderr=PIPE, check=False)
+        proc = run(cl, encoding="UTF-8", stdout=PIPE, stderr=PIPE, check=False, timeout=timeout)
     except OSError as e:
         raise OSError("Subprocess failed to even run: {}. Cause: {}".format(' '.join(cl), str(e)))
 

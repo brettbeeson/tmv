@@ -3,8 +3,10 @@ import setuptools
 with open("README.md", "r") as fh:
     long_description = fh.read()
 
+    # don't work: see below
     extras = {
-        'advanced': ['ascii_graph','datetimerange','psutils']
+        'advanced': ['ascii_graph', 'datetimerange', 'psutil'],
+        'camapp': ['Flask', 'flask-socketio']
     }
 
 setuptools.setup(
@@ -33,16 +35,23 @@ setuptools.setup(
             "tmv-controller=tmv.controller:controller_console",
             "tmv-control = tmv.controller:control_console",
             "tmv-tunnel = tmv.monitor:tunnel_console",
-         ],
+        ],
     },
     classifiers=[
         "Programming Language :: Python :: 3",
         "License :: OSI Approved :: MIT License",
         "Operating System :: OS Independent",
     ],
-    install_requires=['astral', 'toml', 'python-dateutil','pytimeparse',
-                      'Pillow', 'watchdog', 'boto3', 'freezegun', 'nptime'],
+    # can't get extras to work: just install 'em
+    #extras_require=extras
+
+    # todo: change from boto to minio. boto is massive
+    install_requires=['astral', 'toml', 'python-dateutil', 'pytimeparse',
+                      'Pillow', 'watchdog', 'boto3', 'freezegun', 'nptime', 
+                      'Flask', 'flask-socketio','ascii_graph', 'datetimerange', 'psutil'],
+
     python_requires='>=3.6',
-    extras_require=extras,
+
+    
 
 )

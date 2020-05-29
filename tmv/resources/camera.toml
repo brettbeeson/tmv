@@ -12,6 +12,9 @@
 #file_root = "."
 file_root = "/tmp/tmv"
 
+
+latest_image = "latest-image.jpg"
+
 #
 # Time in seconds between images
 #

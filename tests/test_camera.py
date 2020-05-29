@@ -387,6 +387,7 @@ def test_fake(monkeypatch, setup_test):
         assert c.active_timer.active()
         c.manual_override(False)
         assert not c.active_timer.active()
+        assert Path("./test_fake/latest-image.jpg").is_file()
 
 
 def test_fake2(monkeypatch, setup_test):

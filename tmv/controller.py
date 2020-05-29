@@ -65,7 +65,7 @@ class Unit:
             return service_details(self._service)['status']
         except KeyError:
             return 'unknown'
-        
+
         """
         Return systemd service detail
         active
@@ -76,20 +76,18 @@ class Unit:
         not-found
         dead
         """
-        
-        
-    def start(self):
-        # must be authorised. will throw
+
+    def start(self, timeout=10):
         LOGGER.info(f"execute: systemctl start {self._service}")
-        tmv.util.run_and_capture(["systemctl", "start", self._service])
+        tmv.util.run_and_capture(["sudo", "systemctl", "start", self._service], timeout=timeout)
 
-    def stop(self):
+    def stop(self, timeout=10):
         LOGGER.info(f"execute: systemctl stop {self._service}")
-        tmv.util.run_and_capture(["systemctl", "stop", self._service])
+        tmv.util.run_and_capture(["sudo", "systemctl", "stop", self._service], timeout=timeout)
 
-    def restart(self):
+    def restart(self, timeout=10):
         LOGGER.info(f"execute: systemctl restart {self._service}")
-        tmv.util.run_and_capture(["systemctl", "restart", self._service])
+        tmv.util.run_and_capture(["sudo", "systemctl", "restart", self._service], timeout=timeout)
 
 
 class OnOffAuto(Enum):

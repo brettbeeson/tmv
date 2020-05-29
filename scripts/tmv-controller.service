@@ -10,7 +10,10 @@ Restart=always
 # Wait a bit before restart
 RestartSec=60
 # root required to "systemd start" other services
-User=root
+#User=root
+# but can use pi after configuring sudoers 
+User=pi
+
 ExecStart=/usr/local/bin/tmv-controller --config-file /etc/tmv/camera.toml
 
 [Install]

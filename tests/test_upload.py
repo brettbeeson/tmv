@@ -19,6 +19,7 @@ TEST_DATA = Path(__file__).parent / "testdata"
 TEST_FILES_1 = Path("upload_1")
 TEST_FILES_2 = Path("upload_2")
 TEST_FILES_3 = Path("upload_3")
+TEST_FILES_4 = Path("upload_4")
 
 PROFILE = 'minio'
 ENDPOINT = 'http://cat2:9000'
@@ -37,6 +38,7 @@ def setup_function():
     shutil.copytree(TEST_DATA / TEST_FILES_1, TEST_FILES_1)
     shutil.copytree(TEST_DATA / TEST_FILES_2, TEST_FILES_2)
     shutil.copytree(TEST_DATA / TEST_FILES_3, TEST_FILES_3)
+    shutil.copytree(TEST_DATA / TEST_FILES_4, TEST_FILES_4)
 
 
 def test_s3():
@@ -230,20 +232,25 @@ def test_S3Uploader():
     up.rm_dest("", True)
 
 
-def test_upload_2(caplog):
+def test_latest_image(caplog):
+    """ check we don't update latest-image.jpg """
     c = """
     [camera]
-        file_root = './test_files_3/'
-        image_suffix = '.jpg'
+        file_root = 'upload_4/'
+
+        file_filter = '*.jpg'
     [upload]
-        destination = '""" + BUCKET + """//'
+        destination = '""" + BUCKET + """/tmp/'
+        move = true
+        profile = '""" + PROFILE + """'
+        endpoint = '""" + ENDPOINT + """'
     """
     up = S3Uploader()
     up.configs(c)
-    assert up._dest_bucket == BUCKET_NAME
-    assert up._dest_root == ''
-    # don't upload and pollute root dir
-
+    up.upload()
+    assert Path("upload_4/latest-image.jpg").exists()
+    up.rm_dest("", True)
+    
 
 def test_errors():
     up = S3Uploader()

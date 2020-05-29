@@ -528,6 +528,7 @@ class Camera(Tomlable):
             print(exc)
         self.location = None
         self.recent_images = []
+        self.latest_image = "latest-image.jpg"
         self.run_start = None
         self.light_sensor = LightLevelSensor(0.2, 0.05, timedelta(minutes=5), timedelta(seconds=60))
         self.light_sense_outstanding = False
@@ -577,6 +578,7 @@ class Camera(Tomlable):
             self.setattr_from_dict('file_root', c)
             self.file_root = os.path.abspath(
                 os.path.expanduser(self.file_root))
+            self.setattr_from_dict('file_root', c)
             self.setattr_from_dict('overlays', c)
 
             if 'city' in c:
@@ -710,7 +712,6 @@ class Camera(Tomlable):
                     sleep_until(next_sense_mark, instant)
                     self.capture_light(next_sense_mark)
 
-
     @staticmethod
     def save_image(pil_image, image_filename):
         try:
@@ -726,7 +727,7 @@ class Camera(Tomlable):
             pil_image.save(image_filename, exif=pil_image.info['exif'])
         else:
             pil_image.save(image_filename)
-        
+
     def capture_image(self, mark):
         image_filename = self.dt2filename(mark)
         self.recent_images.append((dt.now(), image_filename))
@@ -742,6 +743,14 @@ class Camera(Tomlable):
         if self.save_images:
             self.apply_overlays(pil_image, mark)
             self.save_image(pil_image, image_filename)
+            self.link_latest_image(image_filename)
+
+    def link_latest_image(self, image_filename):
+        """ Add hardlink to the specified image at a well-known location """
+        d = Path(self.file_root) / self.latest_image
+        if d.exists():
+            d.unlink()
+        os.link(image_filename, d)
 
     def capture_light(self, mark):
         image_filename = join(self.dt2dir(
@@ -768,7 +777,7 @@ class Camera(Tomlable):
     def apply_overlays(self, im: Image, mark):
         """ Add dates, spinny, etc. Inplace."""
         pxavg = image_pixel_average(im)
-        bg_colour = (128,128,128, 128)
+        bg_colour = (128, 128, 128, 128)
         if pxavg > 0.5:
             text_colour = (0, 0, 0)
         else:
@@ -797,7 +806,7 @@ class Camera(Tomlable):
                 font = ImageFont.truetype(FONT_FILE, text_size, encoding='unic')
                 tw, th = draw.textsize(text=text, font=font)
                 # RHS
-                x = width - tw                 
+                x = width - tw
                 # one line above bottom
                 y = height - th * 2
                 #draw.rectangle(xy=(x, y, x + tw, y + th), fill=bg_colour)
