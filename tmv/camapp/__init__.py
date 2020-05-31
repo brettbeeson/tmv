@@ -11,6 +11,7 @@ async_mode = None
 
 # create_app()
 app = Flask(__name__,static_url_path="/")  # default to folder: /static
+
 app.config.from_mapping(
     SECRET_KEY="moose",
 )

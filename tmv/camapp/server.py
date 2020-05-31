@@ -14,7 +14,6 @@ from tmv.util import run_and_capture, unlink_safe, Tomlable, dt2str
 
 LOGGER = logging.getLogger(__name__)
 
-
 def report_errors(func):
     """ My first decorator: try errors and report to client. Not rul securz """
     def wrappers(*args, **kwargs):
@@ -104,7 +103,7 @@ class Server(Namespace, Tomlable):
 
     @report_errors
     def on_restart_service(self):
-        print("Restarting service")
+        LOGGER.debug("Restarting service")
         ctlr = Unit("tmv-controller.service")
         ctlr.restart()
         emit("message", "Restarting camera")
@@ -164,7 +163,7 @@ class Server(Namespace, Tomlable):
         Path(cf).write_text(configs)
         # re-read this ourselves, too, to get new file_root, etc
         self.config(cf)
-        emit("message", "Saved config. (Consider a restart)")
+        emit("message", "Saved config")
 
     def on_connect(self):
         try:

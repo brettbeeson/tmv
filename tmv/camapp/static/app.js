@@ -28,6 +28,15 @@ $(document).ready(function () {
     alert("WebSockets are NOT supported by your browser!");
   }
 
+  // Redirect to http://localhost:80/index.php to pickup lighttpd server with raspap
+  $("#wifi").on("click", function() {
+    let raspap = $("#wifi").attr("href");
+      //window.open(raspap,"_blank");
+      window.open(raspap,"_self");
+  });
+  $("#wifi").attr("href",location.protocol + "//" + location.hostname+ ":80/index.php")
+  
+  
   $("#services").on("click", function () {
     ws.emit("req_services_status");
   });
@@ -42,7 +51,8 @@ $(document).ready(function () {
   $("#restart").on("click", function () {
     ws.emit("restart_service");
   });
-  $("#restart2").on("click", function () {
+  $("#saveandrestart").on("click", function () {
+    ws.emit("camera_config", editor.getValue());
     ws.emit("restart_service");
   });
 
@@ -72,7 +82,7 @@ $(document).ready(function () {
       new_uri = "ws:";
     }
     new_uri += "//" + loc.host;
-    //toastr.info("Connecting to " + new_uri);
+    toastr.info("Connecting to " + new_uri);
     ws = io(new_uri);
 
     ws.on("connect", function () {
@@ -151,8 +161,6 @@ $(document).ready(function () {
     ws.on("error",()  => toastr.error("Connection error"));
     
   } /** end: on.connect */
-
-  
   setTimeout(statusCheck, 1000);
 });
 

@@ -344,6 +344,7 @@ def test_location():
     with pytest.raises(NotImplementedError):
         c.configs(cf)
 
+
 def test_image_verify(setup_test, caplog):
     c = Camera()
     stream = BytesIO()
@@ -365,8 +366,6 @@ def test_image_verify(setup_test, caplog):
     c.save_image(image, str(fn))
     assert not Path(fn).is_file()
     assert "Image has zero width or height" in caplog.text
-    
-    
 
 
 def test_fake(monkeypatch, setup_test):
@@ -388,6 +387,39 @@ def test_fake(monkeypatch, setup_test):
         c.manual_override(False)
         assert not c.active_timer.active()
         assert Path("./test_fake/latest-image.jpg").is_file()
+
+
+def test_calc_exposure_speed(monkeypatch, setup_test):
+    with freeze_time(parse("2000-01-01 00:00:00")) as fdt:
+        cf = """
+        [camera]
+            off = false
+            on = true
+            interval = 1800 # 30min
+        calc_exposure_speed = true
+        [camera.sensor]
+            freq = 1800
+            dark = 0.8
+            light = 0.9
+
+        [camera.picam.LIGHT]
+            exposure_mode = "auto"
+            
+        [camera.picam.DIM]
+            exposure_mode = "off"
+            
+        [camera.picam.DARK]
+            exposure_mode = "off"
+            
+        """
+        global FDT
+        FDT = fdt
+        monkeypatch.setattr(time, 'sleep', sleepless)
+        c = Camera()
+        c.configs(cf)
+        c._camera = FakePiCamera()
+        run_until(c, fdt, today_at(23, 59, 59))
+        # how to check?
 
 
 def test_fake2(monkeypatch, setup_test):
@@ -597,7 +629,8 @@ def test_Sensor(monkeypatch, setup_test):
 def not_implemented_test_overlays(monkeypatch, setup_test):
     c = Camera()
     c.apply_overlays()
-    
+
+
 def test_camera_inactive_action(monkeypatch, setup_test):
     with freeze_time(parse("2000-01-01 12:00:00")) as fdt:
         global FDT

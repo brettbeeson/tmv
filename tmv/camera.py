@@ -166,11 +166,15 @@ class LightLevelSensor():
         else:
             return LightLevel.DIM
 
+    def pixel_average(self) -> float:
+        """ Return the latest pixel average, from a standard sensed image """
+        return self._levels[-1].pixel_average
+
     def add_reading(self, instant, pixel_average):
-        # Bit tricky: with debugging this, calling level()
+        # Caution: with debugging this, calling level()
         # will trim the list and confuse the shit out of you
         llr = LightLevelReading(
-            instant, calc_pixel_average, self._assess_level(pixel_average))
+            instant, pixel_average, self._assess_level(pixel_average))
         self._levels.append(llr)
 
     @property
@@ -526,11 +530,12 @@ class Camera(Tomlable):
         except (ImportError, NameError) as exc:
             self._pijuice = None
             print(exc)
+        self.calc_shutter_speed = False
         self.location = None
         self.recent_images = []
         self.latest_image = "latest-image.jpg"
         self.run_start = None
-        self.light_sensor = LightLevelSensor(0.2, 0.05, timedelta(minutes=5), timedelta(seconds=60))
+        self.light_sensor = LightLevelSensor(0.2, 0.05, max_age=timedelta(minutes=30), freq=timedelta(minutes=5))
         self.light_sense_outstanding = False
         # just wait if less than this duration
         self.inactive_min = timedelta(minutes=30)
@@ -538,6 +543,7 @@ class Camera(Tomlable):
         self.active_timer = ActiveTimes.factory(on=True, off=False, camera=self)
         self.file_by_date = True
         self.save_images = True
+
         self.file_root = os.path.abspath(".")
         self.overlays = ['spinny', 'image_name', 'settings']
         self.camera_inactive_action = CameraInactiveAction.WAIT
@@ -571,6 +577,7 @@ class Camera(Tomlable):
         if 'camera' in config_dict:
             c = config_dict['camera']
 
+          
             if 'log_level' in c:
                 LOGGER.setLevel(c['log_level'])
 
@@ -580,6 +587,7 @@ class Camera(Tomlable):
                 os.path.expanduser(self.file_root))
             self.setattr_from_dict('file_root', c)
             self.setattr_from_dict('overlays', c)
+            self.setattr_from_dict('calc_shutter_speed', c)
 
             if 'city' in c:
                 # pylint: disable=no-else-raise
@@ -615,8 +623,8 @@ class Camera(Tomlable):
                     if level_str in c['picam']:
                         self.picam[level_str] = c['picam'][level_str]
                         if 'framerate' in self.picam[level_str]:
-                            if self.picam[level_str]['framerate'] < (1 / 5):  # 1/6 is the minimum?
-                                raise ConfigError("framerate={} is incorrect".format(
+                            if self.picam[level_str]['framerate'] < 0.20:  # 1/6 is the minimum, use 1/5 for safety
+                                raise ConfigError("framerate={} is < 1/5 s".format(
                                     self.picam[level_str]['framerate']))
 
             # config light sensor
@@ -637,6 +645,10 @@ class Camera(Tomlable):
             # Otherwise we will never power off
             raise ConfigError("power_off ({}) must be longer than inactive_min ({}). "
                               .format(self.light_sensor.power_off, self.inactive_min))
+        # todo: finsih
+        known_keys = ['log_level',]
+        unknown = ( k for k in c if k not in known_keys)
+
 
     def manual_override(self, on: bool):
         self.active_timer = ActiveTimes.factory(on, not on, self)
@@ -703,7 +715,13 @@ class Camera(Tomlable):
                     self.light_sense_outstanding = True
                 if next_image_mark <= next_sense_mark:
                     # capture image
-                    set_picam(self._camera, {** self.picam_defaults, ** self.picam[self.light_sensor.level.name]})
+                    settings = {** self.picam_defaults, ** self.picam[self.light_sensor.level.name]}
+                    LOGGER.debug(f"self.calc_shutter_speed={self.calc_shutter_speed} settings['exposure_mode'] ={settings['exposure_mode']}")
+                    if self.calc_shutter_speed and settings['exposure_mode'] == 'off':
+                        # exposure_speed: 'retrieve the current shutter speed'
+                        # shutter_speeed is the requested value
+                        settings['shutter_speed'] = self.shutter_speed_from_sensor()
+                    set_picam(self._camera, settings)
                     sleep_until(next_image_mark, dt.now())
                     self.capture_image(next_image_mark)
                 else:
@@ -711,6 +729,42 @@ class Camera(Tomlable):
                     set_picam(self._camera, {** self.picam_defaults, ** self.picam_sensing})
                     sleep_until(next_sense_mark, instant)
                     self.capture_light(next_sense_mark)
+                    
+
+    def shutter_speed_from_sensor(self):
+        """ Return estimated 'good' shutter (in whole microseconds) speed based on the sensor 
+        Empirical
+        Linear: pixel_average     length
+                 PA                SL
+        Max:     0.0*             5s   
+        Min      0.5              1/250
+        * fixed
+        SL = m * PA + c => c=max_length, m=min_length - c / (PA_min)
+
+          |           -------       }
+          |         /               } constrain between
+        SL|      /                  } max_length and min_length
+          |  ---                    }
+          |_____________________
+                     PA
+
+        """
+        sl_min = 1 / 100 # 10,000us
+        sl_max = 5
+        # sensor is insensitive
+        # default definition of 'dark' is 0.05
+        pa_min = 0.05   
+        pa_max = 0.0
+        c = sl_max
+        m = (sl_min - c) / (pa_min - pa_max)
+        pa = self.light_sensor.pixel_average()
+        sl = m * pa + c
+        sl = min(sl_max, sl)
+        sl = max(sl_min, sl)
+        LOGGER.debug(f"pa={pa:.3f} M_sl={sl:0.3f} m={m:.2f} c={c:.2f}")
+        sl = int ( sl * 1000 * 1000)
+        
+        return sl
 
     @staticmethod
     def save_image(pil_image, image_filename):
@@ -760,7 +814,7 @@ class Camera(Tomlable):
         pa = image_pixel_average(pil_image)
         ll = self.light_sensor._assess_level(pa)
         self.light_sensor.add_reading(mark, pa)
-        LOGGER.debug("SENSED mark: {} pa:{:.3f} ll:{} took:{:.2f}".format(mark, pa, ll, (dt.now() - start).total_seconds()))
+        LOGGER.debug("SENSED mark:{} pa:{:.3f} ll:{} took:{:.2f}".format(mark, pa, ll, (dt.now() - start).total_seconds()))
 
         if self.light_sensor.save_images:
             self.apply_overlays(pil_image, mark)
@@ -889,6 +943,7 @@ class FakePiCamera():
 
     def __init__(self):
         self.lum = 0
+        self.framerate=1
 
     def close(self):
         pass
@@ -1074,8 +1129,11 @@ def camera_console(cl_args=sys.argv[1:]):
         LOGGER.error(e)
         LOGGER.debug(e, exc_info=e)
     finally:
-        # probably can remove?
+        # workaround bug: https://github.com/waveform80/picamera/issues/528
         if cam._camera is not None:
+            LOGGER.info("Closing camera. Setting framerate = 1 to avoid close bug")
+            cam._camera.framerate = 1
             cam._camera.close()
+            time.sleep(1)
 
     sys.exit(retval)
