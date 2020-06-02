@@ -60,7 +60,7 @@ off = false
 # [ "spinny", "image_name", "settings",]
 #
 # overlays = []
-overlays = [ "spinny", "image_name"]
+overlays = [ "spinny", "image_name","simple_settings"]
 
 #
 # Use the light sensor to estimate shutter speed
@@ -184,7 +184,7 @@ log_level = 'INFO'
 # HOSTNAME : hostname of machine
 # (Source location is "file_root" in [camera])
 #
-destination = "s3://BUCKET-NAME-TO-SET/data/HOSTNAME/daily-photos"
+destination = "s3://BUCKET-NAME-TO-SET/HOSTNAME/daily-photos"
 
 #
 # Remove files after copy.

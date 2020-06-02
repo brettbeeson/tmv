@@ -38,24 +38,11 @@ sudo cp scripts/tmv-camapp.service /etc/systemd/system/
 echo Registering services
 sudo systemctl daemon-reload 
 sudo systemctl enable tmv-controller
-sudo systemctl start tmv-controller
 sudo systemctl enable tmv-camapp
-sudo systemctl start tmv-camapp
+
 
 echo Restarting lighttpd
 sudo systemctl restart lighttpd 
 echo Done
-
-#
-# PiJuice / TZ
-#
-#echo Registering RTC service
-#sudo cp scripts/rtc-sync.service /etc/systemd/system/
-#sudo systemctl daemon-reload 
-#sudo systemctl start rtc-sync
-#sudo systemctl enable rtc-sync
-
-# tzupdate (optional) to automatically set your timezone
-# pip install -U tzupdate
 
 

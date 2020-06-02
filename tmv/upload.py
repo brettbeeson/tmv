@@ -74,10 +74,10 @@ class S3Uploader(FileSystemEventHandler, Tomlable):
             self._pj = None
             self._pj = TMVPiJuice()
         except NameError as exc:
-            LOGGER.warning(f"No PiJuice available: {exc}")
+            LOGGER.info(f"No PiJuice available: {exc}")
         except BaseException as exc:
             # Not TEOTWAWKI - warn and move on
-            LOGGER.warning(f"No PiJuice available: {exc}")
+            LOGGER.info(f"No PiJuice available: {exc}")
 
     @property
     def s3(self):

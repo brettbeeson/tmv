@@ -48,7 +48,7 @@ setuptools.setup(
     # todo: change from boto to minio. boto is massive
     install_requires=['astral', 'toml', 'python-dateutil', 'pytimeparse',
                       'Pillow', 'watchdog', 'boto3', 'freezegun', 'nptime', 
-                      'Flask', 'flask-socketio','ascii_graph', 'datetimerange', 'psutil'],
+                      'Flask', 'flask-socketio','ascii_graph', 'datetimerange', 'psutil', 'RPi.GPIO'],
 
     python_requires='>=3.6',
 
