@@ -1,6 +1,7 @@
 "use strict";
 
 let ws;
+const TMV_SERVER = "http://home.brettbeeson.com.au/"
 
 function camera_switch(e) {
   let position = e.target.value;
@@ -31,11 +32,20 @@ $(document).ready(function () {
   // Redirect to http://localhost:80/index.php to pickup lighttpd server with raspap
   $("#wifi").on("click", function() {
     let raspap = $("#wifi").attr("href");
-      //window.open(raspap,"_blank");
-      window.open(raspap,"_self");
+      window.open(raspap,"_blank");
+      // window.open(raspap,"_self"); same window
   });
   $("#wifi").attr("href",location.protocol + "//" + location.hostname+ ":80/index.php")
   
+  $("#server").on("click", function() {
+    // force open in new tab
+    // set via camera_name
+    let server = $("#server").attr("href");    
+      window.open(server,"_blank");
+  });
+  
+  
+
   
   $("#services").on("click", function () {
     ws.emit("req_services_status");
@@ -88,6 +98,7 @@ $(document).ready(function () {
     ws.on("connect", function () {
       ws.emit("req_camera_config");
       ws.emit("req_switches");
+      ws.emit("req_camera_name");
     });
 
     ws.on("camera_config", msg =>editor.setValue(msg.toml));
@@ -108,6 +119,13 @@ $(document).ready(function () {
     ws.on("message", msg =>  toastr.info(msg));
   
     ws.on("warning", msg => toastr.warning(msg));
+
+    ws.on("camera_name", msg => {
+      $('#camera-name').text(msg);
+      document.title = "TMV - " + msg
+      $('#server').attr('href',TMV_SERVER + msg)
+      
+    });
     
     ws.on("files", function (msg) {
       let logta = $("#log-textarea");

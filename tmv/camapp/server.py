@@ -1,4 +1,5 @@
 import sys
+import socket
 from pathlib import Path
 from threading import Thread
 from base64 import b64encode
@@ -123,7 +124,12 @@ class Server(Namespace, Tomlable):
            # today = dt2str(dt.now().date())
             fls = []
             for d in self.file_root.glob("**/*"):
-                fls.append(str(d.relative_to(self.file_root)))
+                if d.is_file():
+                    fls.append("    " + str(d.relative_to(self.file_root)))
+                elif d.is_dir():
+                    fls.append(str(d.relative_to(self.file_root)) + "/")
+                else:
+                    fls.append("? " + str(d.relative_to(self.file_root)))
          #       if d.name == today:
          #           for f in d.glob("*"):
          #               fls.append(f"  -- {f}")
@@ -153,6 +159,12 @@ class Server(Namespace, Tomlable):
     @report_errors
     def on_raise_error(self):
         raise RuntimeError("Yes, Jim, it's a error you moron.")
+
+    @report_errors
+    def on_req_camera_name(self):
+        emit ('camera_name', socket.gethostname())
+         # str(uuid.getnode())
+            
 
     @report_errors
     def on_camera_config(self, configs):
