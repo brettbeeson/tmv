@@ -77,17 +77,17 @@ class Unit:
         dead
         """
 
-    def start(self, timeout=10):
+    def start(self, time_out=10):
         LOGGER.info(f"execute: systemctl start {self._service}")
-        tmv.util.run_and_capture(["sudo", "systemctl", "start", self._service], timeout=timeout)
+        tmv.util.run_and_capture(["sudo", "systemctl", "start", self._service], timeout=time_out)
 
-    def stop(self, timeout=10):
+    def stop(self, time_out=10):
         LOGGER.info(f"execute: systemctl stop {self._service}")
-        tmv.util.run_and_capture(["sudo", "systemctl", "stop", self._service], timeout=timeout)
+        tmv.util.run_and_capture(["sudo", "systemctl", "stop", self._service], timeout=time_out)
 
-    def restart(self, timeout=10):
+    def restart(self, time_out=10):
         LOGGER.info(f"execute: systemctl restart {self._service}")
-        tmv.util.run_and_capture(["sudo", "systemctl", "restart", self._service], timeout=timeout)
+        tmv.util.run_and_capture(["sudo", "systemctl", "restart", self._service], timeout=time_out)
 
 
 class OnOffAuto(Enum):

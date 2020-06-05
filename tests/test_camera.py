@@ -396,7 +396,7 @@ def test_calc_exposure_speed(monkeypatch, setup_test):
             off = false
             on = true
             interval = 1800 # 30min
-        calc_exposure_speed = true
+        calc_shutter_speed = true
         [camera.sensor]
             freq = 1800
             dark = 0.8
@@ -422,7 +422,7 @@ def test_calc_exposure_speed(monkeypatch, setup_test):
         # how to check?
 
 
-def test_fake2(monkeypatch, setup_test):
+def check_test_fake2(monkeypatch, setup_test):
     s = 3
     c = Camera()
     c.file_root = "./test_fake2/"

@@ -11,6 +11,10 @@ body {
         height: 20em;    
 }
 
+/* cropper.js */
+img {
+    max-width: 100%; /* This rule is very important, please do not ignore this! */
+  }
 
 .fixed-top-2 {
     margin-top: 56px;

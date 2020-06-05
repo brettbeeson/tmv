@@ -18,7 +18,7 @@ def test_software_controller_faked(monkeypatch, caplog):
             file = '/etc/tmv/upload-switch'   
     """
 
-    def fake_run(c):
+    def fake_run(c,timeout):
         LOGGER.info(f"running {c} fakely")
         return "", ""  # stdout, stderr
 

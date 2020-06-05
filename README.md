@@ -77,6 +77,19 @@ sudo scripts/install-tmv-videod.sh
 - If running locally, a port-forward on your router and a ddyn solution can be setup for external access
 - If using Route53 a simple option is (aws-dyndns](https://github.com/famzah/aws-dyndns)
 
+
+### Random Options for Connecting via AP
+- Force ap0 users to go to localhost:5000 (to see tmv-camapp) by 
+-- checking 50-tmv.conf (lighttpd): see notes in the file
+-- moving raspap (`mv /var/www/html/* /var/www/html/wifi/`) to enable it to escape the redirect
+-- modifying dnsmasq.conf:
+```
+# route all dns to our address!
+# server=8.8.8.8 
+address=/#/192.168.10.1
+```
+-- an iptables alterative (route anything on ap0 to localhost) to the lighttpd redirect might be better. Since need DNS queries to point to localhost via dnsmasq in this case (I figure).
+
 ### Improvements
 - Add DIM/DARK/LIGHT as an Overlay
 - Check for 0 length files

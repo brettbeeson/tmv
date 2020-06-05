@@ -23,6 +23,7 @@ import pytimeparse
 FONT_FILE = resource_filename(__name__, 'resources/FreeSans.ttf')
 HH_MM = "%H:%M"
 
+
 class LOG_LEVELS(Enum):
     """ Convenience for argparse / logging modules """
     DEBUG = 'DEBUG'
@@ -44,7 +45,7 @@ LOGGER = logging.getLogger("tmv.util")
 LOG_FORMAT = '%(levelname)-8s %(filename)-8s: %(message)s'
 LOG_FORMAT_DETAILED = '%(levelname)-8s pid %(process)s in %(filename)s,%(lineno)d (%(funcName)s): %(message)s'
 # Log time:
-#LOG_FORMAT = '%(asctime)s ' + LOG_FORMAT  
+#LOG_FORMAT = '%(asctime)s ' + LOG_FORMAT
 #LOG_FORMAT_DETAILED = '%(asctime)s ' + LOG_FORMAT_DETAILED
 
 
@@ -300,7 +301,7 @@ def check_internet(host="8.8.8.8", port=53, timeout=5):
         return False
 
 
-def run_and_capture(cl: list, log_filename=None,timeout=None):
+def run_and_capture(cl: list, log_filename=None, timeout=None):
     """
     Only for python <=3.6. Use "capture" keyword for >3.6
     cl: list of parameters, or str (will be split on " "; quotes are respected

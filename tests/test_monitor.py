@@ -22,7 +22,7 @@ def test_console(setup_debug):
         tunnel_console(cl)
     assert exc.value.code == 2
 
-def test_console_live(setup_debug):
+def no_test_console_live(setup_debug):
     # Test needs a loop tunnel to localhost and a ~/.id == coolhost:
     # ssh -N -R 0:localhost:22 localhost
     # echo coolhost > ~/.id

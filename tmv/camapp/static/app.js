@@ -24,6 +24,7 @@ $(document).ready(function () {
   toastr.options.positionClass = "toast-bottom-center";
 
   if ("WebSocket" in window) {
+    //connect("ws://localhost:5000");
     connect();
   } else {
     alert("WebSockets are NOT supported by your browser!");
@@ -77,21 +78,54 @@ $(document).ready(function () {
     ws.emit("req_camera_config");
   });
 
+  
+  
+  let cropper
+  let zoom
+  let cropbox
+  
+  $("#zoom").on("click",() => {  
+    $('#zoom-image').remove()
+    $('#zoom-image-div').append("<img id='zoom-image'/>")
+    let current_image_src = $('#image').attr("src")
+    $('#zoom-image').attr("src", current_image_src);
+   });
+  $("#modal-zoom").on("shown.bs.modal", function() {
+    // Only get the Cropper.js instance after initialized
+    var $image = $('#zoom-image');
+    $image.cropper({
+      viewMode: 2,
+      aspectRatio: 16 / 9,
+      crop: function(event) {
+        cropbox = event.detail // remember last crop
+    }});
+    cropper = $image.data('cropper');
+    $("#close-zoom").on("click",() => {
+      let img = cropper.getImageData()
+      zoom = [(cropbox.x / img.naturalWidth).toFixed(3), (cropbox.y / img.naturalHeight).toFixed(3), (cropbox.width / img.naturalWidth).toFixed(3), (cropbox.height / img.naturalHeight).toFixed(3)]
+      $("#zoom-result").val("zoom = [" + zoom + "]")      
+    });
+  });
 
-  function connect() {
+  function connect(uri) {
     if (ws) {
       if (ws.connected) {
         return;
       }
     }
     var loc = window.location;
-    var new_uri;
-    if (loc.protocol === "https:") {
-      new_uri = "wss:";
+    if (uri == undefined) {
+      // guess it's localhost
+      var new_uri;
+      if (loc.protocol === "https:") {
+        new_uri = "wss:";
+      } else {
+        new_uri = "ws:";
+      }
+      new_uri += "//" + loc.host;
     } else {
-      new_uri = "ws:";
+      new_uri = uri;
     }
-    new_uri += "//" + loc.host;
     toastr.info("Connecting to " + new_uri);
     ws = io(new_uri);
 
@@ -237,3 +271,11 @@ function _arrayBufferToBase64( buffer ) {
   }
   return window.btoa( binary );
 }
+
+function copyToClipboard(element) {
+  var $temp = $("<input>");
+  $("body").append($temp);
+  $temp.val($(element).html()).select();
+  document.execCommand("copy");
+  $temp.remove();
+ }

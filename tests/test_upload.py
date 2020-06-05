@@ -331,7 +331,8 @@ def test_id():
 
 
 def test_no_internet():
-    up = S3Uploader("s3://tmv.brettbeeson.com.au/tmp/", './upload_3/')
+  
+    up = S3Uploader(BUCKET + "/tmp/",'./upload_3/', profile=PROFILE, endpoint=ENDPOINT)
     up.move = True
     up.rm_dest("", recursive=True)
     observer = Observer()
@@ -358,7 +359,7 @@ def test_no_internet():
 
 
 def test_no_internet_2(monkeypatch):
-    up = S3Uploader("s3://tmv.brettbeeson.com.au/tmp/", './upload_3/')
+    up = S3Uploader(BUCKET + "/tmp/",'./upload_3/', profile=PROFILE, endpoint=ENDPOINT)
     up.internet_check_period = timedelta(seconds=0.5)
     up.move = True
     up.rm_dest("", recursive=True)

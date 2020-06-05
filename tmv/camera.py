@@ -577,7 +577,6 @@ class Camera(Tomlable):
         if 'camera' in config_dict:
             c = config_dict['camera']
 
-          
             if 'log_level' in c:
                 LOGGER.setLevel(c['log_level'])
 
@@ -646,9 +645,8 @@ class Camera(Tomlable):
             raise ConfigError("power_off ({}) must be longer than inactive_min ({}). "
                               .format(self.light_sensor.power_off, self.inactive_min))
         # todo: finsih
-        known_keys = ['log_level',]
-        unknown = ( k for k in c if k not in known_keys)
-
+        known_keys = ['log_level', ]
+        unknown = (k for k in c if k not in known_keys)
 
     def manual_override(self, on: bool):
         self.active_timer = ActiveTimes.factory(on, not on, self)
@@ -720,7 +718,9 @@ class Camera(Tomlable):
                     if self.calc_shutter_speed and settings['exposure_mode'] == 'off':
                         # exposure_speed: 'retrieve the current shutter speed'
                         # shutter_speeed is the requested value
-                        settings['shutter_speed'] = self.shutter_speed_from_sensor()
+                        settings['shutter_speed'] = self.shutter_speed_from_last()  
+                        if settings['shutter_speed'] is None:
+                            settings['shutter_speed'] = self.shutter_speed_from_sensor()
                     set_picam(self._camera, settings)
                     sleep_until(next_image_mark, dt.now())
                     self.capture_image(next_image_mark)
@@ -729,11 +729,27 @@ class Camera(Tomlable):
                     set_picam(self._camera, {** self.picam_defaults, ** self.picam_sensing})
                     sleep_until(next_sense_mark, instant)
                     self.capture_light(next_sense_mark)
-                    
+
+    def shutter_speed_from_last(self):
+        """ Return estimated shutter speed in usec based on trying to achieve a pixel
+            average of 0.5 on the last image, using linear interpolation """
+        if len(self.recent_images) == 0:
+            # LOGGER.debug("No recent images")
+            return None
+        last_image = self.recent_images[-1]
+        pa1 = last_image[3]
+        es1 = last_image[2]
+        if es1 is None or pa1 == 0:
+            # LOGGER.debug("No shutter speed or zero pixel average")
+            return None
+        pa2 = 0.5
+        es2 = pa2 * es1 / pa1
+        LOGGER.debug(f"pa1={pa1:.2f} es1={es1:0.2f} pa2={pa2:.2f} es2={es2:.2f}")
+        return int(es2)
 
     def shutter_speed_from_sensor(self):
-        """ Return estimated 'good' shutter (in whole microseconds) speed based on the sensor 
-        Empirical
+        """ Return estimated 'good' shutter (in whole microseconds) speed based on the sensor
+        Empirical and not very good: use shutter_speed_from_list where possible
         Linear: pixel_average     length
                  PA                SL
         Max:     0.0*             5s   
@@ -749,11 +765,11 @@ class Camera(Tomlable):
                      PA
 
         """
-        sl_min = 1 / 100 # 10,000us
+        sl_min = 1 / 100  # 10,000us
         sl_max = 5
         # sensor is insensitive
         # default definition of 'dark' is 0.05
-        pa_min = 0.05   
+        pa_min = 0.02
         pa_max = 0.0
         c = sl_max
         m = (sl_min - c) / (pa_min - pa_max)
@@ -762,8 +778,8 @@ class Camera(Tomlable):
         sl = min(sl_max, sl)
         sl = max(sl_min, sl)
         LOGGER.debug(f"pa={pa:.3f} M_sl={sl:0.3f} m={m:.2f} c={c:.2f}")
-        sl = int ( sl * 1000 * 1000)
-        
+        sl = int(sl * 1000 * 1000)
+
         return sl
 
     @staticmethod
@@ -783,9 +799,7 @@ class Camera(Tomlable):
             pil_image.save(image_filename)
 
     def capture_image(self, mark):
-        image_filename = self.dt2filename(mark)
-        self.recent_images.append((dt.now(), image_filename))
-        del self.recent_images[0:-10]  # trim to last 10 items
+
         start = dt.now()
         self._camera.led = True
         pil_image = self.capture()
@@ -793,6 +807,10 @@ class Camera(Tomlable):
 
         pa = image_pixel_average(pil_image)
         LOGGER.debug("CAPTURED mark: {} pa:{:.3f} took:{:.2f}".format(mark, pa, (dt.now() - start).total_seconds()))
+
+        image_filename = self.dt2filename(mark)
+        self.recent_images.append((dt.now(), image_filename, self._camera.exposure_speed, pa),)
+        del self.recent_images[0:-10]  # trim to last 10 items
 
         if self.save_images:
             self.apply_overlays(pil_image, mark)
@@ -812,6 +830,7 @@ class Camera(Tomlable):
         start = dt.now()
         pil_image = self.capture()
         pa = image_pixel_average(pil_image)
+
         ll = self.light_sensor._assess_level(pa)
         self.light_sensor.add_reading(mark, pa)
         LOGGER.debug("SENSED mark:{} pa:{:.3f} ll:{} took:{:.2f}".format(mark, pa, ll, (dt.now() - start).total_seconds()))
@@ -943,7 +962,8 @@ class FakePiCamera():
 
     def __init__(self):
         self.lum = 0
-        self.framerate=1
+        self.framerate = 1
+        self.exposure_speed = 0.1
 
     def close(self):
         pass
