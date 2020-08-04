@@ -13,6 +13,11 @@
 file_root = "/tmp/tmv"
 
 #
+# Hardlink a copy of the latest image - useful for tmv-camapp to display last image
+#
+latest_image = "latest-image.jpg"
+
+#
 # Time in seconds between images
 #
 #interval = 60.0
@@ -51,20 +56,73 @@ off = false
 #
 # City : 'auto' or a well-known city name for a local lookup
 #
-# city = 'Brisbane'
+city = 'Brisbane'
 
 #
 # [ "spinny", "image_name", "settings",]
 #
 # overlays = []
-overlays = [ "spinny", "image_name"]
-
+overlays = [ "spinny", "image_name","simple_settings"]
 
 #
-# Choose from DEBUG, INFO, WARNING, ERROR, CRITAL
+# Use the light sensor to estimate shutter speed
+# It is useful for long (>0.5s) speeds, otherwise use auto
+# Only applied to LIGHT|DIM|DARK settings when 'exposure_mode="off"''
+#
+#calc_shutter_speed = false
+calc_shutter_speed = true
+
+#
+# Camera logging: DEBUG, INFO, WARNING, ERROR, CRITAL
 #
 #log_level = 'WARNING'
 log_level = 'INFO'
+
+
+#
+#   LIGHT|DIM|DARK: settings passed to picam to override the defaults. See PiCamera API docs.
+#
+#    The defaults are which are:
+#       awb_mode= 'auto', #    'off','auto','sunlight','cloudy','shade','tungsten','fluorescent','incandescent','flash','horizon'
+#       exposure_mode= 'auto', # 'off','auto','night','nightpreview','backlight','spotlight','sports','snow','beach','verylong','fixedfps','antishake','fireworks'
+#       framerate= 30 # 1/30 max exposure time, 1/5 (5s exposure time) is the minimum.
+#       hflip= false,
+#       iso= 0,
+#       meter_mode= 'average',
+#       resolution: '640x480',
+#       rotation= 0,
+#       sharpness= 0,
+#       shutter_speed= 0,
+#       sensor_mode= 0,
+#       saturation= 0,
+#       still_stats= False,
+#       zoom= [0.0, 0.0, 1.0, 1.0],
+#       vflip = False
+#
+# These are set below to helpful options, not the default. 
+# Seperate entries for LIGHT, DIM and DARK are required: they are independent
+# Use "rotation = 180" to flip instead of vflip
+# Notes:
+# - Max exposure time is 1 / framerate, so you must reduce framerate from 30fps to get long exposure times
+# - Framerate < 0.20 appears to freeze the whole camera, so is not allowed
+# - In timelapse sequence, keep iso/mode/etc the same or you'll get blips on light-level change
+#
+[camera.picam.LIGHT]
+iso = 200
+exposure_mode = "auto"
+resolution = '1280x720'
+
+[camera.picam.DIM]
+iso = 200
+exposure_mode = "auto"
+framerate = 1.0 # max ss=1
+resolution = '1280x720'
+
+[camera.picam.DARK]
+iso = 1600
+exposure_mode = "night"
+framerate = 0.25 # max ss=4
+resolution = '1280x720'
 
 #
 #   The camera is used to sense light and determine the next photo's settings
@@ -83,47 +141,13 @@ log_level = 'INFO'
 #             won't turn off
 #
 [camera.sensor]
-power_off = 3600.0
-dark = 0.05
-freq = 60.0
-light = 0.2
-save_images = false
+#power_off = 3600.0
+#dark = 0.05
+#freq = 300 # 5 minutes
+#max_age = 1800 # 30 minutes
+#light = 0.2
+#save_images = false
 
-#
-#   LIGHT|DIM|DARK: settings passed to picam to override the defaults. See PiCamera API docs.
-#
-#    The defaults are which are:
-#       awb_mode= 'auto',
-#       exposure_mode= 'auto',
-#       framerate= 0.033 # 30 fps
-#       hflip= false,
-#       iso= 0,
-#       meter_mode= 'average',
-#       resolution: '640x480',
-#       rotation= 0,
-#       sharpness= 0,
-#       shutter_speed= 0,
-#       sensor_mode= 0,
-#       saturation= 0,
-#       still_stats= False,
-#       zoom= [0.0, 0.0, 1.0, 1.0],
-#       vflip = False
-#
-# Helpful options, not the default. Seperate entries for LIGHT, DIM and DARK are required.
-# rotation = 180 
-# resolution = '1280x720'
-#
-[camera.picam.LIGHT]
-iso = 200
-exposure_mode = "auto"
-
-[camera.picam.DIM]
-iso = 800
-exposure_mode = "night"
-
-[camera.picam.DARK]
-iso = 1600
-exposure_mode = "verylong"
 
 ###############################################################################
 # Controller: on the camera, control services which operate the camera and uploader
@@ -141,12 +165,7 @@ log_level = 'INFO'
 # - required
 # - alternatively, for hardware-based
 #    [controller.switches]
-#        [controller.switches.camera]
-#            pins = [10]    
-#        [controller.switches.upload]
-#            pins = [11,12]    
-
-[controller.switches]
+#        [coqueenswitches]
     [controller.switches.camera]
         file = '/etc/tmv/camera-switch'
     [controller.switches.upload]
@@ -166,7 +185,7 @@ log_level = 'INFO'
 # HOSTNAME : hostname of machine
 # (Source location is "file_root" in [camera])
 #
-destination = "s3://BUCKET-NAME-TO-SET/data/HOSTNAME/daily-photos"
+destination = "s3://BUCKET-NAME-TO-SET/HOSTNAME/daily-photos"
 
 #
 # Remove files after copy.

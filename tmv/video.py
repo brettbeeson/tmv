@@ -162,6 +162,8 @@ class VideoMaker:
         self.images = []
         n_errors = 0
         LOGGER.debug(f"Reading dates of {len(self._file_list)} files...")
+        LOGGER.debug(f"start: {self.start} end: {self.end} start_time:{self.start_time} end_time:{self.end_time}")
+        
         if not self._file_list:
             raise VideoMakerError("No image files found in command-line")
 

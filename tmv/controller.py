@@ -60,18 +60,34 @@ class Unit:
         except (CalledProcessError, KeyError):
             return False
 
-    def start(self):
-        # must be authorised. will throw
+    def status(self):
+        try:
+            return service_details(self._service)['status']
+        except KeyError:
+            return 'unknown'
+
+        """
+        Return systemd service detail
+        active
+        inactive
+        activating
+        deactivating
+        failed
+        not-found
+        dead
+        """
+
+    def start(self, time_out=10):
         LOGGER.info(f"execute: systemctl start {self._service}")
-        tmv.util.run_and_capture(["systemctl", "start", self._service])
+        tmv.util.run_and_capture(["sudo", "systemctl", "start", self._service], timeout=time_out)
 
-    def stop(self):
+    def stop(self, time_out=10):
         LOGGER.info(f"execute: systemctl stop {self._service}")
-        tmv.util.run_and_capture(["systemctl", "stop", self._service])
+        tmv.util.run_and_capture(["sudo", "systemctl", "stop", self._service], timeout=time_out)
 
-    def restart(self):
+    def restart(self, time_out=10):
         LOGGER.info(f"execute: systemctl restart {self._service}")
-        tmv.util.run_and_capture(["systemctl", "restart", self._service])
+        tmv.util.run_and_capture(["sudo", "systemctl", "restart", self._service], timeout=time_out)
 
 
 class OnOffAuto(Enum):
@@ -141,7 +157,7 @@ class SoftwareSwitch():
         """
         try:
             return OnOffAuto[self.switch_path.read_text(encoding='UTF-8').strip('\n').upper()]
-        except FileNotFoundError:
+        except (FileNotFoundError, KeyError):
             LOGGER.info(f"Creating {str(self.switch_path)}")
             self.switch_path.write_text(OFF.name)
             return OFF

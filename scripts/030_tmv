@@ -1,0 +1,5 @@
+pi 	ALL = NOPASSWD: /bin/systemctl stop tmv-camera
+pi 	ALL = NOPASSWD: /bin/systemctl start tmv-camera
+pi 	ALL = NOPASSWD: /bin/systemctl start tmv-upload
+pi 	ALL = NOPASSWD: /bin/systemctl stop tmv-upload
+pi 	ALL = NOPASSWD: /bin/systemctl restart tmv-upload

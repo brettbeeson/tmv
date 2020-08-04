@@ -5,6 +5,7 @@ After=systemd-networkd-wait-online.service
 
 # Try to restart forever!
 StartLimitIntervalSec=0   
+StartLimitInterval=0   
 
 [Service]
 # run as a user who has .ssh/id_rsa private key available (usually not root)

@@ -21,6 +21,7 @@ import toml
 import pytimeparse
 
 FONT_FILE = resource_filename(__name__, 'resources/FreeSans.ttf')
+HH_MM = "%H:%M"
 
 
 class LOG_LEVELS(Enum):
@@ -40,14 +41,18 @@ LOG_LEVEL_STRINGS = ['CRITICAL', 'ERROR', 'WARNING', 'INFO', 'DEBUG']
 
 LOGGER = logging.getLogger("tmv.util")
 
-LOG_FORMAT = '%(asctime)s %(levelname)-8s %(filename)-8s: %(message)s'
-LOG_FORMAT_DETAILED = '%(asctime)s %(levelname)-8s pid %(process)s in %(filename)s at %(funcName)s: %(message)s'
+
+LOG_FORMAT = '%(levelname)-8s %(filename)-8s: %(message)s'
+LOG_FORMAT_DETAILED = '%(levelname)-8s pid %(process)s in %(filename)s,%(lineno)d (%(funcName)s): %(message)s'
+# Log time:
+#LOG_FORMAT = '%(asctime)s ' + LOG_FORMAT
+#LOG_FORMAT_DETAILED = '%(asctime)s ' + LOG_FORMAT_DETAILED
+
 
 # Like RFC3339 but replace ':' with '-' to not wreck filenames
 DATETIME_FORMAT = "%Y-%m-%dT%H-%M-%S"
 DATE_FORMAT = "%Y-%m-%d"
 TIME_FORMAT = "%H:%M:%S"
-HH_MM = "%H:%M"
 
 
 class Tomlable:
@@ -107,7 +112,7 @@ def td2str(td):
 
 
 def dt2str(d):
-    """ Return a str from a datetime or date, in RFC3399-ish style (YYYY-MM-DDTHH-MM). Timezones ignored. """
+    """ Return a str from a datetime or date, in RFC3399-ish style (YYYY-MM-DDTHH-MM-SS or YYYY-MM-DD). Timezones ignored. """
     if isinstance(d, dt):
         return d.strftime(DATETIME_FORMAT)
     elif isinstance(d, date):
@@ -296,7 +301,7 @@ def check_internet(host="8.8.8.8", port=53, timeout=5):
         return False
 
 
-def run_and_capture(cl: list, log_filename=None):
+def run_and_capture(cl: list, log_filename=None, timeout=None):
     """
     Only for python <=3.6. Use "capture" keyword for >3.6
     cl: list of parameters, or str (will be split on " "; quotes are respected
@@ -305,7 +310,7 @@ def run_and_capture(cl: list, log_filename=None):
     if isinstance(cl, str):
         cl = cl.split(" ")  # shlex
     try:
-        proc = run(cl, encoding="UTF-8", stdout=PIPE, stderr=PIPE, check=False)
+        proc = run(cl, encoding="UTF-8", stdout=PIPE, stderr=PIPE, check=False, timeout=timeout)
     except OSError as e:
         raise OSError("Subprocess failed to even run: {}. Cause: {}".format(' '.join(cl), str(e)))
 

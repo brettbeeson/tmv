@@ -1,3 +1,2 @@
-include resources/videod.toml
-include resources/camera.toml
-include resources/FreeSans.ttf
+recursive-include tmv/resources/ *
+recursive-include tmv/camapp/static *

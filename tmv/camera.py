@@ -31,6 +31,8 @@ from tmv.controller import Switches, ON, OFF, AUTO
 
 LOGGER = logging.getLogger("tmv.camera")  # __name__
 
+DFLT_CAMERA_CONFIG_FILE = "/etc/tmv/camera.toml"
+
 try:
     # optional, for controling power with a PiJuice
     from tmv.pijuice import TMVPiJuice
@@ -164,11 +166,15 @@ class LightLevelSensor():
         else:
             return LightLevel.DIM
 
+    def pixel_average(self) -> float:
+        """ Return the latest pixel average, from a standard sensed image """
+        return self._levels[-1].pixel_average
+
     def add_reading(self, instant, pixel_average):
-        # Bit tricky: with debugging this, calling level()
+        # Caution: with debugging this, calling level()
         # will trim the list and confuse the shit out of you
         llr = LightLevelReading(
-            instant, calc_pixel_average, self._assess_level(pixel_average))
+            instant, pixel_average, self._assess_level(pixel_average))
         self._levels.append(llr)
 
     @property
@@ -524,10 +530,12 @@ class Camera(Tomlable):
         except (ImportError, NameError) as exc:
             self._pijuice = None
             print(exc)
+        self.calc_shutter_speed = False
         self.location = None
         self.recent_images = []
+        self.latest_image = "latest-image.jpg"
         self.run_start = None
-        self.light_sensor = LightLevelSensor(0.2, 0.05, timedelta(minutes=5), timedelta(seconds=60))
+        self.light_sensor = LightLevelSensor(0.2, 0.05, max_age=timedelta(minutes=30), freq=timedelta(minutes=5))
         self.light_sense_outstanding = False
         # just wait if less than this duration
         self.inactive_min = timedelta(minutes=30)
@@ -535,6 +543,7 @@ class Camera(Tomlable):
         self.active_timer = ActiveTimes.factory(on=True, off=False, camera=self)
         self.file_by_date = True
         self.save_images = True
+
         self.file_root = os.path.abspath(".")
         self.overlays = ['spinny', 'image_name', 'settings']
         self.camera_inactive_action = CameraInactiveAction.WAIT
@@ -564,7 +573,7 @@ class Camera(Tomlable):
         }
 
     def configd(self, config_dict):
-        
+
         if 'camera' in config_dict:
             c = config_dict['camera']
 
@@ -575,23 +584,25 @@ class Camera(Tomlable):
             self.setattr_from_dict('file_root', c)
             self.file_root = os.path.abspath(
                 os.path.expanduser(self.file_root))
+            self.setattr_from_dict('file_root', c)
             self.setattr_from_dict('overlays', c)
-            
+            self.setattr_from_dict('calc_shutter_speed', c)
+
             if 'city' in c:
                 # pylint: disable=no-else-raise
                 if c['city'] == 'auto':
                     raise NotImplementedError("city = 'auto' not implemented")
                 else:
                     self.location = lookup(c['city'], database())
-                    
+
             if 'camera_inactive_action' in c:
                 self.camera_inactive_action = CameraInactiveAction[c['camera_inactive_action']]
 
             if 'interval' in c:
                 # interval specified as seconds: convert to timedelta
                 self.interval = timedelta(seconds=c['interval'])
-                if self.interval.total_seconds() <= 2.0:
-                    LOGGER.warning("Intervals <= 2s are not tested")
+                if self.interval.total_seconds() < 10.0:
+                    LOGGER.warning("Intervals < 10s are not tested")
 
             if 'inactive_threshold' in c:
                 # inactive_threshold specified as seconds: convert to timedelta
@@ -611,8 +622,8 @@ class Camera(Tomlable):
                     if level_str in c['picam']:
                         self.picam[level_str] = c['picam'][level_str]
                         if 'framerate' in self.picam[level_str]:
-                            if self.picam[level_str]['framerate'] < 1:  # 1/6 is the minimum?
-                                raise ConfigError("framerate ={} is incorrect".format(
+                            if self.picam[level_str]['framerate'] < 0.20:  # 1/6 is the minimum, use 1/5 for safety
+                                raise ConfigError("framerate={} is < 1/5 s".format(
                                     self.picam[level_str]['framerate']))
 
             # config light sensor
@@ -633,6 +644,9 @@ class Camera(Tomlable):
             # Otherwise we will never power off
             raise ConfigError("power_off ({}) must be longer than inactive_min ({}). "
                               .format(self.light_sensor.power_off, self.inactive_min))
+        # todo: finsih
+        known_keys = ['log_level', ]
+        unknown = (k for k in c if k not in known_keys)
 
     def manual_override(self, on: bool):
         self.active_timer = ActiveTimes.factory(on, not on, self)
@@ -699,7 +713,15 @@ class Camera(Tomlable):
                     self.light_sense_outstanding = True
                 if next_image_mark <= next_sense_mark:
                     # capture image
-                    set_picam(self._camera, {** self.picam_defaults, ** self.picam[self.light_sensor.level.name]})
+                    settings = {** self.picam_defaults, ** self.picam[self.light_sensor.level.name]}
+                    LOGGER.debug(f"self.calc_shutter_speed={self.calc_shutter_speed} settings['exposure_mode'] ={settings['exposure_mode']}")
+                    if self.calc_shutter_speed and settings['exposure_mode'] == 'off':
+                        # exposure_speed: 'retrieve the current shutter speed'
+                        # shutter_speeed is the requested value
+                        settings['shutter_speed'] = self.shutter_speed_from_last()  
+                        if settings['shutter_speed'] is None:
+                            settings['shutter_speed'] = self.shutter_speed_from_sensor()
+                    set_picam(self._camera, settings)
                     sleep_until(next_image_mark, dt.now())
                     self.capture_image(next_image_mark)
                 else:
@@ -708,25 +730,99 @@ class Camera(Tomlable):
                     sleep_until(next_sense_mark, instant)
                     self.capture_light(next_sense_mark)
 
+    def shutter_speed_from_last(self):
+        """ Return estimated shutter speed in usec based on trying to achieve a pixel
+            average of 0.5 on the last image, using linear interpolation """
+        if len(self.recent_images) == 0:
+            # LOGGER.debug("No recent images")
+            return None
+        last_image = self.recent_images[-1]
+        pa1 = last_image[3]
+        es1 = last_image[2]
+        if es1 is None or pa1 == 0:
+            # LOGGER.debug("No shutter speed or zero pixel average")
+            return None
+        pa2 = 0.5
+        es2 = pa2 * es1 / pa1
+        LOGGER.debug(f"pa1={pa1:.2f} es1={es1:0.2f} pa2={pa2:.2f} es2={es2:.2f}")
+        return int(es2)
+
+    def shutter_speed_from_sensor(self):
+        """ Return estimated 'good' shutter (in whole microseconds) speed based on the sensor
+        Empirical and not very good: use shutter_speed_from_list where possible
+        Linear: pixel_average     length
+                 PA                SL
+        Max:     0.0*             5s   
+        Min      0.5              1/250
+        * fixed
+        SL = m * PA + c => c=max_length, m=min_length - c / (PA_min)
+
+          |           -------       }
+          |         /               } constrain between
+        SL|      /                  } max_length and min_length
+          |  ---                    }
+          |_____________________
+                     PA
+
+        """
+        sl_min = 1 / 100  # 10,000us
+        sl_max = 5
+        # sensor is insensitive
+        # default definition of 'dark' is 0.05
+        pa_min = 0.02
+        pa_max = 0.0
+        c = sl_max
+        m = (sl_min - c) / (pa_min - pa_max)
+        pa = self.light_sensor.pixel_average()
+        sl = m * pa + c
+        sl = min(sl_max, sl)
+        sl = max(sl_min, sl)
+        LOGGER.debug(f"pa={pa:.3f} M_sl={sl:0.3f} m={m:.2f} c={c:.2f}")
+        sl = int(sl * 1000 * 1000)
+
+        return sl
+
+    @staticmethod
+    def save_image(pil_image, image_filename):
+        try:
+            if (pil_image.size[0] * pil_image.size[1] == 0):
+                raise RuntimeError("Image has zero width or height")
+            pil_image.verify()
+        except Exception as exc:
+            LOGGER.warning(f"{image_filename} failed verify and is not saved: {exc}")
+            return
+        if os.path.dirname(image_filename) != '':
+            os.makedirs(os.path.dirname(image_filename), exist_ok=True)
+        if 'exif' in pil_image.info:
+            pil_image.save(image_filename, exif=pil_image.info['exif'])
+        else:
+            pil_image.save(image_filename)
+
     def capture_image(self, mark):
-        image_filename = self.dt2filename(mark)
-        self.recent_images.append((dt.now(), image_filename))
-        del self.recent_images[0:-10]  # trim to last 10 items
+
         start = dt.now()
         self._camera.led = True
         pil_image = self.capture()
         self._camera.led = False
 
         pa = image_pixel_average(pil_image)
-        LOGGER.debug("CAPTURED mark: {} pa:{:.3f} took:{:2f}".format(mark, pa, (dt.now() - start).total_seconds()))
+        LOGGER.debug("CAPTURED mark: {} pa:{:.3f} took:{:.2f}".format(mark, pa, (dt.now() - start).total_seconds()))
+
+        image_filename = self.dt2filename(mark)
+        self.recent_images.append((dt.now(), image_filename, self._camera.exposure_speed, pa),)
+        del self.recent_images[0:-10]  # trim to last 10 items
 
         if self.save_images:
-            os.makedirs(os.path.dirname(image_filename), exist_ok=True)
             self.apply_overlays(pil_image, mark)
-            if 'exif' in pil_image.info:
-                pil_image.save(image_filename, exif=pil_image.info['exif'])
-            else:
-                pil_image.save(image_filename)
+            self.save_image(pil_image, image_filename)
+            self.link_latest_image(image_filename)
+
+    def link_latest_image(self, image_filename):
+        """ Add hardlink to the specified image at a well-known location """
+        d = Path(self.file_root) / self.latest_image
+        if d.exists():
+            d.unlink()
+        os.link(image_filename, d)
 
     def capture_light(self, mark):
         image_filename = join(self.dt2dir(
@@ -734,17 +830,14 @@ class Camera(Tomlable):
         start = dt.now()
         pil_image = self.capture()
         pa = image_pixel_average(pil_image)
+
         ll = self.light_sensor._assess_level(pa)
         self.light_sensor.add_reading(mark, pa)
-        LOGGER.debug("SENSED mark: {} pa:{:.3f} ll:{} took:{:.2f}".format(mark, pa, ll, (dt.now() - start).total_seconds()))
+        LOGGER.debug("SENSED mark:{} pa:{:.3f} ll:{} took:{:.2f}".format(mark, pa, ll, (dt.now() - start).total_seconds()))
 
         if self.light_sensor.save_images:
             self.apply_overlays(pil_image, mark)
-            os.makedirs(os.path.dirname(image_filename), exist_ok=True)
-            if 'exif' in pil_image.info:
-                pil_image.save(image_filename, exif=pil_image.info['exif'])
-            else:
-                pil_image.save(image_filename)
+            self.save_image(pil_image, image_filename)
 
     def capture(self) -> Image:
         """ Capture sensor buffer to an in-memory stream"""
@@ -756,18 +849,20 @@ class Camera(Tomlable):
 
     def apply_overlays(self, im: Image, mark):
         """ Add dates, spinny, etc. Inplace."""
-        if image_pixel_average(im) > 0.5:
+        pxavg = image_pixel_average(im)
+        bg_colour = (128, 128, 128, 128)
+        if pxavg > 0.5:
             text_colour = (0, 0, 0)
         else:
             text_colour = (255, 255, 255)
         width, height = im.size
+        draw = ImageDraw.Draw(im)
 
         try:
             if 'settings' in self.overlays:
                 # Draw the picam's settings
-                draw = ImageDraw.Draw(im)
                 text = pformat(get_picam(self._camera))
-                text += "\n\npixel_average = {:.3f}".format(image_pixel_average(im))
+                text += "\n\npixel_average = {pxavg:.3f}"
                 text_size = 10
                 font = ImageFont.truetype(FONT_FILE, text_size, encoding='unic')
                 text_box_size = draw.textsize(text=text, font=font)
@@ -775,9 +870,23 @@ class Camera(Tomlable):
                 draw.text(
                     xy=(0, 0), text=text, fill=text_colour, font=font)
                 # centre text
+            if 'simple_settings' in self.overlays:
+                # Draw some of picam's settings
+                picam = get_picam(self._camera)
+                text = f"level={self.light_sensor._current_level} avg={pxavg:.3f}"
+                text += f" es {picam['exposure_speed']/1000000:.3f} iso={picam['iso']} exp={picam['exposure_mode']}"
+                text_size = 10
+                font = ImageFont.truetype(FONT_FILE, text_size, encoding='unic')
+                tw, th = draw.textsize(text=text, font=font)
+                # RHS
+                x = width - tw
+                # one line above bottom
+                y = height - th * 2
+                #draw.rectangle(xy=(x, y, x + tw, y + th), fill=bg_colour)
+                draw.text(xy=(x, y), text=text, fill=text_colour, font=font)
             if 'spinny' in self.overlays:
                 # Draw a small circle with a minute hand, for continuity checking. Plus it looks cool.
-                draw = ImageDraw.Draw(im)
+
                 dia = 30
                 # 1px off corner x    y              x
                 bounding_box = [(1, height - dia), (dia, height - 1)]
@@ -788,7 +897,6 @@ class Camera(Tomlable):
             if 'image_name' in self.overlays:
                 text = os.path.basename(self.dt2basename(mark))
                 text_size = 10
-                LOGGER.debug(f"FONT_FILE={FONT_FILE}")
                 font = ImageFont.truetype(FONT_FILE, text_size, encoding='unic')
                 # Get the size of the time to write, so we can correctly place it
                 text_box_size = draw.textsize(text=text, font=font)
@@ -854,6 +962,8 @@ class FakePiCamera():
 
     def __init__(self):
         self.lum = 0
+        self.framerate = 1
+        self.exposure_speed = 0.1
 
     def close(self):
         pass
@@ -1039,8 +1149,11 @@ def camera_console(cl_args=sys.argv[1:]):
         LOGGER.error(e)
         LOGGER.debug(e, exc_info=e)
     finally:
-        # probably can remove?
+        # workaround bug: https://github.com/waveform80/picamera/issues/528
         if cam._camera is not None:
+            LOGGER.info("Closing camera. Setting framerate = 1 to avoid close bug")
+            cam._camera.framerate = 1
             cam._camera.close()
+            time.sleep(1)
 
     sys.exit(retval)
