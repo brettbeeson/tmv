@@ -177,7 +177,7 @@ def test_preview_videos(setup_test):
 def test_diagonal_videos(setup_test_cal_cross):
     logging.basicConfig(format=LOG_FORMAT)
     logging.getLogger("tmv.video").setLevel(logging.DEBUG)
-    
+
     c = """
         [diagonal-videos]
         sliceage = "1 hour"
@@ -197,7 +197,7 @@ def test_diagonal_videos(setup_test_cal_cross):
     assert vi.frames == pytest.approx(365, abs=1)
     fi = VideoInfo(f)
     assert fi.fps == 25
-    
+
 
 def test_console(daily_photos):
     # Default config should:
@@ -258,6 +258,18 @@ def test_recap_after_finish(daily_photos):
         # 3 recaps, 3 preview
         assert len(list(Path("recap-videos").glob("*.mp4"))) == 3
         assert len(list(Path("recap-videos/previews").glob("*.mp4"))) == 3
+
+
+def test_mostrecent(setup_test):
+    c = """
+        [most-recent]
+        """
+    vd = TaskRunner()
+    vd.raise_task_exceptions = True
+    vd.configs(c)
+    vd.run_tasks()
+    #f = Path("diagonal-videos/diagonal-all.mp4")
+    #assert f.is_file()
 
 
 def test_sched(setup_test):

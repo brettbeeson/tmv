@@ -19,6 +19,7 @@ TEST_DATA = Path(__file__).parent / "testdata"
 TEST_FILES_1 = Path("upload_1")
 TEST_FILES_2 = Path("upload_2")
 TEST_FILES_3 = Path("upload_3")
+TEST_FILES_4 = Path("upload_4")
 
 PROFILE = 'minio'
 ENDPOINT = 'http://cat2:9000'
@@ -37,6 +38,7 @@ def setup_function():
     shutil.copytree(TEST_DATA / TEST_FILES_1, TEST_FILES_1)
     shutil.copytree(TEST_DATA / TEST_FILES_2, TEST_FILES_2)
     shutil.copytree(TEST_DATA / TEST_FILES_3, TEST_FILES_3)
+    shutil.copytree(TEST_DATA / TEST_FILES_4, TEST_FILES_4)
 
 
 def test_s3():
@@ -224,26 +226,31 @@ def test_S3Uploader():
     (TEST_FILES_3 / "new1.jpg").touch()
     (TEST_FILES_3 / "new2.jpg").touch()
     (TEST_FILES_3 / "dir1" / "new3.jpg").touch()
-    sleep(2)  # daemon runs
+    sleep(5)  # daemon runs
     files_uploaded = up.list_bucket_objects()
     assert len(files_uploaded) == 6  # 3 new files
     up.rm_dest("", True)
 
 
-def test_upload_2(caplog):
+def test_latest_image(caplog):
+    """ check we don't update latest-image.jpg """
     c = """
     [camera]
-        file_root = './test_files_3/'
-        image_suffix = '.jpg'
+        file_root = 'upload_4/'
+
+        file_filter = '*.jpg'
     [upload]
-        destination = '""" + BUCKET + """//'
+        destination = '""" + BUCKET + """/tmp/'
+        move = true
+        profile = '""" + PROFILE + """'
+        endpoint = '""" + ENDPOINT + """'
     """
     up = S3Uploader()
     up.configs(c)
-    assert up._dest_bucket == BUCKET_NAME
-    assert up._dest_root == ''
-    # don't upload and pollute root dir
-
+    up.upload()
+    assert Path("upload_4/latest-image.jpg").exists()
+    up.rm_dest("", True)
+    
 
 def test_errors():
     up = S3Uploader()
@@ -324,14 +331,15 @@ def test_id():
 
 
 def test_no_internet():
-    up = S3Uploader("s3://tmv.brettbeeson.com.au/tmp/", './upload_3/')
+  
+    up = S3Uploader(BUCKET + "/tmp/",'./upload_3/', profile=PROFILE, endpoint=ENDPOINT)
     up.move = True
     up.rm_dest("", recursive=True)
     observer = Observer()
     observer.schedule(up, up.file_root, recursive=True)
     observer.start()
     (TEST_FILES_3 / "touched1.jpg").touch()  # upload this
-    sleep(2)
+    sleep(5)
     assert len(up.list_bucket_objects()) == 1
     observer.stop()
     (TEST_FILES_3 / "touched2.jpg").touch()  # don't upload this
@@ -339,10 +347,10 @@ def test_no_internet():
     observer = Observer()
     observer.schedule(up, up.file_root, recursive=True)
     observer.start()
-    sleep(1)
+    sleep(3)
     assert len(up.list_bucket_objects()) == 1
     (TEST_FILES_3 / "touched3.jpg").touch()  # upload this
-    sleep(2)
+    sleep(3)
     files_uploaded = up.list_bucket_objects()
     assert len(files_uploaded) == 2
     up.upload()  # touched2 which was missed, plus original 3 for a total of 4
@@ -351,32 +359,32 @@ def test_no_internet():
 
 
 def test_no_internet_2(monkeypatch):
-    up = S3Uploader("s3://tmv.brettbeeson.com.au/tmp/", './upload_3/')
+    up = S3Uploader(BUCKET + "/tmp/",'./upload_3/', profile=PROFILE, endpoint=ENDPOINT)
     up.internet_check_period = timedelta(seconds=0.5)
     up.move = True
     up.rm_dest("", recursive=True)
     up.upload()
     daemon = threading.Thread(target=up.daemon, daemon=True)
     daemon.start()
-    sleep(1)
-    (TEST_FILES_3 / "touched1.jpg").touch()  # upload this
     sleep(2)
+    (TEST_FILES_3 / "touched1.jpg").touch()  # upload this
+    sleep(4)
     files_uploaded = up.list_bucket_objects()
     assert len(files_uploaded) == 4
     # force internet to fail
     up.internet = lambda: False
     # internet fails in daemon
-    sleep(1)
+    sleep(4)
     (TEST_FILES_3 / "touched2.jpg").touch()  # don't upload this yet
-    sleep(1)
+    sleep(4)
     files_uploaded = up.list_bucket_objects()
     assert len(files_uploaded) == 4
     # restart - should upload touched2
     up.internet = lambda: True
-    sleep(2)
+    sleep(4)
     files_uploaded = up.list_bucket_objects()
     assert len(files_uploaded) == 5
     (TEST_FILES_3 / "touched3.jpg").touch()  # upload this
-    sleep(1)
+    sleep(3)
     files_uploaded = up.list_bucket_objects()
     assert len(files_uploaded) == 5
