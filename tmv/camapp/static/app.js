@@ -86,6 +86,7 @@ $(document).ready(function () {
   
   $("#zoom").on("click",() => {  
     $('#zoom-image').remove()
+    $('#zoom-image-div').empty()
     $('#zoom-image-div').append("<img id='zoom-image'/>")
     let current_image_src = $('#image').attr("src")
     $('#zoom-image').attr("src", current_image_src);
@@ -93,9 +94,10 @@ $(document).ready(function () {
   $("#modal-zoom").on("shown.bs.modal", function() {
     // Only get the Cropper.js instance after initialized
     var $image = $('#zoom-image');
+    
     $image.cropper({
       viewMode: 2,
-      aspectRatio: 16 / 9,
+      aspectRatio: $image.width() / $image.height(),
       crop: function(event) {
         cropbox = event.detail // remember last crop
     }});

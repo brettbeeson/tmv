@@ -525,6 +525,7 @@ class Camera(Tomlable):
     def __init__(self):
         self._camera = None
         self._pijuice = None
+        self.led = False
         try:
             self._pijuice = TMVPiJuice()
         except (ImportError, NameError) as exc:
@@ -580,6 +581,7 @@ class Camera(Tomlable):
             if 'log_level' in c:
                 LOGGER.setLevel(c['log_level'])
 
+            self.setattr_from_dict('led', c)
             self.setattr_from_dict('file_by_date', c)
             self.setattr_from_dict('file_root', c)
             self.file_root = os.path.abspath(
@@ -714,13 +716,14 @@ class Camera(Tomlable):
                 if next_image_mark <= next_sense_mark:
                     # capture image
                     settings = {** self.picam_defaults, ** self.picam[self.light_sensor.level.name]}
-                    LOGGER.debug(f"self.calc_shutter_speed={self.calc_shutter_speed} settings['exposure_mode'] ={settings['exposure_mode']}")
+                    LOGGER.debug(f"self.calc_shutter_speed={self.calc_shutter_speed} settings['exposure_mode']={settings['exposure_mode']}")
                     if self.calc_shutter_speed and settings['exposure_mode'] == 'off':
                         # exposure_speed: 'retrieve the current shutter speed'
                         # shutter_speeed is the requested value
                         settings['shutter_speed'] = self.shutter_speed_from_last()  
                         if settings['shutter_speed'] is None:
                             settings['shutter_speed'] = self.shutter_speed_from_sensor()
+                    LOGGER.debug(settings)
                     set_picam(self._camera, settings)
                     sleep_until(next_image_mark, dt.now())
                     self.capture_image(next_image_mark)
@@ -734,14 +737,17 @@ class Camera(Tomlable):
         """ Return estimated shutter speed in usec based on trying to achieve a pixel
             average of 0.5 on the last image, using linear interpolation """
         if len(self.recent_images) == 0:
-            # LOGGER.debug("No recent images")
+            LOGGER.debug("No recent images")
             return None
         last_image = self.recent_images[-1]
         pa1 = last_image[3]
         es1 = last_image[2]
-        if es1 is None or pa1 == 0:
-            # LOGGER.debug("No shutter speed or zero pixel average")
+        if es1 is None:
+            LOGGER.debug("No shutter speed")
             return None
+        if pa1 == 0:
+            LOGGER.debug("Pixel average is zero")
+            return 999
         pa2 = 0.5
         es2 = pa2 * es1 / pa1
         LOGGER.debug(f"pa1={pa1:.2f} es1={es1:0.2f} pa2={pa2:.2f} es2={es2:.2f}")
@@ -801,9 +807,12 @@ class Camera(Tomlable):
     def capture_image(self, mark):
 
         start = dt.now()
-        self._camera.led = True
+
+        if self.led:
+            self._camera.led = True
         pil_image = self.capture()
-        self._camera.led = False
+        if self.led:
+            self._camera.led = False
 
         pa = image_pixel_average(pil_image)
         LOGGER.debug("CAPTURED mark: {} pa:{:.3f} took:{:.2f}".format(mark, pa, (dt.now() - start).total_seconds()))

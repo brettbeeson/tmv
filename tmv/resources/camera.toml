@@ -78,6 +78,10 @@ calc_shutter_speed = true
 #log_level = 'WARNING'
 log_level = 'INFO'
 
+#
+# Show the LED when camera is taking a photo
+#
+#led = false
 
 #
 #   LIGHT|DIM|DARK: settings passed to picam to override the defaults. See PiCamera API docs.
@@ -106,6 +110,13 @@ log_level = 'INFO'
 # - Max exposure time is 1 / framerate, so you must reduce framerate from 30fps to get long exposure times
 # - Framerate < 0.20 appears to freeze the whole camera, so is not allowed
 # - In timelapse sequence, keep iso/mode/etc the same or you'll get blips on light-level change
+# - See https://picamera.readthedocs.io/en/release-1.12/fov.html for resolutions
+# -- v1: 
+# ---- 4:3  --> 2592x1944 or 1296x972 or 640x480
+# ---- 16:9 --> 1920x108  or 1296x730 
+# -- v2:
+# ---- 4:3  --> 3280x2464 or 1640x1232 or 640x480
+# ---- 16:9 --> 1920x1080 (partial FOV) or 1640x922 (full FOV) or 1280x720 (partial) FOV
 #
 [camera.picam.LIGHT]
 iso = 200

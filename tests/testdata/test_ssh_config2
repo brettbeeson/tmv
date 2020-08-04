@@ -1,0 +1,44 @@
+HOST *pi*
+	USER pi
+HOST tripod
+	USER pi
+
+HOST 192.168.0.8
+	USER pi
+
+HOST *box*
+	USER pi
+
+HOST live2.phisaver.com
+	USER ubuntu
+
+HOST brettbeeson.com.au
+	USER ec2-user
+HOST live.phisaver.com
+	USER ec2-user
+
+Host lunchboxremote
+        HostName  localhost
+        ProxyJump ec2-user@live.phisaver.com
+        User pi
+	Port 38121
+
+Host lunchboxtunnel80
+        HostName  localhost
+        ProxyJump ec2-user@live.phisaver.com
+        User pi
+	Port 38121
+        LocalForward 8080 localhost:80
+
+Host lunchboxtunnel5000
+        HostName  localhost
+        ProxyJump ec2-user@live.phisaver.com
+        User pi
+	Port 39595
+        LocalForward 5000 localhost:5000
+
+
+Host queen
+  HostName 127.0.0.1
+  Port 45291
+  User bbeeson
