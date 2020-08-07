@@ -737,6 +737,7 @@ class Camera(Tomlable):
         """ Return estimated shutter speed in usec based on trying to achieve a pixel
             average of 0.5 on the last image, using linear interpolation """
         if len(self.recent_images) == 0:
+            # LOGGER.debug("No recent images")
             LOGGER.debug("No recent images")
             return None
         last_image = self.recent_images[-1]

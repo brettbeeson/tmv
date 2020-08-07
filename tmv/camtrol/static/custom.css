@@ -1,0 +1,39 @@
+/* Show it is fixed to the top */
+body {
+    padding-top: 100px;
+    padding-bottom: 65px;
+}
+
+/*( ACE */
+#editor { 
+        position:  relative;
+        width: 100%;
+        height: 20em;    
+}
+
+
+.fixed-top-2 {
+    margin-top: 56px;
+}
+
+#topalert{
+    margin-bottom: 0rem;
+    padding-top: 0.2rem;
+    padding-bottom: 0.2rem;
+    background-color: #cce5ff;
+}
+
+.text-smaller {
+    font-size: x-small;
+    white-space: pre;
+    overflow-wrap: normal;
+    overflow-x: scroll;
+
+}
+
+.toast-top-right { 
+    margin-top:75px;
+    
+} 
+
+

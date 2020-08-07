@@ -57,8 +57,10 @@ Refer to the docs, but briefly:
 - `sudo tmv-control auto on` to set camera to auto, and uploads to on
 - `journalctl -f -u 'tmv*'` to check logs in operation
 
-## Server 
+## Server
 Tested on Ubuntu 18, but likely to work on most linux. It converts photos to videos and optionally stores them.
+
+#### Server - store files, make videos
 - Install [Minio](https://minio.io) to store your images. You could use any s3 server either local or remote (e.g. AWS)
 - Install as a [service script](https://github.com/minio/minio-service/tree/master/linux-systemd). Typically you'll store at /var/s3/my.tmv.bucket
 ```
@@ -76,7 +78,15 @@ sudo scripts/install-tmv-videod.sh
 
 ```
 
-#### Configure Server 
+#### Server - serve videos via web server
+Any server is ok. I use nginx.
+```
+sudo apt install -y nginx
+rm /etc/nginx/sites-enabled/default
+sudo cp scripts/tmv.ngnix tmv/etc/nginx/sites-enabled/
+sudo systemctl start nginx
+```
+Browse to [localhost](http://localhost) to view files via the nice h5ai javascript interface. Browse to [localhost:9000](http://localhost:9000) to see minio interface.
 
 #### Further Configure Server (Optional)
 - If running locally, a port-forward on your router and a ddyn solution can be setup for external access

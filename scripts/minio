@@ -1,0 +1,10 @@
+# usually in /etc/default/minio
+# Use if you want to run MinIO on a custom port.
+MINIO_OPTS="--address :9000"
+# Access Key of the server.
+MINIO_ACCESS_KEY=minio
+# Secret key of the server.
+MINIO_SECRET_KEY=secret
+# Volume to be used for MinIO server.
+MINIO_VOLUMES="/var/minio/"
+
