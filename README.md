@@ -60,12 +60,17 @@ Refer to the docs, but briefly:
 ## Server 
 Tested on Ubuntu 18, but likely to work on most linux. It converts photos to videos and optionally stores them.
 - Install [Minio](https://minio.io) to store your images. You could use any s3 server either local or remote (e.g. AWS)
-- (Typically you'll store at /var/s3/my.tmv.bucket)
+- Install as a [service script](https://github.com/minio/minio-service/tree/master/linux-systemd). Typically you'll store at /var/s3/my.tmv.bucket
+```
+cd ~/tmv
+sudo scripts/install-minio.sh
+```
+
 ```
 sudo apt install -y python3-pip vim git 
 git clone https://github.com/brettbeeson/tmv
 cd tmv
-sudo python3 -m pip install setup.py
+sudo python3 -m pip install .
 mkdir tmv-data
 sudo scripts/install-tmv-videod.sh                 
 
