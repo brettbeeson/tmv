@@ -11,6 +11,7 @@ import time
 import os
 from os.path import join
 import logging
+from subprocess import CalledProcessError
 from collections.abc import MutableSequence
 from pprint import pformat
 from pathlib import Path
@@ -27,7 +28,7 @@ from astral.sun import sun
 from tmv.util import penultimate_unique, next_mark, LOG_FORMAT, LOG_LEVELS
 from tmv.util import Tomlable, setattrs_from_dict, sleep_until, FONT_FILE
 from tmv.exceptions import ConfigError, PiJuiceError, SignalException, CameraError, PowerOff
-from tmv.controller import Switches, ON, OFF, AUTO
+from tmv.controller import Switches, ON, OFF, AUTO, OnOffAuto, Unit
 
 LOGGER = logging.getLogger("tmv.camera")  # __name__
 
@@ -581,7 +582,7 @@ class Camera(Tomlable):
             if 'log_level' in c:
                 LOGGER.setLevel(c['log_level'])
 
-            self.setattr_from_dict('led', c)
+            #self.setattr_from_dict('led', c)
             self.setattr_from_dict('file_by_date', c)
             self.setattr_from_dict('file_root', c)
             self.file_root = os.path.abspath(
@@ -661,9 +662,10 @@ class Camera(Tomlable):
         Main loop. May shutdown machine if required.
         """
         if self._camera is None:
-            try:
+            try: 
                 LOGGER.debug("Picamera() start")
-                self._camera = PiCamera(led_pin=40)  # PiZero's BCM GPIO40 is the camera's LED
+                #self._camera = PiCamera(led_pin=40)  # PiZero's BCM GPIO40 is the camera's LED
+                self._camera = PiCamera() #led_pin=40)  # PiZero's BCM GPIO40 is the camera's LED
                 LOGGER.debug("Picamera() returned")
             except Exception:
                 raise CameraError("No camera hardware available")
@@ -809,11 +811,11 @@ class Camera(Tomlable):
 
         start = dt.now()
 
-        if self.led:
-            self._camera.led = True
+        #if self.led:
+        #    self._camera.led = True
         pil_image = self.capture()
-        if self.led:
-            self._camera.led = False
+        #if self.led:
+        #    self._camera.led = False
 
         pa = image_pixel_average(pil_image)
         LOGGER.debug("CAPTURED mark: {} pa:{:.3f} took:{:.2f}".format(mark, pa, (dt.now() - start).total_seconds()))
@@ -860,7 +862,7 @@ class Camera(Tomlable):
     def apply_overlays(self, im: Image, mark):
         """ Add dates, spinny, etc. Inplace."""
         pxavg = image_pixel_average(im)
-        bg_colour = (128, 128, 128, 128)
+        #bg_colour = (128, 128, 128, 128)
         if pxavg > 0.5:
             text_colour = (0, 0, 0)
         else:
@@ -956,6 +958,8 @@ class Camera(Tomlable):
             else:
                 raise PiJuiceError("No pijuice available")
         elif self.camera_inactive_action == CameraInactiveAction.WAIT:
+            # "Light" sleep : monitor switches is case wakeup is called
+
             LOGGER.info(
                 "Camera inactive. Waiting until {}".format(wakeup))
             sleep_until(wakeup, dt.now())
@@ -1094,6 +1098,59 @@ def sig_handler(signal_received, frame):
     raise SignalException
 
 
+
+def camera_switches_console(cl_args=sys.argv[1:]):
+    try:
+        parser = argparse.ArgumentParser(
+            "Check and control camera switches.")
+        parser.add_argument('-c', '--config-file')
+        parser.add_argument('-v', '--verbose', action="store_true")
+        parser.add_argument('-r', '--restart', action="store_true", help="restart service to (e.g.) turn on camera if inactive")
+        parser.add_argument('camera', type=OnOffAuto, choices=list(OnOffAuto), nargs="?")
+        parser.add_argument('upload', type=OnOffAuto, choices=list(OnOffAuto), nargs="?")
+        args = (parser.parse_args(cl_args))
+        switches = Switches()
+        if args.config_file:
+            switches.config(args.config_file)
+        else:
+            switches.configs(Switches.DLFT_SW_CONFIG)
+
+        if args.verbose:
+            print(f"Start state of switches: {switches}")
+        if args.camera:
+            switches['camera'] = args.camera
+        if args.upload:
+            switches['upload'] = args.upload
+        if not args.camera and not args.upload:
+            print(switches['camera'])
+            print(switches['upload'])
+        if args.verbose:
+            print(f"Finish state of switches: {switches}")
+        if args.restart:
+            if args.verbose:
+                print("Restarting tmv-controller")
+            ctlr = Unit("tmv-controller.service")
+            ctlr.restart()
+        sys.exit(0)
+
+    except PermissionError as exc:
+        print(f"{exc}: check your file access  permissions. Try root.", file=sys.stderr)
+        if args.verbose:
+            raise  # to get stack trace
+        sys.exit(10)
+    except CalledProcessError as exc:
+        print(f"{exc}: check your execute systemd permissions. Try root.", file=sys.stderr)
+        if args.verbose:
+            raise  # to get stack trace
+        sys.exit(20)
+    except Exception as exc:
+        print(exc, file=sys.stderr)
+        if args.verbose:
+            raise  # to get stack trace
+        sys.exit(30)
+
+
+
 def camera_console(cl_args=sys.argv[1:]):
     # pylint: disable=broad-except
     retval = 0
@@ -1167,3 +1224,4 @@ def camera_console(cl_args=sys.argv[1:]):
             time.sleep(1)
 
     sys.exit(retval)
+
