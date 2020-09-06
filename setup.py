@@ -24,6 +24,7 @@ setuptools.setup(
     entry_points={
         'console_scripts': [
             "tmv-camera=tmv.camera:camera_console",
+            "tmv-camera-switches = tmv.camera:camera_switches_console",
             "tmv-video-compile=tmv.video:video_compile_console",
             "tmv-video-join=tmv.video:video_join_console",
             "tmv-video-info=tmv.videotools:video_info_console",
@@ -33,7 +34,7 @@ setuptools.setup(
             "tmv-influx-stats=tmv.util:influx_stats_console",
             "tmv-upload=tmv.upload:upload_console",
             "tmv-controller=tmv.controller:controller_console",
-            "tmv-control = tmv.controller:control_console",
+            
             "tmv-tunnel = tmv.monitor:tunnel_console",
         ],
     },

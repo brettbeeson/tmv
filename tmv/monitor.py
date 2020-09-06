@@ -5,6 +5,7 @@ import socket
 import sys
 import argparse
 import logging
+from enum import Enum
 from pathlib import Path
 from getpass import getuser
 from subprocess import run, CalledProcessError, PIPE
@@ -39,9 +40,9 @@ class LOG_LEVELS(Enum):
         return [l.name for l in list(LOG_LEVELS)]
 
 
-
 class SSHTunnel:
     """ Represent a tunnel """
+
     def __init__(self, port, ip, pid):
         self.port = port
         self.ip = ip
@@ -67,7 +68,7 @@ class SSHTunnels():
 
     def __init__(self, users=None, ports=(PORT_MIN, PORT_MAX), id_rsa=None, local_listeners_only=False):
         self.ssh_options = ["-o", "StrictHostKeyChecking=no", "-o", "PasswordAuthentication=no"]
-        # "-o", "ConnectTimeout=5", "-o", "ForwardX11=no", 
+        # "-o", "ConnectTimeout=5", "-o", "ForwardX11=no",
         if id_rsa:
             if not Path(id_rsa).is_file():
                 raise FileNotFoundError(f"id_rsa specified not found: {id_rsa}")
@@ -95,9 +96,8 @@ class SSHTunnels():
 
                     self._tunnels.append(tunnel)
 
-        
         self.users = users or [getuser()]
-        
+
         self.interrogate()
 
         self._tunnels = list(t for t in self._tunnels if t.valid)
@@ -246,11 +246,9 @@ def shun_jumpy_console(cl=sys.argv[1:]):
         parser.add_argument("--ports", type=int, nargs=2, metavar=('first', 'last'), default=(PORT_MIN, PORT_MAX))
         parser.add_argument("--id-rsa", type=str, help="Filename of private key if non-standard.")
         parser.add_argument("--dry-run", action='store_true', help="Don't connect, just print connection we would have used")
-        
 
         args = parser.parse_args(cl)
         logging.basicConfig(format='%(levelname)-8s %(filename)-8s: %(message)s')
-)
         LOGGER.setLevel(args.log_level)
 
         if not geteuid() == 0:
@@ -300,11 +298,9 @@ def shun_find_console(cl=sys.argv[1:]):
         parser.add_argument("--ports", type=int, nargs=2, metavar=('first', 'last'), default=(PORT_MIN, PORT_MAX))
         parser.add_argument("--id-rsa", type=str, help="Filename of private key if non-standard.")
         parser.add_argument("--dry-run", action='store_true', help="Don't connect, just print connection we would have used")
-        
 
         args = parser.parse_args(cl)
         logging.basicConfig(format='%(levelname)-8s %(filename)-8s: %(message)s')
-)
         LOGGER.setLevel(args.log_level)
 
         if not geteuid() == 0:
@@ -341,6 +337,7 @@ def shun_find_console(cl=sys.argv[1:]):
         LOGGER.debug(exc, exc_info=exc)
         print(exc, file=sys.stderr)
         sys.exit(2)
+
 
 def shun_connect_console(cl=sys.argv[1:]):
     try:
@@ -358,7 +355,6 @@ def shun_connect_console(cl=sys.argv[1:]):
 
         args = parser.parse_args(cl)
         logging.basicConfig(format='%(levelname)-8s %(filename)-8s: %(message)s')
-)
         LOGGER.setLevel(args.log_level)
 
         if not geteuid() == 0:
@@ -395,7 +391,3 @@ def shun_connect_console(cl=sys.argv[1:]):
         LOGGER.debug(exc, exc_info=exc)
         print(exc, file=sys.stderr)
         sys.exit(2)
-
-
-if __name__ == '__main__':
-    tunnel_console()

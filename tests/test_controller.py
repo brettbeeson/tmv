@@ -2,7 +2,7 @@
 from pathlib import Path
 import logging
 from os import chdir, getcwd
-from tmv.controller import AUTO, Controller, LOGGER, OFF, ON, Switches, control_console, Unit
+from tmv.controller import AUTO, Controller, LOGGER, OFF, ON, Switches, Unit
 from tmv.util import LOG_FORMAT
 import tmv
 from tempfile import TemporaryDirectory

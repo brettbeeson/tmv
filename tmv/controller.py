@@ -66,17 +66,6 @@ class Unit:
         except KeyError:
             return 'unknown'
 
-        """
-        Return systemd service detail
-        active
-        inactive
-        activating
-        deactivating
-        failed
-        not-found
-        dead
-        """
-
     def start(self, time_out=10):
         LOGGER.info(f"execute: systemctl start {self._service}")
         tmv.util.run_and_capture(["sudo", "systemctl", "start", self._service], timeout=time_out)
@@ -111,28 +100,31 @@ class HardwareSwitch():
     def __init__(self, pins: list):
         # will fail unless on RPi
         GPIO.setmode(GPIO.BOARD)  # Use physical pin numbering
-        GPIO.setup(pins[0], GPIO.IN, pull_up_down=GPIO.PUD_DOWN)
+        GPIO.setup(pins[0], GPIO.IN, pull_up_down=GPIO.PUD_UP)
         self.on = lambda: GPIO.input(pins[0]) == GPIO.HIGH
         if len(pins) > 0:
-            GPIO.setup(pins[1], GPIO.IN, pull_up_down=GPIO.PUD_DOWN)
+            GPIO.setup(pins[1], GPIO.IN, pull_up_down=GPIO.PUD_UP)
             self.off = lambda: GPIO.input(pins[1]) == GPIO.HIGH
         else:
             self.off = lambda: GPIO.LOW
 
     def __str__(self):
+        #return f"HardwareSwitch: on={self.on()} off={self.off()} pos={self.position}"
         return str(vars(self))
 
     def __repr__(self):
+        #return f"HardwareSwitch: on={self.on()} off={self.off()} pos={self.position}"
         return str(vars(self))
 
+    @property
     def position(self) -> OnOffAuto:
         if self.on() and not self.off():
             return ON
-        if not self.on and not self.off:
+        if not self.on() and not self.off():
             return AUTO
-        if not self.on and self.off:
+        if not self.on() and self.off():
             return OFF
-        if self.on and self.off:
+        if self.on() and self.off():
             LOGGER.warning("camera_switch ON and OFF are both high, ya moose")
             return AUTO
         raise RuntimeError("Logic error")
@@ -171,6 +163,7 @@ class SoftwareSwitch():
 class Switches(Tomlable):
     """ On/Off/Auto switches, configurable and software/hardware based"""
 
+    # default
     DLFT_SW_CONFIG = """
     [controller.switches]
         [controller.switches.camera]
@@ -179,6 +172,7 @@ class Switches(Tomlable):
             file = '/etc/tmv/upload-switch'
     """
 
+    
     CWD_SW_CONFIG = """
     [controller.switches]
         [controller.switches.camera]
@@ -196,7 +190,8 @@ class Switches(Tomlable):
     """
 
     def __init__(self):
-        self.switches = {}
+        self.switches={}
+        self.configs("[controller]\n"+ Switches.DLFT_SW_CONFIG)
 
     def configd(self, config_dict):
         if 'controller' in config_dict:
@@ -320,7 +315,7 @@ def controller_console(cl_args=sys.argv[1:]):
     logging.getLogger("tmv.controller").setLevel(args.log_level)
     logging.basicConfig(format=LOG_FORMAT, level=args.log_level)
 
-    LOGGER.info("Starting controller app. config-file={}".format(Path(args.config_file).absolute()))
+    LOGGER.info("Starting controller app. config-file={} log-level={}".format(Path(args.config_file).absolute(),str(args.log_level)))
 
     try:
         if not Path(args.config_file).is_file():
@@ -340,56 +335,7 @@ def controller_console(cl_args=sys.argv[1:]):
         LOGGER.info('SIGTERM, SIGINT or CTRL-C detected. Exiting gracefully.')
         sys.exit(0)
     except BaseException as exc:
+        #raise
         LOGGER.error(exc)
-        LOGGER.debug(exc, exc_info=exc)
+        LOGGER.info(exc, exc_info=exc)
         sys.exit(1)
-
-
-def control_console(cl_args=sys.argv[1:]):
-    try:
-        parser = argparse.ArgumentParser(
-            "Allow software input to 'press' switchs.")
-        parser.add_argument('-c', '--config-file')
-        parser.add_argument('-v', '--verbose', action="store_true")
-        parser.add_argument('-r', '--restart', action="store_true", help="Force services to restart. e.g. to reload config files")
-        parser.add_argument('camera', type=OnOffAuto, choices=list(OnOffAuto), nargs="?")
-        parser.add_argument('upload', type=OnOffAuto, choices=list(OnOffAuto), nargs="?")
-        args = (parser.parse_args(cl_args))
-        switches = Switches()
-        if args.config_file:
-            switches.config(args.config_file)
-        else:
-            switches.configs(Switches.DLFT_SW_CONFIG)
-
-        if args.verbose:
-            print(f"State state of switches: {switches}")
-        if args.restart:
-            if args.verbose:
-                print("Restarting tmv-controller")
-            ctlr = Unit("tmv-controller.service")
-            ctlr.restart()
-        if args.camera:
-            switches['camera'] = args.camera
-        if args.upload:
-            switches['upload'] = args.upload
-        if not args.camera and not args.upload:
-            print(f"{switches['camera']} {switches['upload']}")
-        if args.verbose:
-            print(f"Finish state of switches: {switches}")
-        sys.exit(0)
-
-    except PermissionError as exc:
-        print(f"{exc}: check your file access  permissions. Try root.", file=sys.stderr)
-        if args.verbose:
-            raise  # to get stack trace
-        sys.exit(10)
-    except CalledProcessError as exc:
-        print(f"{exc}: check your execute systemd permissions. Try root.", file=sys.stderr)
-        if args.verbose:
-            raise  # to get stack trace
-        sys.exit(20)
-    except Exception as exc:
-        print(exc, file=sys.stderr)
-        if args.verbose:
-            raise  # to get stack trace
-        sys.exit(30)

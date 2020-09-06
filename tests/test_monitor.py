@@ -1,12 +1,10 @@
 # pylint: disable=redefined-outer-name,unused-argument
 import logging
 import os
-import shutil
 from pathlib import Path
-from filecmp import cmp
 import pytest
 
-from tmv.monitor import SSHTunnels, tunnel_console
+from tmv.monitor import SSHTunnels, shun_find_console
 from tmv.util import LOG_FORMAT
 
 TEST_DATA = Path(__file__).parent / "testdata"
@@ -23,17 +21,17 @@ def test_console(setup_debug):
     # config needs an arg
     cl = ["--user", "bbeeson","--config"]
     with pytest.raises(SystemExit) as exc:
-        tunnel_console(cl)
+        shun_find_console(cl)
     assert exc.value.code == 2
 
     cl = [""]
     with pytest.raises(SystemExit) as exc:
-        tunnel_console(cl)
+        shun_find_console(cl)
     assert exc.value.code == 0
 
     cl = ["fail", "--user", "user1", "user2"]
     with pytest.raises(SystemExit) as exc:
-        tunnel_console(cl)
+        shun_find_console(cl)
     assert exc.value.code == 2
 
 
@@ -43,19 +41,19 @@ def test_console_live(setup_debug):
     # echo coolhost > ~/.id
     cl = ["queen", "--user", "bbeeson", "--dry-run"]
     with pytest.raises(SystemExit) as exc:
-        tunnel_console(cl)
+        shun_find_console(cl)
     assert exc.value.code == 0
 
 
 
     cl = ["coolhost", "--user", "bbeeson", "--dry-run"]
     with pytest.raises(SystemExit) as exc:
-        tunnel_console(cl)
+        shun_find_console(cl)
     assert exc.value.code == 0
 
     cl = ["nohost", "--user", "bbeeson", "--dry-run"]
     with pytest.raises(SystemExit) as exc:
-        tunnel_console(cl)
+        shun_find_console(cl)
     assert exc.value.code == 2
 
 

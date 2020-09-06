@@ -67,6 +67,10 @@ class DailyVideosTask(Task):
 
     def run(self):
         self.dest_path.mkdir(parents=True, exist_ok=True)
+        if not os.path.isdir(self.src_path):
+            LOGGER.warning(f"Ignoring directory {os.getcwd()}: no daily-photos dir")
+            return
+
         for day_dir in sorted([x for x in self.src_path.iterdir() if x.is_dir()]):
             try:
                 day = str2dt(str(day_dir.name)).date()
@@ -90,8 +94,8 @@ class DailyVideosTask(Task):
                         vm.write_videos(str(filename), fps=self.fps, force=True, speedup=self.speedup)
 
             except ValueError as exc:
-                LOGGER.warning(f"Ignoring directory {day_dir}: not a date format: {exc}")
-
+                LOGGER.warning(f"Ignoring directory {os.path.abspath(day_dir)}: not a date format: {exc}")
+        
     def configd(self, config_dict):
         super().configd(config_dict)
         self.setattr_from_dict("minterpolate", config_dict)
@@ -352,13 +356,14 @@ class TaskRunner(Tomlable):
 
         for (taskname, task) in ordered_tasks.items():
             try:
+                LOGGER.debug(f"Running {taskname} in cwd {os.getcwd()}")
                 task.run()
             except BaseException as exc:
                 # one failed task shouldn't stop others - handle locally
                 if self.raise_task_exceptions:
                     raise
                 else:
-                    LOGGER.debug(f"Continuing other tasks after exception in task {taskname}: {exc}", exc_info=exc)
+                    LOGGER.debug(f"Continuing other tasks after exception in task: {taskname}, cwd: {os.getcwd()}: {exc}", exc_info=exc)
                     failed += 1
 
         succeded = len(ordered_tasks) - failed

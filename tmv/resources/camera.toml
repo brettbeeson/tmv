@@ -174,13 +174,18 @@ log_level = 'INFO'
 #
 # Physical or software buttons to control uploading, etc
 # - required
-# - alternatively, for hardware-based
+# - for hardware-based
 #    [controller.switches]
-#        [coqueenswitches]
-    [controller.switches.camera]
-        file = '/etc/tmv/camera-switch'
-    [controller.switches.upload]
-        file = '/etc/tmv/upload-switch'
+#        [controller.switches.camera]
+#            pins = [10]    
+#        [controller.switches.upload]
+#            pins = [11,12]    
+# - for software(file)-based:
+    [controller.switches]
+        [controller.switches.camera]
+            file = '/etc/tmv/camera-switch'
+        [controller.switches.upload]
+            file = '/etc/tmv/upload-switch'
 
 
 ###############################################################################

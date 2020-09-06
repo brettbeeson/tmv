@@ -526,6 +526,7 @@ class Camera(Tomlable):
     def __init__(self):
         self._camera = None
         self._pijuice = None
+        self.switch = None
         self.led = False
         try:
             self._pijuice = TMVPiJuice()
@@ -576,17 +577,21 @@ class Camera(Tomlable):
 
     def configd(self, config_dict):
 
+
+        # Read button setup
+        switches = Switches()
+        switches.configd(config_dict)
+        self.switch = switches['camera']
+        LOGGER.info(f"Setting camera switch to: {self.switch}")
+      
         if 'camera' in config_dict:
             c = config_dict['camera']
 
             if 'log_level' in c:
                 LOGGER.setLevel(c['log_level'])
 
-            #self.setattr_from_dict('led', c)
-            self.setattr_from_dict('file_by_date', c)
-            self.setattr_from_dict('file_root', c)
-            self.file_root = os.path.abspath(
-                os.path.expanduser(self.file_root))
+            #self.setattr_from_dict(manual.abspath(
+            # os.path.expanduser(self.file_root)
             self.setattr_from_dict('file_root', c)
             self.setattr_from_dict('overlays', c)
             self.setattr_from_dict('calc_shutter_speed', c)
@@ -647,13 +652,12 @@ class Camera(Tomlable):
             # Otherwise we will never power off
             raise ConfigError("power_off ({}) must be longer than inactive_min ({}). "
                               .format(self.light_sensor.power_off, self.inactive_min))
+        
         # todo: finsih
         known_keys = ['log_level', ]
         unknown = (k for k in c if k not in known_keys)
 
-    def manual_override(self, on: bool):
-        self.active_timer = ActiveTimes.factory(on, not on, self)
-
+  
     def __str__(self):
         return pformat(vars(self))
 
@@ -678,33 +682,40 @@ class Camera(Tomlable):
             LOGGER.debug("Firstrun: level: {}".format(self.light_sensor.level))
 
         for _ in range(0, n):
+
+            # wait until not OFF
+            while self.switch == OFF:
+                time.sleep(1)
+
             # Sleep / power off / etc if the camera is inactive
-            waketime = self.active_timer.waketime()
-            if waketime - dt.now() >= self.inactive_min:
-                self.camera_inactive_until(waketime)
-                # if we slept (i.e. didn't power-off), we need
-                # to check the light level again before blindly taking
-                # a photo. This is relevant to Sensor
-                self.light_sense_outstanding = True
-            # Sleep until next "active" time. Sometime it's not active after sleep! :
-            # 1. can be not true for Suncalc by a minute or so,
-            # because sunset/etc times change day by day
-            # so upon wakeup, may be slightly later (hence inactive!)
-            # 2. for Sensor, it doesn't know when to activate. If not turning off
-            # we can just keep running the light sensor (). If turning off,
-            # we want to turn off for an hour and then re-check.
-            # Hence we check if we're really active after sleeping and consider if we
-            # should just run the light_sensor
+            if self.switch == AUTO:
+                waketime = self.active_timer.waketime()
+                if waketime - dt.now() >= self.inactive_min:
+                    self.camera_inactive_until(waketime)
+                    # if we slept (i.e. didn't power-off), we need
+                    # to check the light level again before blindly taking
+                    # a photo. This is relevant to Sensor
+                    self.light_sense_outstanding = True
+                # Sleep until next "active" time. Sometimes it's not active after sleep! :
+                # 1. can be not true for Suncalc by a minute or so,
+                # because sunset/etc times change day by day
+                # so upon wakeup, may be slightly later (hence inactive!)
+                # 2. for Sensor, it doesn't know when to activate. If not turning off
+                # we can just keep running the light sensor (). If turning off,
+                # we want to turn off for an hour and then re-check.
+                # Hence we check if we're really active after sleeping and consider if we
+                # should just run the light_sensor
 
-            if self.active_timer.active() and self.light_sense_outstanding:
-                # run light sensor that we missed, immediately
-                set_picam(self._camera, {
-                    ** self.picam_defaults, ** self.picam_sensing
-                })
-                self.capture_light(dt.now())
-                self.light_sense_outstanding = False
+            if self.switch == ON or self.active_timer.active():
 
-            if self.active_timer.active():
+                if  self.light_sense_outstanding:
+                    # run light sensor that we missed, immediately
+                    set_picam(self._camera, {
+                        ** self.picam_defaults, ** self.picam_sensing
+                    })
+                    self.capture_light(dt.now())
+                    self.light_sense_outstanding = False
+            
                 # use instant here to ease debug, but dt.now()
                 # to sleep the exact amount
                 instant = dt.now()
@@ -1186,20 +1197,6 @@ def camera_console(cl_args=sys.argv[1:]):
                 "Writing default config file to {}.".format(args.config_file))
 
         cam.config(args.config_file)
-
-        # Read soft/hard buttons and override to ON/OFF if required
-        # or otherwise do nothing for AUTIO
-        sws = Switches()
-        sws.config(args.config_file)
-        camera_switch = sws['camera']
-        LOGGER.info(f"Setting Camera switch to: {camera_switch}")
-        # logger.debug(f"switches={sws}")
-        if camera_switch == ON:
-            cam.manual_override(True)
-        elif camera_switch == OFF:
-            cam.manual_override(False)
-        elif camera_switch == AUTO:
-            pass
 
         cam.run(args.runs)
 
