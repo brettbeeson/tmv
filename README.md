@@ -66,6 +66,7 @@ Tested on Ubuntu 18, but likely to work on most linux. It converts photos to vid
 Install the tmv code base and prerequisties:
 ```
 sudo apt install -y python3-pip vim git 
+sudo apt install ffmpeg -y
 git clone https://github.com/brettbeeson/tmv
 cd tmv
 sudo python3 -m pip install .
@@ -82,9 +83,10 @@ sudo scripts/install-minio.sh # you may need additional configuration
 
 
 #### Server - serve videos via web server
-Any server is ok. I use nginx.
+Any server is ok. I use nginx with PHP. PHP is required for h5ai.
 ```
 sudo apt install -y nginx
+sudo apt install -y php-fpm
 rm /etc/nginx/sites-enabled/default
 sudo cp scripts/tmv.ngnix tmv/etc/nginx/sites-enabled/
 sudo systemctl start nginx
