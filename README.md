@@ -58,16 +58,12 @@ Refer to the docs, but briefly:
 - `journalctl -f -u 'tmv*'` to check logs in operation
 
 ## Server
-Tested on Ubuntu 18, but likely to work on most linux. It converts photos to videos and optionally stores them.
+Tested on Ubuntu 18, but likely to work on most linux. It converts photos to videos and optionally stores them. Usually on a server. Get the tmv git
+
 
 #### Server - store files, make videos
-- Install [Minio](https://minio.io) to store your images. You could use any s3 server either local or remote (e.g. AWS)
-- Install as a [service script](https://github.com/minio/minio-service/tree/master/linux-systemd). Typically you'll store at /var/s3/my.tmv.bucket
-```
-cd ~/tmv
-sudo scripts/install-minio.sh
-```
 
+Install the tmv code base and prerequisties:
 ```
 sudo apt install -y python3-pip vim git 
 git clone https://github.com/brettbeeson/tmv
@@ -75,8 +71,15 @@ cd tmv
 sudo python3 -m pip install .
 mkdir tmv-data
 sudo scripts/install-tmv-videod.sh                 
-
 ```
+
+- Install [Minio](https://minio.io) to store your images. You could use any s3 server either local or remote (e.g. AWS)
+- Install as a [service script](https://github.com/minio/minio-service/tree/master/linux-systemd). Typically you'll store at /var/s3/my.tmv.bucket
+```
+cd ~/tmv
+sudo scripts/install-minio.sh # you may need additional configuration
+```
+
 
 #### Server - serve videos via web server
 Any server is ok. I use nginx.
@@ -85,6 +88,10 @@ sudo apt install -y nginx
 rm /etc/nginx/sites-enabled/default
 sudo cp scripts/tmv.ngnix tmv/etc/nginx/sites-enabled/
 sudo systemctl start nginx
+# optionally, install a pre-configured config (check and adapt)
+cd ~/tmv
+sudo cp ~/tmv/scripts/tmv/tmv.nginx /etc/nginx/sites-enabled/tmv
+
 ```
 Browse to [localhost](http://localhost) to view files via the nice h5ai javascript interface. Browse to [localhost:9000](http://localhost:9000) to see minio interface.
 
