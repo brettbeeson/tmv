@@ -12,6 +12,7 @@ import argparse
 import logging
 import os
 import glob
+import shutil
 import socket
 import unicodedata
 import subprocess
@@ -19,9 +20,6 @@ from enum import Enum
 from pkg_resources import resource_filename
 import toml
 import pytimeparse
-
-FONT_FILE = resource_filename(__name__, 'resources/FreeSans.ttf')
-HH_MM = "%H:%M"
 
 
 class LOG_LEVELS(Enum):
@@ -452,6 +450,17 @@ def neighborhood(iterable):
     yield (prev, item, None)
 
 
+def ensure_config_exists(config_file):
+    """
+    Make config_file if it doesn't exist. 
+    """
+    if not Path(config_file).is_file():
+        default_config_path = Path(resource_filename(__name__, 'resources/camera.toml'))
+        LOGGER.info("Writing default config file to {} (from {})".format(config_file, default_config_path.absolute()))
+        Path(config_file).parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy(default_config_path, config_file)
+
+
 def file_by_day_console():
     parser = argparse.ArgumentParser("File files into dated subfolders")
     parser.add_argument("file_glob", nargs='+')
@@ -471,3 +480,6 @@ def file_by_day_console():
     if not os.path.exists(args.dest):
         os.mkdir(args.dest)
     file_by_day(file_list, args.dest, args.move)
+
+
+

@@ -159,34 +159,14 @@ resolution = '1280x720'
 #light = 0.2
 #save_images = false
 
-
-###############################################################################
-# Controller: on the camera, control services which operate the camera and uploader
-###############################################################################
-
-[controller]
-#
-# Choose from DEBUG, INFO, WARNING, ERROR, CRITAL
-#
-#log_level = 'WARNING'
-log_level = 'INFO'
-
-#
-# Physical or software buttons to control uploading, etc
-# - required
-# - for hardware-based
-#    [controller.switches]
-#        [controller.switches.camera]
-#            pins = [10]    
-#        [controller.switches.upload]
-#            pins = [11,12]    
-# - for software(file)-based:
-    [controller.switches]
-        [controller.switches.camera]
-            file = '/etc/tmv/camera-switch'
-        [controller.switches.upload]
-            file = '/etc/tmv/upload-switch'
-
+# 
+# Switch camera on/off/auto
+# Software default. For hardware use
+# pins = [10,11]    
+# instead of "file..."
+#   
+# [camera.switch]
+#   file = '/etc/tmv/camera-switch'
 
 ###############################################################################
 # Where to upload the images, using tmv-upload
@@ -224,3 +204,11 @@ destination = "s3://BUCKET-NAME-TO-SET/HOSTNAME/daily-photos"
 #
 #log_level = 'WARNING'
 
+# 
+# Switch uploads on or off
+# Software default. For hardware use
+# pins = [10]    
+# instead of "file..."
+#   
+# [upload.switch]
+#   file = '/etc/tmv/upload-switch'

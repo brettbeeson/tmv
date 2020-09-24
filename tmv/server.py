@@ -10,7 +10,8 @@ from flask import Flask, send_from_directory
 from flask_socketio import SocketIO, emit
 from pkg_resources import resource_filename
 from tmv.camera import DFLT_CAMERA_CONFIG_FILE
-from tmv.controller import Switches, OnOffAuto, Unit, Controller
+from tmv.switch import get_switch, OnOffAuto
+from tmv.systemd import Unit
 from tmv.util import run_and_capture, unlink_safe, Tomlable
 from toml import loads, TomlDecodeError
 
@@ -35,8 +36,9 @@ class Server(Tomlable):
         self.latest_image = None
 
     def configd(self, config_dict):
-        self.switches = Switches()
-        self.switches.configd(config_dict)  # [controlller]
+        self.switches = {}
+        self.switches['camera'] = get_switch(config_dict['camera'])  
+        self.switches['upload'] = get_switch(config_dict['upload'])  
         self.file_root = Path(config_dict['camera']['file_root'])
         self.latest_image = self.file_root / config_dict['camera'].get('latest_image', 'latest-image.jpg')
 

@@ -22,7 +22,7 @@ TEST_FILES_3 = Path("upload_3")
 TEST_FILES_4 = Path("upload_4")
 
 PROFILE = 'minio'
-ENDPOINT = 'http://cat2:9000'
+ENDPOINT = 'http://home.brettbeeson.com.au:9000'
 BUCKET = 's3://tmv.brettbeeson.com.au'
 BUCKET_NAME = 'tmv.brettbeeson.com.au'
 
@@ -374,9 +374,9 @@ def test_no_internet_2(monkeypatch):
     # force internet to fail
     up.internet = lambda: False
     # internet fails in daemon
-    sleep(4)
+    sleep(6)
     (TEST_FILES_3 / "touched2.jpg").touch()  # don't upload this yet
-    sleep(4)
+    sleep(6)
     files_uploaded = up.list_bucket_objects()
     assert len(files_uploaded) == 4
     # restart - should upload touched2

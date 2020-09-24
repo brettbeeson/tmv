@@ -1,4 +1,4 @@
-for c in lunchbox # t3610.local # tripod.local lunchbox.local #picam2  #cat2 live.phisaver.com tripod 
+for c in home.brettbeeson.com.au # lunchbox # t3610.local # tripod.local lunchbox.local #picam2  #cat2 live.phisaver.com tripod 
 do
 	rsync -q ~/tmv/* $c:tmv/
 	rsync -q -r ~/tmv/tmv/* $c:tmv/tmv/

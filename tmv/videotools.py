@@ -19,7 +19,8 @@ import re
 from PIL import Image, ImageOps
 from nptime import nptime
 from _datetime import timedelta, datetime as dt
-from tmv.util import cpe2str, HH_MM, LOG_FORMAT, LOG_LEVELS, dt2str, run_and_capture, str2dt
+from tmv.util import cpe2str, LOG_FORMAT, LOG_LEVELS, dt2str, run_and_capture, str2dt
+from tmv.config import HH_MM
 
 LOGGER = logging.getLogger(__name__)
 

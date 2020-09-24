@@ -20,9 +20,10 @@ import dateutil
 
 import tmv.util
 from tmv.util import today_at, tomorrow_at
-from tmv.camera import ActiveTimes, Camera, CameraInactiveAction, FakePiCamera, LightLevel, Timed, calc_pixel_average, camera_console
+from tmv.camera import ActiveTimes, Camera, CameraInactiveAction, FakePiCamera, LightLevel, Timed, calc_pixel_average, camera_console, CWD_CAMERA_SW_SWITCH_TOML
 import tmv
 from tmv.exceptions import PowerOff
+from tmv.switch import OnOffAuto, ON, OFF, AUTO, get_switch
 
 TEST_DATA = Path(__file__).parent / "testdata"
 FDT = None
@@ -374,6 +375,8 @@ def test_fake(monkeypatch, setup_test):
         FDT = fdt
         monkeypatch.setattr(time, 'sleep', sleepless)
         c = Camera()
+
+        c.switch = get_switch(CWD_CAMERA_SW_SWITCH_TOML)
         c.file_root = "./test_fake/"
         c._camera = FakePiCamera()
         c.file_by_date = False
@@ -381,11 +384,24 @@ def test_fake(monkeypatch, setup_test):
         run_until(c, fdt, today_at(13))
         assert len(c.recent_images) == 6 + 1  # fencepost
         images = glob(os.path.join(c.file_root, "2000-01-01T*"))
-        assert len(images) == 6 + 1  # fencepost
-        c.manual_override(True)
-        assert c.active_timer.active()
-        c.manual_override(False)
-        assert not c.active_timer.active()
+        assert len(images) == 6 + 1  # fencepost   
+
+        # Cannot test switch OFF as main loop waits for "not OFF"
+
+        # run 13:00 - 14:00 with switch ON
+        assert c.switch.position == AUTO
+        run_until(c, fdt, today_at(14))
+        assert c.active_timer.active() #  active 
+        images = glob(os.path.join(c.file_root, "2000-01-01T*"))
+        assert len(images) == 6 + 1 + 6  # one hour more of 6 photos per hour
+
+        # run 14:00 - 15:00 with switch ON
+        c.active_timer = Timed(datetime.time(6,0,0),datetime.time(7,0,0))
+        c.switch.position = ON
+        run_until(c, fdt, today_at(15))
+        assert not c.active_timer.active() # not active - but overridden by switch
+        images = glob(os.path.join(c.file_root, "2000-01-01T*"))
+        assert len(images) == 6 + 1 + 6 + 6 # one hour more of 6 photos per hour
         assert Path("./test_fake/latest-image.jpg").is_file()
 
 
@@ -549,6 +565,7 @@ def test_Timed_capture(monkeypatch, setup_test):
         FDT = fdt
         monkeypatch.setattr(time, 'sleep', sleepless)
         c = Camera()
+        c.switch.switch_path = Path("./camera-switch")
         c.file_by_date = False
         c._camera = FakePiCamera()
         c.file_root = "./test_Timed_capture/"
@@ -624,12 +641,6 @@ def test_Sensor(monkeypatch, setup_test):
         run_until(c, fdt, tomorrow_at(9, 00), reset_camera)
         reset_camera.run(1)
         assert reset_camera.active_timer.light_sensor.level == LightLevel.LIGHT
-
-
-def not_implemented_test_overlays(monkeypatch, setup_test):
-    c = Camera()
-    c.apply_overlays()
-
 
 def test_camera_inactive_action(monkeypatch, setup_test):
     with freeze_time(parse("2000-01-01 12:00:00")) as fdt:

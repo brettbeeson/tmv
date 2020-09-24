@@ -9,7 +9,7 @@ import os
 import toml
 from pkg_resources import resource_filename
 from _signal import signal, SIGINT, SIGTERM
-from _datetime import datetime as dt, timedelta
+from _datetime import datetime as dt, timedelta, time
 
 from tmv.exceptions import ConfigError, SignalException
 from tmv.util import LOG_FORMAT_DETAILED, LOG_LEVEL_STRINGS, Tomlable, dt2str, log_level_string_to_int, next_mark, sleep_until, slugify, str2dt
@@ -86,9 +86,12 @@ class DailyVideosTask(Task):
                     # configure with toml
                     vm.file_list = list(day_dir.glob("*.jpg")) + list(day_dir.glob("*.JPG")) + list(day_dir.glob("*.jpeg")) + list(day_dir.glob("*.JPEG"))
                     if len(vm.file_list) > 1:
+                        # todo: configurable
+                        vm.start_time = time(hour=5)
+                        vm.end_time = time(hour=18)
                         vm.load_videos()
                         filename = self.dest_path / day_video_filename
-                        LOGGER.info("Creating daily-video: {}".format(filename.absolute()))
+                        LOGGER.info("Creating daily-video (6am to 6pm): {}".format(filename.absolute()))
                         # ?? touch the preview file so that if we fail, we don't keep trying later runs?
                         filename.touch()
                         vm.write_videos(str(filename), fps=self.fps, force=True, speedup=self.speedup)
@@ -165,7 +168,7 @@ class RecapVideosTask(Task):
                 pass
             else:
                 LOGGER.info("Creating recap-video: {}".format(video_path.absolute()))
-                # ?? touch the preview file so that if we fail, we don't keep trying later runs?
+                # touch the preview file so that if we fail, we don't keep trying later runs?
                 video_path.touch()
                 video_join(src_videos=daily_videos, dest_video=str(video_path),
                            start_datetime=start, end_datetime=end, speed_rel=speed, fps=fps)
@@ -208,9 +211,12 @@ class DiagonalVideosTask(Task):
         else:
             vm.sliceage = self.sliceage
             vm.file_list = list(self.src_path.glob("**/*.jpg"))
+            # todo: configurable
+            vm.start_time = time(hour=5)
+            vm.end_time = time(hour=18)
             if len(vm.file_list) > 1:
                 vm.load_videos()
-                LOGGER.debug("Creating diagonal-video: {}".format(video_path.absolute()))
+                LOGGER.debug("Creating diagonal-video (5-18): {}".format(video_path.absolute()))
                 # ?? touch the preview file so that if we fail, we don't keep trying later runs?
                 video_path.touch()
                 vm.write_videos(str(video_path), fps=self.fps, force=True, speedup=self.speedup)
@@ -358,13 +364,12 @@ class TaskRunner(Tomlable):
             try:
                 LOGGER.debug(f"Running {taskname} in cwd {os.getcwd()}")
                 task.run()
-            except BaseException as exc:
+            except (FileNotFoundError, ChildProcessError, PermissionError)  as exc:
                 # one failed task shouldn't stop others - handle locally
-                if self.raise_task_exceptions:
-                    raise
-                else:
-                    LOGGER.debug(f"Continuing other tasks after exception in task: {taskname}, cwd: {os.getcwd()}: {exc}", exc_info=exc)
-                    failed += 1
+                # but allow syntax errors, signals, etc
+                # to raise
+                LOGGER.debug(f"Continuing other tasks after exception in task: {taskname}, cwd: {os.getcwd()}: {exc}", exc_info=exc)
+                failed += 1
 
         succeded = len(ordered_tasks) - failed
         return succeded, failed
@@ -420,18 +425,17 @@ class TaskRunnerManager(Tomlable):
                 sleep_until(next_mark(self.interval, dt.now()), dt.now())
             # run each TaskRunner in sequence 
             for l, vd in self.vds.items():
-                try:
-                    if (file_root_path / l).is_dir():
-                        os.chdir(file_root_path / l)
-                        LOGGER.debug(f"running tasks in cwd:{os.getcwd()}")
-                        s, f = vd.run_tasks()
-                        s_total += s
-                        if s_total == 0 or f > 0:
-                            LOGGER.warning(f"TaskRunner at {Path(l).absolute()} failed {f} tasks and succeeded in {s} tasks")
-                except BaseException as exc:
-                    LOGGER.warning(exc)
-                    LOGGER.debug(exc, exc_info=exc)
-
+                # run_tasks captures some exceptions (e.g. FileNotFound) and continues
+                # other exceptions (e.g. Signal, SyntaxError) are propogated
+                # and the program will stop
+                if (file_root_path / l).is_dir():
+                    os.chdir(file_root_path / l)
+                    LOGGER.debug(f"running tasks in cwd:{os.getcwd()}")
+                    s, f = vd.run_tasks()
+                    s_total += s
+                    if s_total == 0 or f > 0:
+                        LOGGER.warning(f"TaskRunner at {Path(l).absolute()} failed {f} tasks and succeeded in {s} tasks")
+            
             LOGGER.debug(f"Finished all tasks under {file_root_path}")
             os.chdir(original_cwd)
 

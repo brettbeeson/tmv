@@ -9,8 +9,10 @@ from flask_socketio import Namespace, emit
 #from flask import Flask, send_from_directory
 #from pkg_resources import resource_filename
 from tmv.camera import DFLT_CAMERA_CONFIG_FILE
-from tmv.controller import Switches, OnOffAuto, Unit
+
 from tmv.util import run_and_capture, unlink_safe, Tomlable
+from tmv.systemd import Unit
+from tmv.switch import get_switch, OnOffAuto
 
 def report_errors(func):
     """ My first decorator: try errors and report to client. Not rul securz """
@@ -28,7 +30,8 @@ class Server(Namespace, Tomlable):
     def __init__(self):
         super().__init__()
         self.file_root = Path(".")
-        self.switches = None
+        self.camera_switch = None
+        self.upload_switch = None
         self.latest_image = None
         self.status_thread = None
 
@@ -38,13 +41,11 @@ class Server(Namespace, Tomlable):
         self.image_thread.start()
 
     def configd(self, config_dict):
-        self.switches = Switches()
-        self.switches.configd(config_dict)  # [controlller]
+        self.camera_switch = get_switch(config_dict['camera'])
+        self.upload_switch = get_switch(config_dict['upload'])
         self.file_root = Path(config_dict['camera']['file_root'])
         self.latest_image = self.file_root / config_dict['camera'].get('latest_image', 'latest-image.jpg')
 
-    
-    
     def send_image(self, broadcast, binary=True):
         self.socketio.emit('message', f"Sending image {self.latest_image}")
         with self.latest_image.open(mode='rb') as f:
@@ -79,35 +80,36 @@ class Server(Namespace, Tomlable):
         upload_was = None
         while True:
             sleep(1)
-            if self.switches:
-                camera_is = self.switches['camera']
-                if camera_was is None or camera_is != camera_was:
-                    emit('switches', {'message': "Camera switched", 'camera': str(camera_is)})
-                    camera_was = camera_is
-                upload_is = self.switches['upload']
-                if upload_was is None or upload_is != upload_was:
-                    emit('switches', {'message': "Upload switched", 'upload': str(upload_is)})
-                    upload_was = upload_is
+            
+            camera_is = self.camera_switch.position
+            if camera_was is None or camera_is != camera_was:
+                emit('switches', {'message': "Camera switched", 'camera': str(camera_is)})
+                camera_was = camera_is
+        
+            upload_is = self.upload_switch.position
+            if upload_was is None or upload_is != upload_was:
+                emit('switches', {'message': "Upload switched", 'upload': str(upload_is)})
+                upload_was = upload_is
 
     @report_errors
     def on_req_services_status(self):
-        cl = Unit("tmv-controller.service")
         cam = Unit("tmv-camera.service")
         ul = Unit("tmv-upload.service")
-        services = {
-            str(cl): cl.status(),
-            str(cam): cl.status(),
-            str(ul): cl.status(),
+        services = {           
+            str(cam): cam.status(),
+            str(ul): ul.status(),
         }
         emit("services_status", {"message": "Read service statuses", "services": services})
 
 
     @report_errors
     def on_restart(self):
-        ctlr = Unit("tmv-controller.service")
-        ctlr.restart()
+        cam = Unit("tmv-camera.service")
+        ul = Unit("tmv-upload.service")
+        cam.restart()
+        ul.restart()
         sleep(5)
-        emit("message", f"tmv-controller: {ctlr.status()}")
+        self.on_req_services_status()
 
     @report_errors
     def on_req_journal(self):
@@ -124,17 +126,19 @@ class Server(Namespace, Tomlable):
             emit("files", {"files": fls})
 
     @report_errors
-    def on_switches(self, positions):
-        if self.switches:
-            for s_name, s_pos in positions.items():
-                self.switches[s_name] = OnOffAuto(s_pos.lower())
-        else:
-            raise RuntimeError("No switches available")
+    def on_camera_switch(self, position):  
+        self.camera_switch = OnOffAuto(position.lower())
+
+    def on_upload_switch(self, position):  
+        self.upload_switch = OnOffAuto(position.lower())
 
     @report_errors
-    def on_req_switches(self):
-        if self.switches:
-            emit('switches', {'camera': str(self.switches['camera']), 'upload': str(self.switches['upload'])})
+    def on_req_camera_switch(self):
+        emit('camera_switch', str(self.camera_switch.position))
+
+    @report_errors
+    def on_req_upload_switch(self):
+        emit('upload_switch', str(self.upload_switch.position))
 
     @report_errors
     def on_req_camera_config(self):
