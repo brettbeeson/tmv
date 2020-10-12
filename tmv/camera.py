@@ -26,13 +26,13 @@ from astral.geocoder import database, lookup  # Get co-ordinates from city name
 from astral.sun import sun
 
 from tmv.util import penultimate_unique, next_mark, LOG_FORMAT, LOG_LEVELS
-from tmv.util import Tomlable, setattrs_from_dict, sleep_until, FONT_FILE
+from tmv.util import Tomlable, setattrs_from_dict, sleep_until, ensure_config_exists
 from tmv.exceptions import ConfigError, PiJuiceError, SignalException, CameraError, PowerOff
-from tmv.controller import Switches, ON, OFF, AUTO, OnOffAuto, Unit
+from tmv.switch import  ON, OFF, AUTO, get_switch
+from tmv.config import *
 
 LOGGER = logging.getLogger("tmv.camera")  # __name__
 
-DFLT_CAMERA_CONFIG_FILE = "/etc/tmv/camera.toml"
 
 try:
     # optional, for controling power with a PiJuice
@@ -42,6 +42,7 @@ except (ImportError, NameError) as exc:
 
 try:
     from picamera import PiCamera
+    import RPi.GPIO as GPIO
 except ImportError as exc:
     LOGGER.debug(exc)
 
@@ -526,8 +527,16 @@ class Camera(Tomlable):
     def __init__(self):
         self._camera = None
         self._pijuice = None
-        self.switch = None
-        self.led = False
+        self.switch = get_switch(DLFT_CAMERA_SW_SWITCH_TOML)
+        try:
+            # todo: configuration
+            self.led = 10
+            GPIO.setmode(GPIO.BCM)
+            GPIO.setup(self.led, GPIO.OUT, initial=GPIO.LOW)
+        except Exception as e:
+            print (e)
+            pass
+        
         try:
             self._pijuice = TMVPiJuice()
         except (ImportError, NameError) as exc:
@@ -578,14 +587,13 @@ class Camera(Tomlable):
     def configd(self, config_dict):
 
 
-        # Read button setup
-        switches = Switches()
-        switches.configd(config_dict)
-        self.switch = switches['camera']
-        LOGGER.info(f"Setting camera switch to: {self.switch}")
-      
+        
         if 'camera' in config_dict:
             c = config_dict['camera']
+
+            if 'switch' in c:
+                self.switch = get_switch(c)
+                LOGGER.info(f"Setting camera switch to: {self.switch}")
 
             if 'log_level' in c:
                 LOGGER.setLevel(c['log_level'])
@@ -654,8 +662,8 @@ class Camera(Tomlable):
                               .format(self.light_sensor.power_off, self.inactive_min))
         
         # todo: finsih
-        known_keys = ['log_level', ]
-        unknown = (k for k in c if k not in known_keys)
+        #known_keys = ['log_level', ]
+        #unknown = (k for k in c if k not in known_keys)
 
   
     def __str__(self):
@@ -666,10 +674,9 @@ class Camera(Tomlable):
         Main loop. May shutdown machine if required.
         """
         if self._camera is None:
-            try: 
+            try:
                 LOGGER.debug("Picamera() start")
-                #self._camera = PiCamera(led_pin=40)  # PiZero's BCM GPIO40 is the camera's LED
-                self._camera = PiCamera() #led_pin=40)  # PiZero's BCM GPIO40 is the camera's LED
+                self._camera = PiCamera()
                 LOGGER.debug("Picamera() returned")
             except Exception:
                 raise CameraError("No camera hardware available")
@@ -684,11 +691,11 @@ class Camera(Tomlable):
         for _ in range(0, n):
 
             # wait until not OFF
-            while self.switch == OFF:
+            while self.switch.position == OFF:
                 time.sleep(1)
 
             # Sleep / power off / etc if the camera is inactive
-            if self.switch == AUTO:
+            if self.switch.position == AUTO:
                 waketime = self.active_timer.waketime()
                 if waketime - dt.now() >= self.inactive_min:
                     self.camera_inactive_until(waketime)
@@ -706,7 +713,14 @@ class Camera(Tomlable):
                 # Hence we check if we're really active after sleeping and consider if we
                 # should just run the light_sensor
 
-            if self.switch == ON or self.active_timer.active():
+            if self.switch.position == ON or self.active_timer.active():
+
+                # use instant here to ease debug, but dt.now()
+                # to sleep the exact amount
+                instant = dt.now()
+                next_image_mark = next_mark(self.interval, instant)
+                next_sense_mark = next_mark(self.light_sensor.freq, instant)
+                # logger.debug("instant: {} next_image_mark: {} next_sense_mark: {}".format(                        instant, next_image_mark, next_sense_mark))
 
                 if  self.light_sense_outstanding:
                     # run light sensor that we missed, immediately
@@ -714,15 +728,10 @@ class Camera(Tomlable):
                         ** self.picam_defaults, ** self.picam_sensing
                     })
                     self.capture_light(dt.now())
+                    # no need to sense again this loop
                     self.light_sense_outstanding = False
-            
-                # use instant here to ease debug, but dt.now()
-                # to sleep the exact amount
-                instant = dt.now()
-                next_image_mark = next_mark(self.interval, instant)
-                next_sense_mark = next_mark(
-                    self.light_sensor.freq, instant)
-                # logger.debug("instant: {} next_image_mark: {} next_sense_mark: {}".format(                        instant, next_image_mark, next_sense_mark))
+                    self.next_sense_mark = dt.now() + timedelta(days=9999)  # dt.max() overflows          
+                
                 if next_image_mark == next_sense_mark:
                     # they want the same time: do the image and note outstanding for the sensor
                     self.light_sense_outstanding = True
@@ -822,11 +831,17 @@ class Camera(Tomlable):
 
         start = dt.now()
 
-        #if self.led:
-        #    self._camera.led = True
+        
+        try:
+            GPIO.output(self.led, GPIO.HIGH)
+        except:
+            pass
         pil_image = self.capture()
-        #if self.led:
-        #    self._camera.led = False
+    
+        try:
+            GPIO.output(self.led, GPIO.LOW)
+        except:
+            pass
 
         pa = image_pixel_average(pil_image)
         LOGGER.debug("CAPTURED mark: {} pa:{:.3f} took:{:.2f}".format(mark, pa, (dt.now() - start).total_seconds()))
@@ -971,9 +986,14 @@ class Camera(Tomlable):
         elif self.camera_inactive_action == CameraInactiveAction.WAIT:
             # "Light" sleep : monitor switches is case wakeup is called
 
-            LOGGER.info(
-                "Camera inactive. Waiting until {}".format(wakeup))
-            sleep_until(wakeup, dt.now())
+            LOGGER.info(f"Inactive until {wakeup}, unless switched ON.")
+            while dt.now() < wakeup:
+                if self.switch.position == ON:
+                    LOGGER.info("Switched ON during sleep. Waking")
+                    return
+                time.sleep(1)
+            LOGGER.debug(f"Awoke from inactive at {wakeup}")
+            
         elif self.camera_inactive_action == CameraInactiveAction.EXIT:
             LOGGER.info(
                 "Camera inactive. Exiting. Wake at {}".format(wakeup))
@@ -1109,59 +1129,6 @@ def sig_handler(signal_received, frame):
     raise SignalException
 
 
-
-def camera_switches_console(cl_args=sys.argv[1:]):
-    try:
-        parser = argparse.ArgumentParser(
-            "Check and control camera switches.")
-        parser.add_argument('-c', '--config-file')
-        parser.add_argument('-v', '--verbose', action="store_true")
-        parser.add_argument('-r', '--restart', action="store_true", help="restart service to (e.g.) turn on camera if inactive")
-        parser.add_argument('camera', type=OnOffAuto, choices=list(OnOffAuto), nargs="?")
-        parser.add_argument('upload', type=OnOffAuto, choices=list(OnOffAuto), nargs="?")
-        args = (parser.parse_args(cl_args))
-        switches = Switches()
-        if args.config_file:
-            switches.config(args.config_file)
-        else:
-            switches.configs(Switches.DLFT_SW_CONFIG)
-
-        if args.verbose:
-            print(f"Start state of switches: {switches}")
-        if args.camera:
-            switches['camera'] = args.camera
-        if args.upload:
-            switches['upload'] = args.upload
-        if not args.camera and not args.upload:
-            print(switches['camera'])
-            print(switches['upload'])
-        if args.verbose:
-            print(f"Finish state of switches: {switches}")
-        if args.restart:
-            if args.verbose:
-                print("Restarting tmv-controller")
-            ctlr = Unit("tmv-controller.service")
-            ctlr.restart()
-        sys.exit(0)
-
-    except PermissionError as exc:
-        print(f"{exc}: check your file access  permissions. Try root.", file=sys.stderr)
-        if args.verbose:
-            raise  # to get stack trace
-        sys.exit(10)
-    except CalledProcessError as exc:
-        print(f"{exc}: check your execute systemd permissions. Try root.", file=sys.stderr)
-        if args.verbose:
-            raise  # to get stack trace
-        sys.exit(20)
-    except Exception as exc:
-        print(exc, file=sys.stderr)
-        if args.verbose:
-            raise  # to get stack trace
-        sys.exit(30)
-
-
-
 def camera_console(cl_args=sys.argv[1:]):
     # pylint: disable=broad-except
     retval = 0
@@ -1169,7 +1136,7 @@ def camera_console(cl_args=sys.argv[1:]):
     signal(SIGTERM, sig_handler)
     parser = argparse.ArgumentParser("TMV Camera.")
     parser.add_argument('--log-level', '-ll', default='WARNING', type=lambda s: LOG_LEVELS(s).name, nargs='?', choices=LOG_LEVELS.choices())
-    parser.add_argument('--config-file', default="./camera.toml",
+    parser.add_argument('--config-file', default=DFLT_CAMERA_CONFIG_FILE,
                         help="Config file is required. It will be created if non-existant.")
     parser.add_argument('--fake', action='store_true')
     parser.add_argument('--runs', type=int, default=sys.maxsize)
@@ -1178,7 +1145,7 @@ def camera_console(cl_args=sys.argv[1:]):
 
     logging.getLogger("tmv.camera").setLevel(args.log_level)
     logging.basicConfig(format=LOG_FORMAT, level=args.log_level)
-
+    ensure_config_exists(args.config_file)
     LOGGER.info(f"Starting camera app. config-file: {Path(args.config_file).absolute()} ")
 
     cam = Camera()

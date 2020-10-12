@@ -10,22 +10,6 @@
 city = 'Brisbane'
 
 
-#
-# Physical or software buttons to control uploading, etc
-# - required
-# - alternatively, for hardware-based
-#    [controller.switches]
-#        [controller.switches.camera]
-#            pins = [10]    
-#        [controller.switches.upload]
-#            pins = [11,12]    
-[controller]
-    [controller.switches]
-        [controller.switches.camera]
-            file = '/etc/tmv/camera-switch'
-        [controller.switches.upload]
-            file = '/etc/tmv/upload-switch'
-
 ###############################################################################
 # Where to upload the images, using tmv-upload
 ###############################################################################
@@ -56,6 +40,8 @@ destination = "s3://BUCKET-NAME-TO-SET/data/HOSTNAME/daily-photos"
 # profile = 'aws-profile-name-with-my-credentials'
 # endpoint = 'http://my.s3server.com:9000'
 
+# [upload.switch]
+   file = '/etc/tmv/upload-switch'
 ###############################################################################
 # All about the camera, using tmv-camera
 ###############################################################################
@@ -152,3 +138,7 @@ exposure_mode = "night"
 [camera.picam.DARK]
 iso = 1600
 exposure_mode = "verylong"
+
+[camera.switch]
+#       pins = [11,12]    
+       file = '/etc/tmv/camera-switch'

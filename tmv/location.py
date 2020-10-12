@@ -17,7 +17,8 @@ def nearby_city():
     Returns:
         named tuple (city ,latitude, longnitude)
     """
-    public_ip = get('https://api.ipify.org').text
-    city = DbIpCity.get(public_ip, api_key='free')
+    #public_ip = get('https://api.ipify.org').text
+    #city = DbIpCity.get(public_ip, api_key='free')
 
-    return city
+    #return city
+    pass

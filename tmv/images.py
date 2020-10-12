@@ -8,8 +8,8 @@ from pathlib import Path
 import os
 from PIL import Image, ImageColor, ImageDraw, ImageFont
 from tmv.video import SliceType, VideoMaker
-from tmv.util import FONT_FILE, HH_MM, LOG_FORMAT, LOG_LEVELS, dt2str, next_mark, prev_mark, str2dt, strptimedelta
-
+from tmv.util import LOG_FORMAT, LOG_LEVELS, dt2str, next_mark, prev_mark, str2dt, strptimedelta
+from tmv.config import  FONT_FILE, HH_MM
 LOGGER = logging.getLogger(__name__)
 
 try:

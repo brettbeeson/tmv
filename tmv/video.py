@@ -59,8 +59,9 @@ from nptime import nptime
 from dateutil.parser import parse
 
 #from tmv.videotools import valid
-from tmv.util import LOG_FORMAT, add_stem_suffix, dt2str, HH_MM, neighborhood, FONT_FILE
+from tmv.util import LOG_FORMAT, add_stem_suffix, dt2str,neighborhood 
 from tmv.util import LOG_LEVELS, cpe2str, run_and_capture, str2dt, strptimedelta, subprocess_stdout, unlink_safe
+from tmv.config import HH_MM, FONT_FILE
 from tmv.videotools import valid
 from tmv.exceptions import SignalException, VideoMakerError, ImageError
 

@@ -23,6 +23,9 @@ from watchdog.observers import Observer
 
 from tmv.util import LOG_LEVELS, Tomlable, not_modified_for, check_internet, LOG_FORMAT
 from tmv.camera import ConfigError, SignalException
+from tmv.switch import get_switch, ON, OFF, AUTO
+from tmv.config import *
+
 try:
     from tmv.pijuice import Blink, TMVPiJuice
 except ImportError as exc:
@@ -70,6 +73,7 @@ class S3Uploader(FileSystemEventHandler, Tomlable):
         self.profile = profile
         self.endpoint = endpoint
         self.backlog = False  # is there a backlog of images we should upload, due to s3 or internet down, etc?
+        self.switch = get_switch(DFLT_UPLOAD_SW_SWITCH_TOML)
         try:
             self._pj = None
             self._pj = TMVPiJuice()
@@ -95,6 +99,9 @@ class S3Uploader(FileSystemEventHandler, Tomlable):
             self.setattr_from_dict("file_filter", config)
             self.setattr_from_dict("profile", config)
             self.setattr_from_dict("endpoint", config)
+            if 'switch' in config:
+                self.switch = get_switch(config)
+                LOGGER.debug(f"Setting upload switch to: {self.switch}")
             if "internet_check_period" in config:
                 self.internet_check_period = timedelta(seconds=config['internet_check_period'])
             if "destination" in config:
@@ -107,9 +114,9 @@ class S3Uploader(FileSystemEventHandler, Tomlable):
 
         else:
             raise ConfigError("No [upload] configuration section.")
+
         if 'camera' in config_dict:
-            config = config_dict['camera']
-            # todo: should be in controller
+            config = config_dict['camera']    
             self.setattr_from_dict("file_root", config)
             self.setattr_from_dict("latest_image", config)
 
@@ -133,6 +140,7 @@ class S3Uploader(FileSystemEventHandler, Tomlable):
         Upload a file or directory to s3
         This appears(?) thread-safe but could have a mutex?
         """
+        
         if src_file_or_dir is None:
             src_file_or_dir = self.file_root
 
@@ -176,6 +184,9 @@ class S3Uploader(FileSystemEventHandler, Tomlable):
 
 
         for src_file in src_files:
+            if self.switch.position == OFF:
+                LOGGER.info("Stopping upload: switched OFF")
+                break
             src_file_rel = src_file.relative_to(src_dir)
             dest_file = self._dest_root / dest_prefix / src_file_rel
             LOGGER.info(f"Uploading file (from dir) {src_file.name} to {self._dest_bucket}:{dest_file}")
@@ -314,6 +325,7 @@ class S3Uploader(FileSystemEventHandler, Tomlable):
 
     def daemon(self):
 
+        
         if check_internet():
             LOGGER.debug("Starting daemon")
             observer = Observer()
@@ -324,7 +336,15 @@ class S3Uploader(FileSystemEventHandler, Tomlable):
             observer_active = False
         if self._pj:
             self._pj.blink(Blink.WIFI, observer_active)
+
+        switch_was = self.switch.position
         while True:
+            # switch: upload backlog upon switch changing to "ON"
+            if switch_was == OFF and self.switch.position == ON:
+                self.backlog = True
+            switch_was = self.switch.position
+
+            # internet
             the_internets = check_internet()
             if observer_active:
                 if the_internets:
@@ -374,6 +394,10 @@ class S3Uploader(FileSystemEventHandler, Tomlable):
 
         if self.backlog:
             # if in a backlog state, don't keep hitting head: wait for daemon() to clear it
+            return
+
+        if self.switch.position == OFF:
+            LOGGER.debug("Upload is OFF. Ignoring created file.")
             return
 
         try:
@@ -495,8 +519,9 @@ def upload_console(cl_args=argv[1:]):
             sys.exit(0)
 
         try:
-            n = uploader.upload(args.src)
-            LOGGER.info(f"Initially uploaded {n} files")
+            if uploader.switch.position != OFF:
+                n = uploader.upload(args.src)
+                LOGGER.info(f"Initially uploaded {n} files")
         except BaseException as exc:
             if not args.daemon:
                 raise
