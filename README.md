@@ -14,10 +14,10 @@ Testing on a PiZeroW. This is only one of many options on how to setup.
 - Do a `sudo apt upgrade && sudo apt dist-upgrade && sudo reboot`
 - Optionally, install a WiFi provisioner such as [RaspAP](https://github.com/billz/raspap-webgui). See [more info](http://brettbeeson.com.au/pizerow-ap-wifi-client/)
 - Optionally, install `sudo pip install -U tzupdate` to update your timezone if you travel
-- Optionally, use a [PiJuice](https://github.com/PiSupply/PiJuice) to power it. Install API and RTC sync via service: see install-pijuice.sh.
-- Optionally, use autossh to 'phone home'. See install script: install-autossh.sh
+- Optionally, use a [PiJuice](https://github.com/PiSupply/PiJuice) to power it. Install API and RTC sync via service: see install-pijuice.sh (below)
+- Optionally, use autossh to 'phone home'. See install script: install-autossh.sh (below)
 
-#### Now SSH to Pi Zero W and...
+#### On the Pi Zero W...
 ```
 # install TMV and dependancies
 sudo apt install -y python3-pip git python3-picamera
@@ -58,33 +58,42 @@ Refer to the docs, but briefly:
 - `journalctl -f -u 'tmv*'` to check logs in operation
 
 ## Server
-Tested on Ubuntu 18, but likely to work on most linux. It converts photos to videos and optionally stores them.
+Tested on Ubuntu 18, but likely to work on most linux. It converts photos to videos and optionally stores them. Usually on a server. Get the tmv git
+
 
 #### Server - store files, make videos
-- Install [Minio](https://minio.io) to store your images. You could use any s3 server either local or remote (e.g. AWS)
-- Install as a [service script](https://github.com/minio/minio-service/tree/master/linux-systemd). Typically you'll store at /var/s3/my.tmv.bucket
-```
-cd ~/tmv
-sudo scripts/install-minio.sh
-```
 
+Install the tmv code base and prerequisties:
 ```
 sudo apt install -y python3-pip vim git 
+sudo apt install ffmpeg -y
 git clone https://github.com/brettbeeson/tmv
 cd tmv
 sudo python3 -m pip install .
 mkdir tmv-data
 sudo scripts/install-tmv-videod.sh                 
-
 ```
+
+- Install [Minio](https://minio.io) to store your images. You could use any s3 server either local or remote (e.g. AWS)
+- Install as a [service script](https://github.com/minio/minio-service/tree/master/linux-systemd). Typically you'll store at /var/s3/my.tmv.bucket
+```
+cd ~/tmv
+sudo scripts/install-minio.sh # you may need additional configuration
+```
+
 
 #### Server - serve videos via web server
-Any server is ok. I use nginx.
+Any server is ok. I use nginx with PHP. PHP is required for h5ai.
 ```
 sudo apt install -y nginx
+sudo apt install -y php-fpm
 rm /etc/nginx/sites-enabled/default
 sudo cp scripts/tmv.ngnix tmv/etc/nginx/sites-enabled/
 sudo systemctl start nginx
+# optionally, install a pre-configured config (check and adapt)
+cd ~/tmv
+sudo cp ~/tmv/scripts/tmv/tmv.nginx /etc/nginx/sites-enabled/tmv
+
 ```
 Browse to [localhost](http://localhost) to view files via the nice h5ai javascript interface. Browse to [localhost:9000](http://localhost:9000) to see minio interface.
 

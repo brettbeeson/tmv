@@ -70,7 +70,6 @@ class SwitchFactory(Tomlable):
         """
         if 'switch' not in config_dict:
             raise ConfigError(f"No switch configured in {config_dict}")
-
         c = config_dict['switch']
         if 'log_level' in c:
             LOGGER.setLevel(c['log_level'])
@@ -194,7 +193,7 @@ def switches_console(cl_args=sys.argv[1:]):
         else:
             u = get_switch(DFLT_UPLOAD_SW_SWITCH_TOML)
 
-        if args.verbose:
+        if args.verbose: 
             print(c)
             print(u)
         

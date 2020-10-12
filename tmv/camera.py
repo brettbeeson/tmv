@@ -536,7 +536,6 @@ class Camera(Tomlable):
         except Exception as e:
             print (e)
             pass
-        
         try:
             self._pijuice = TMVPiJuice()
         except (ImportError, NameError) as exc:

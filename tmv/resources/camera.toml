@@ -207,8 +207,16 @@ destination = "s3://BUCKET-NAME-TO-SET/HOSTNAME/daily-photos"
 # 
 # Switch uploads on or off
 # Software default. For hardware use
+<<<<<<< HEAD
 # pins = [22]    
 # instead of "file..."
 #   
 [upload.switch]
    file = '/etc/tmv/upload-switch'
+=======
+# pins = [10]    
+# instead of "file..."
+#   
+# [upload.switch]
+#   file = '/etc/tmv/upload-switch'
+>>>>>>> 1de5763f435fe8a156a7746f48865bd82e803588
