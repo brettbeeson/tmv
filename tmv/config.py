@@ -1,5 +1,6 @@
 from pkg_resources import resource_filename
 
+# in BCM/GPIO numbering
 DLFT_CAMERA_SW_SWITCH_TOML = """
     [switch]
     file = "/etc/tmv/camera-switch"

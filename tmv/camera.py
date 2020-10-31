@@ -536,6 +536,7 @@ class Camera(Tomlable):
         except Exception as e:
             print (e)
             pass
+
         try:
             self._pijuice = TMVPiJuice()
         except (ImportError, NameError) as exc:
@@ -835,6 +836,7 @@ class Camera(Tomlable):
             GPIO.output(self.led, GPIO.HIGH)
         except:
             pass
+        self._camera.led = True
         pil_image = self.capture()
     
         try:

@@ -7,36 +7,53 @@ from subprocess import CalledProcessError
 from time import sleep
 from shutil import copy
 from flask import Flask, send_from_directory
-from flask_socketio import SocketIO, emit
+from flask_socketio import SocketIO, emit, Namespace
 from pkg_resources import resource_filename
 from tmv.camera import DFLT_CAMERA_CONFIG_FILE
 from tmv.switch import get_switch, OnOffAuto
 from tmv.systemd import Unit
 from tmv.util import run_and_capture, unlink_safe, Tomlable
 from toml import loads, TomlDecodeError
+import pprint
 
+pp = pprint.PrettyPrinter(indent=4)
 # Set this variable to "threading", "eventlet" or "gevent" to test the
 # different async modes, or leave it set to None for the application to choose
 # the best option based on installed packages.
-async_mode = None
+#async_mode = None
 
-app = Flask(__name__)
+#app = Flask(__name__)
+app = Flask(__name__,static_url_path="/")  # default to folder: /static
 app.config['SECRET_KEY'] = 'secret!'
 socketio = SocketIO(app, host="0.0.0.0")
 status_thread = None
 server = None
 
 
-class Server(Tomlable):
+
+# create_app()
+
+
+@app.route('/')
+def index():
+    """ Serve index. Others from default /static """
+    return send_from_directory("static","index.html")
+
+
+class Server(Namespace, Tomlable):
     """ Proxy-style to read camera config and remember file locations """
 
     def __init__(self):
         self.file_root = Path(".")
-        self.switches = None
+        self.switches = {}
         self.latest_image = None
+        self.config(DFLT_CAMERA_CONFIG_FILE)
+    
 
     def configd(self, config_dict):
+        pp.pprint(config_dict)
         self.switches = {}
+        self.switches['camera'] = "hi"
         self.switches['camera'] = get_switch(config_dict['camera'])  
         self.switches['upload'] = get_switch(config_dict['upload'])  
         self.file_root = Path(config_dict['camera']['file_root'])
@@ -101,16 +118,18 @@ def broadcast_status():
                 upload_was = upload_is
 
 
-@app.route('/')
+#@app.route('/')
 def index():
     """ Serve index """
-    return send_from_directory(resource_filename(__name__, 'resources/'), "index.html")
+    #return send_from_directory(resource_filename(__name__, 'resources/'), "index.html")
+    return send_from_directory("/static/", "index.html")
 
 
 @app.route('/<path:path>')
 def static_files(path):
     """ Serve resources (js, etc) """
-    return send_from_directory(resource_filename(__name__, 'resources/'), path)
+    #return send_from_directory(resource_filename(__name__, 'resources/'), path)
+    return send_from_directory("/static/", path)
 
 
 @socketio.on('req-services-status')
