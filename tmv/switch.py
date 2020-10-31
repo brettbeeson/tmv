@@ -68,6 +68,9 @@ class SwitchFactory(Tomlable):
         Pass is dict of items with root [switch]
         e.g. {'file="/etc/file"} or {'pins'={1,2}}
         """
+        if 'switch' not in config_dict:
+            raise ConfigError(f"No switch configured in {config_dict}")
+
         c = config_dict['switch']
         if 'log_level' in c:
             LOGGER.setLevel(c['log_level'])
@@ -90,7 +93,7 @@ class HardwareSwitch(Switch):
 
     def __init__(self, pins: list):
         # will fail unless on RPi
-        GPIO.setmode(GPIO.BOARD)  # Use physical pin numbering
+        GPIO.setmode(GPIO.BCM)  # Use GPIO/BCM pin numbering
         self.pins = pins
 
         if len(pins) == 1:
@@ -191,7 +194,7 @@ def switches_console(cl_args=sys.argv[1:]):
         else:
             u = get_switch(DFLT_UPLOAD_SW_SWITCH_TOML)
 
-        if args.verbose: 
+        if args.verbose:
             print(c)
             print(u)
         

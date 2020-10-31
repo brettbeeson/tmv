@@ -162,11 +162,11 @@ resolution = '1280x720'
 # 
 # Switch camera on/off/auto
 # Software default. For hardware use
-# pins = [10,11]    
+# pins = [4, 17]    
 # instead of "file..."
 #   
-# [camera.switch]
-#   file = '/etc/tmv/camera-switch'
+[camera.switch]
+   file = '/etc/tmv/camera-switch'
 
 ###############################################################################
 # Where to upload the images, using tmv-upload
@@ -207,8 +207,8 @@ destination = "s3://BUCKET-NAME-TO-SET/HOSTNAME/daily-photos"
 # 
 # Switch uploads on or off
 # Software default. For hardware use
-# pins = [10]    
+# pins = [22]    
 # instead of "file..."
 #   
-# [upload.switch]
-#   file = '/etc/tmv/upload-switch'
+[upload.switch]
+   file = '/etc/tmv/upload-switch'

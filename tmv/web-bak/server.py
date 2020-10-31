@@ -40,7 +40,7 @@ class Server(Namespace, Tomlable):
         self.image_thread = Thread(target=self.broadcast_image_thread, args=(self,))
         self.image_thread.start()
 
-    def configd(self, config_dict):
+    def configd(self, config_dict):       
         self.camera_switch = get_switch(config_dict['camera'])
         self.upload_switch = get_switch(config_dict['upload'])
         self.file_root = Path(config_dict['camera']['file_root'])

@@ -42,6 +42,8 @@ except (ImportError, NameError) as exc:
 
 try:
     from picamera import PiCamera
+    import RPi.GPIO as GPIO
+
 except ImportError as exc:
     LOGGER.debug(exc)
 
@@ -527,7 +529,15 @@ class Camera(Tomlable):
         self._camera = None
         self._pijuice = None
         self.switch = get_switch(DLFT_CAMERA_SW_SWITCH_TOML)
-        self.led = False
+        try:
+            # todo: configuration
+            self.led = 10
+            GPIO.setmode(GPIO.BCM)
+            GPIO.setup(self.led, GPIO.OUT, initial=GPIO.LOW)
+        except Exception as e:
+            print (e)
+            pass
+        
         try:
             self._pijuice = TMVPiJuice()
         except (ImportError, NameError) as exc:
@@ -667,7 +677,6 @@ class Camera(Tomlable):
         if self._camera is None:
             try:
                 LOGGER.debug("Picamera() start")
-                #self._camera = PiCamera(led_pin=40)  # PiZero's BCM GPIO40 is the camera's LED
                 self._camera = PiCamera()
                 LOGGER.debug("Picamera() returned")
             except Exception:
@@ -823,11 +832,18 @@ class Camera(Tomlable):
 
         start = dt.now()
 
-        #if self.led:
-        #    self._camera.led = True
+        
+        try:
+            GPIO.output(self.led, GPIO.HIGH)
+        except:
+            pass
+    #    self._camera.led = True
         pil_image = self.capture()
-        #if self.led:
-        #    self._camera.led = False
+    
+        try:
+            GPIO.output(self.led, GPIO.LOW)
+        except:
+            pass
 
         pa = image_pixel_average(pil_image)
         LOGGER.debug("CAPTURED mark: {} pa:{:.3f} took:{:.2f}".format(mark, pa, (dt.now() - start).total_seconds()))
