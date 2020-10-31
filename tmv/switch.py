@@ -70,7 +70,6 @@ class SwitchFactory(Tomlable):
         """
         if 'switch' not in config_dict:
             raise ConfigError(f"No switch configured in {config_dict}")
-
         c = config_dict['switch']
         if 'log_level' in c:
             LOGGER.setLevel(c['log_level'])

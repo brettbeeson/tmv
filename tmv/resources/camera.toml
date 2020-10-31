@@ -207,7 +207,7 @@ destination = "s3://BUCKET-NAME-TO-SET/HOSTNAME/daily-photos"
 # 
 # Switch uploads on or off
 # Software default. For hardware use
-# pins = [22]    
+# pins = [22]     or 10
 # instead of "file..."
 #   
 [upload.switch]
