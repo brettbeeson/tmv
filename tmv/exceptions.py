@@ -6,8 +6,8 @@ class TMVError(Exception):
 class CameraError(Exception):
     """" Hardware camera problem"""
 
-class SwitchError(Exception):
-    """ Problem with (usually hardware) switches """
+class ButtonError(Exception):
+    """ Problem with (usually hardware) buttons """
 
 class VideoMakerError(Exception):
     """ Problem making images into a video """

@@ -1,63 +1,27 @@
 #!/usr/bin/env python
+# pylint: disable=line-too-long, logging-fstring-interpolation, dangerous-default-value, logging-not-lazy
+
+import os
 import sys
 from pathlib import Path
 from threading import Thread
 from base64 import b64encode
-from subprocess import CalledProcessError
 from time import sleep
 from shutil import copy
-from flask import Flask, send_from_directory
-from flask_socketio import SocketIO, emit, Namespace
+import argparse
+import logging
 from pkg_resources import resource_filename
-from tmv.camera import DFLT_CAMERA_CONFIG_FILE
+from flask import Flask, send_from_directory
+from flask_socketio import SocketIO, emit #, Namespace
+from toml import loads, TomlDecodeError
+from tmv.camera import CAMERA_CONFIG_FILE, DLFT_CAMERA_SW_SWITCH_TOML
 from tmv.switch import get_switch, OnOffAuto
 from tmv.systemd import Unit
-from tmv.util import run_and_capture, unlink_safe, Tomlable
-from toml import loads, TomlDecodeError
-import pprint
+from tmv.util import run_and_capture, unlink_safe, Tomlable, LOG_LEVELS, LOG_FORMAT, ensure_config_exists
 
-pp = pprint.PrettyPrinter(indent=4)
-# Set this variable to "threading", "eventlet" or "gevent" to test the
-# different async modes, or leave it set to None for the application to choose
-# the best option based on installed packages.
-#async_mode = None
+from tmv.web import create_app, cam_config, socketio
 
-#app = Flask(__name__)
-app = Flask(__name__,static_url_path="/")  # default to folder: /static
-app.config['SECRET_KEY'] = 'secret!'
-socketio = SocketIO(app, host="0.0.0.0")
-status_thread = None
-server = None
-
-
-
-# create_app()
-
-
-@app.route('/')
-def index():
-    """ Serve index. Others from default /static """
-    return send_from_directory("static","index.html")
-
-
-class Server(Namespace, Tomlable):
-    """ Proxy-style to read camera config and remember file locations """
-
-    def __init__(self):
-        self.file_root = Path(".")
-        self.switches = {}
-        self.latest_image = None
-        self.config(DFLT_CAMERA_CONFIG_FILE)
-    
-
-    def configd(self, config_dict):
-        pp.pprint(config_dict)
-        self.switches = {}
-        self.switches['camera'] = "hi"
-        self.switches['camera'] = get_switch(config_dict['camera'])  
-        self.switches['upload'] = get_switch(config_dict['upload'])  
-        self.file_root = Path(config_dict['camera']['file_root'])
-        self.latest_image = self.file_root / config_dict['camera'].get('latest_image', 'latest-image.jpg')
+LOGGER = logging.getLogger(__name__)
 
 
 def report_errors(func):
@@ -71,16 +35,18 @@ def report_errors(func):
     return wrappers
 
 
-def send_image(broadcast, binary = True):
-    socketio.emit('message', f"Sending image {server.latest_image}")
-    with server.latest_image.open(mode='rb') as f:
+def send_image(broadcast, binary=True):
+    if cam_config is None or cam_config.latest_image is None or not Path(cam_config.latest_image).exists():
+        return
+    socketio.emit('message', f"Sending image {cam_config.latest_image}")
+    with cam_config.latest_image.open(mode='rb') as f:
         image_data_bin = f.read()
     if binary:
         socketio.emit('image', {'src-bin': image_data_bin}, broadcast=True)
     else:
         image_data_b64 = b64encode(image_data_bin)
         socketio.emit('image', {'src-b64': image_data_b64.decode('utf-8')}, broadcast=broadcast)
-    socketio.emit('message', f"New image sent: {server.latest_image}")
+    socketio.emit('message', f"New image sent: {cam_config.latest_image}")
 
 def broadcast_image_thread():
     """
@@ -91,13 +57,13 @@ def broadcast_image_thread():
     while True:
         sleep(1)
         try:
-            if server:
-                image_mtime_is = server.latest_image.stat().st_mtime
+            if cam_config:
+                image_mtime_is = cam_config.latest_image.stat().st_mtime
                 if image_mtime_was is None or image_mtime_is > image_mtime_was:
                     send_image(broadcast = True)
                     image_mtime_was = image_mtime_is
         except FileNotFoundError as exc:
-            socketio.emit('warning', f"{server.latest_image}: {repr(exc)}")
+            socketio.emit('warning', f"{cam_config.latest_image}: {repr(exc)}")
             print(exc, file=sys.stderr)
 
 
@@ -106,8 +72,8 @@ def broadcast_status():
     upload_was = None
     while True:
         sleep(1)
-        if server:
-            ss = server.switches
+        if cam_config:
+            ss = cam_config.switches
             camera_is = ss['camera']
             if camera_was is None or camera_is != camera_was:
                 socketio.emit('switches', {'message': "Camera switched", 'camera': str(camera_is)})
@@ -116,20 +82,6 @@ def broadcast_status():
             if upload_was is None or upload_is != upload_was:
                 socketio.emit('switches', {'message': "Upload switched", 'upload': str(upload_is)})
                 upload_was = upload_is
-
-
-#@app.route('/')
-def index():
-    """ Serve index """
-    #return send_from_directory(resource_filename(__name__, 'resources/'), "index.html")
-    return send_from_directory("/static/", "index.html")
-
-
-@app.route('/<path:path>')
-def static_files(path):
-    """ Serve resources (js, etc) """
-    #return send_from_directory(resource_filename(__name__, 'resources/'), path)
-    return send_from_directory("/static/", path)
 
 
 @socketio.on('req-services-status')
@@ -168,9 +120,9 @@ def req_journal():
 @socketio.on('req-files')
 @report_errors
 def req_files():
-    if server:
+    if cam_config:
         fls = []
-        for f in server.file_root.glob("*"):
+        for f in cam_config.file_root.glob("*"):
             fls.append(str(f))
         emit("files", {"files": fls})
 
@@ -178,9 +130,9 @@ def req_files():
 @socketio.on('switches')
 @report_errors
 def set_switches(positions):
-    if server and server.switches:
+    if cam_config and cam_config.switches:
         for s_name, s_pos in positions.items():
-            server.switches[s_name] = OnOffAuto(s_pos.lower())
+            cam_config.switches[s_name] = OnOffAuto(s_pos.lower())
     else:
         raise RuntimeError("No switches available")
 
@@ -188,8 +140,8 @@ def set_switches(positions):
 @socketio.on('req-switches')
 @report_errors
 def req_switches():
-    if server:
-        emit('switches', {'camera': str(server.switches['camera']), 'upload': str(server.switches['upload'])})
+    if cam_config:
+        emit('switches', {'camera': str(cam_config.switches['camera']), 'upload': str(cam_config.switches['upload'])})
 
 
 @socketio.on('req-camera-config')
@@ -203,39 +155,46 @@ def req_camera_config():
 @socketio.on('camera-config')
 @report_errors
 def camera_config(configs):
-    if server:
+    if cam_config:
         loads(configs)  # check syntax
-        cf = DFLT_CAMERA_CONFIG_FILE
+        cf = CAMERA_CONFIG_FILE
         unlink_safe(cf + ".bak")
         copy(cf, cf + ".bak")
         Path(cf).write_text(configs)
         # re-read this ourselves, too, to get new file_root, etc
-        server.config(cf)
+        cam_config.config(cf)
         emit("message", "Saved config. (Consider a restart)")
 
 
 @socketio.on('connect')
 def connect():
     print("Client connected!")
-    emit('message', 'Connected.')
-    send_image(broadcast =False)
+    emit('message', 'Hello from TMV Camera.')
+    try:
+        send_image(broadcast=False)
+    except FileNotFoundError:
+        pass
+   
+
+def web_console(cl_args=sys.argv[1:]):
+    parser = argparse.ArgumentParser("Web server for TMV Camera.")
+    parser.add_argument('--log-level', '-ll', default='WARNING', type=lambda s: LOG_LEVELS(s).name, nargs='?', choices=LOG_LEVELS.choices())
+    parser.add_argument('--config-file', default=CAMERA_CONFIG_FILE)
+    args = parser.parse_args()
+
+    LOGGER.setLevel(args.log_level)
+    logging.basicConfig(format=LOG_FORMAT, level=args.log_level)
+    try:
+        app = create_app(args.config_file)
+        socketio.run(app, debug=True)
+        print("G")
+
+    except (FileNotFoundError, TomlDecodeError) as exc:
+        print(exc)
+        sys.exit(1)
 
 
-try:
-    server = Server()
-    server.config(DFLT_CAMERA_CONFIG_FILE)
-except (FileNotFoundError, TomlDecodeError) as exc:
-    print(exc)
-
-
-status_thread = Thread(target=broadcast_status)
-status_thread.start()
-image_thread = Thread(target=broadcast_image_thread)
-image_thread.start()
-
-
-@app.before_first_request
-def start_status_broadcast():
-    pass
-# if __name__ == '__main__':
-    # socketio.run(app, host="0.0.0.0", debug=True)
+if __name__ == '__main__':
+    web_console(sys.argv)
+    
+    

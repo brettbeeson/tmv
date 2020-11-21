@@ -1,4 +1,4 @@
-# pylint: disable=line-too-long, logging-fstring-interpolation, dangerous-default-value, logging-not-lazy
+# pylint: disable=protected-access, line-too-long, logging-fstring-interpolation, dangerous-default-value, logging-not-lazy
 
 from signal import signal, SIGINT, SIGTERM
 import argparse
@@ -18,21 +18,19 @@ from pathlib import Path
 import shutil
 from math import exp, sqrt, tau
 from pkg_resources import resource_filename
-
 import toml
 from PIL import Image, ImageFont, ImageDraw, ImageStat
 import astral
 from astral.geocoder import database, lookup  # Get co-ordinates from city name
 from astral.sun import sun
-
+from systemd import Unit
 from tmv.util import penultimate_unique, next_mark, LOG_FORMAT, LOG_LEVELS
 from tmv.util import Tomlable, setattrs_from_dict, sleep_until, ensure_config_exists
-from tmv.exceptions import ConfigError, PiJuiceError, SignalException, CameraError, PowerOff
-from tmv.switch import  ON, OFF, AUTO, get_switch
+from tmv.exceptions import ConfigError, PiJuiceError, SignalException, CameraError, PowerOff, ButtonError
+from tmv.buttons import OnOffAuto, ON, OFF, AUTO, ModeButton, SpeedButton, Speed
 from tmv.config import *
 
 LOGGER = logging.getLogger("tmv.camera")  # __name__
-
 
 try:
     # optional, for controling power with a PiJuice
@@ -42,7 +40,8 @@ except (ImportError, NameError) as exc:
 
 try:
     from picamera import PiCamera
-    import RPi.GPIO as GPIO
+    #import RPi.GPIO as GPIO
+    import gpiozero
 except ImportError as exc:
     LOGGER.debug(exc)
 
@@ -63,6 +62,8 @@ class LightLevel(Enum):
             return other == LightLevel.DARK
         elif self == LightLevel.DARK:
             return other != LightLevel.DARK
+        else:
+            raise RuntimeError()
 
     def __gt__(self, other):
         if other == LightLevel.LIGHT:
@@ -71,6 +72,8 @@ class LightLevel(Enum):
             return self == LightLevel.LIGHT
         elif other == LightLevel.DARK:
             return self != LightLevel.DARK
+        else:
+            raise RuntimeError()
 
 
 class CameraInactiveAction(Enum):
@@ -497,7 +500,7 @@ class SunCalc(Timed):
 
 
 class Camera(Tomlable):
-    """ A timelapse camera """
+    """ A timelapse camera with a real/synth/dummy camera"""
 
     # Defaults as per docs. Note:
     # - awb_gains: get/set, unknown default
@@ -524,18 +527,27 @@ class Camera(Tomlable):
         'zoom': (0.0, 0.0, 1.0, 1.0)
     }
 
-    def __init__(self):
-        self._camera = None
-        self._pijuice = None
-        self.switch = get_switch(DLFT_CAMERA_SW_SWITCH_TOML)
+    def __init__(self, camera=None):
+        """ Defaults to a PiCamera(), but you can pass FakePiCamera() """
+
+        if self._camera is None:
+            try:
+                LOGGER.debug("Picamera() start")
+                self._camera = PiCamera()
+                LOGGER.debug("Picamera() returned")
+            except Exception:
+                raise CameraError("No camera hardware available.")
+        else:
+            self._camera = camera
+
         try:
-            # todo: configuration
-            self.led = 10
-            GPIO.setmode(GPIO.BCM)
-            GPIO.setup(self.led, GPIO.OUT, initial=GPIO.LOW)
+            self.speed_button = SpeedButton()
+            self.speed_button.set(SPEED_FILE, SPEED_BUTTON, SPEED_LED)
+            self.mode_button = ModeButton()
+            self.mode_button.set(MODE_FILE, MODE_BUTTON, MODE_LED)
+            self.led = gpiozero.LED(ACTIVITY_LED)
         except Exception as e:
-            print (e)
-            pass
+            print(e)
 
         try:
             self._pijuice = TMVPiJuice()
@@ -585,87 +597,94 @@ class Camera(Tomlable):
         }
 
     def configd(self, config_dict):
-
-
-        
+        c = config_dict  # shortcut
         if 'camera' in config_dict:
-            c = config_dict['camera']
+            raise ConfigError("'camera' element passed as element, not root, in config")
+        if 'log_level' in c:
+            LOGGER.setLevel(c['log_level'])
+        if 'mode_button' in c:
+            self.mode_button = ModeButton()
+            self.mode_button.set(
+                button_path=c['mode_button'].get('file', MODE_FILE),
+                button_pin=c['mode_button'].get('button', MODE_BUTTON),
+                led_pin=c['mode_button'].get('led', MODE_LED))
+            LOGGER.info(f"Setting mode button to: {self.mode_button}")
 
-            if 'switch' in c:
-                self.switch = get_switch(c)
-                LOGGER.info(f"Setting camera switch to: {self.switch}")
+        if 'speed_button' in c:
+            self.speed_button = SpeedButton()
+            self.speed_button.set(
+                button_path=c['speed_button'].get('file', SPEED_FILE),
+                button_pin=c['speed_button'].get('button', SPEED_BUTTON),
+                led_pin=c['speed_button'].get('led', SPEED_LED))
+            LOGGER.info(f"Setting speed button to: {self.speed_button}")
 
-            if 'log_level' in c:
-                LOGGER.setLevel(c['log_level'])
+        # self.setattr_from_dict(manual.abspath(
+        # os.path.expanduser(self.file_root)
+        self.setattr_from_dict('file_root', c)
+        self.setattr_from_dict('overlays', c)
+        self.setattr_from_dict('calc_shutter_speed', c)
 
-            #self.setattr_from_dict(manual.abspath(
-            # os.path.expanduser(self.file_root)
-            self.setattr_from_dict('file_root', c)
-            self.setattr_from_dict('overlays', c)
-            self.setattr_from_dict('calc_shutter_speed', c)
-
-            if 'city' in c:
-                # pylint: disable=no-else-raise
-                if c['city'] == 'auto':
-                    raise NotImplementedError("city = 'auto' not implemented")
-                else:
-                    self.location = lookup(c['city'], database())
-
-            if 'camera_inactive_action' in c:
-                self.camera_inactive_action = CameraInactiveAction[c['camera_inactive_action']]
-
-            if 'interval' in c:
-                # interval specified as seconds: convert to timedelta
-                self.interval = timedelta(seconds=c['interval'])
-                if self.interval.total_seconds() < 10.0:
-                    LOGGER.warning("Intervals < 10s are not tested")
-
-            if 'inactive_threshold' in c:
-                # inactive_threshold specified as seconds: convert to timedelta
-                self.inactive_min = timedelta(
-                    seconds=c['inactive_threshold'])
-
-            if 'on' in c and 'off' in c:
-                # create the controller for active periods
-                self.active_timer = ActiveTimes.factory(
-                    c['on'], c['off'], self)
+        if 'city' in c:
+            # pylint: disable=no-else-raise
+            if c['city'] == 'auto':
+                raise NotImplementedError("city = 'auto' not implemented")
             else:
-                LOGGER.warning("[camera] on and off times should be set. Defaulting to {}".format(
-                    self.active_timer))
-            # config picam modes for light levels
-            if 'picam' in c:
-                for level_str in [ll.value for ll in LightLevel]:
-                    if level_str in c['picam']:
-                        self.picam[level_str] = c['picam'][level_str]
-                        if 'framerate' in self.picam[level_str]:
-                            if self.picam[level_str]['framerate'] < 0.20:  # 1/6 is the minimum, use 1/5 for safety
-                                raise ConfigError("framerate={} is < 1/5 s".format(
-                                    self.picam[level_str]['framerate']))
+                self.location = lookup(c['city'], database())
 
-            # config light sensor
-            if 'sensor' in c:
-                setattrs_from_dict(self.light_sensor, c['sensor'])
-                if 'freq' in c['sensor']:
-                    self.light_sensor.freq = timedelta(
-                        seconds=float(c['sensor']['freq']))
-                if 'max_age' in c['sensor']:
-                    self.light_sensor.max_age = timedelta(
-                        seconds=float(c['sensor']['max_age']))
-                if 'power_off' in c['sensor']:
-                    self.light_sensor.power_off = timedelta(
-                        seconds=float(c['sensor']['power_off']))
+        if 'camera_inactive_action' in c:
+            self.camera_inactive_action = CameraInactiveAction[c['camera_inactive_action']]
+
+        if 'interval' in c:
+            # interval specified as seconds: convert to timedelta
+            self.interval = timedelta(seconds=c['interval'])
+            if self.interval.total_seconds() < 10.0:
+                LOGGER.warning("Intervals < 10s are not tested")
+
+        if 'inactive_threshold' in c:
+            # inactive_threshold specified as seconds: convert to timedelta
+            self.inactive_min = timedelta(
+                seconds=c['inactive_threshold'])
+
+        if 'on' in c and 'off' in c:
+            # create the controller for active periods
+            self.active_timer = ActiveTimes.factory(
+                c['on'], c['off'], self)
+        else:
+            LOGGER.warning("[camera] on and off times should be set. Defaulting to {}".format(
+                self.active_timer))
+        # config picam modes for light levels
+        if 'picam' in c:
+            for level_str in [ll.value for ll in LightLevel]:
+                if level_str in c['picam']:
+                    self.picam[level_str] = c['picam'][level_str]
+                    if 'framerate' in self.picam[level_str]:
+                        if self.picam[level_str]['framerate'] < 0.20:  # 1/6 is the minimum, use 1/5 for safety
+                            raise ConfigError("framerate={} is < 1/5 s".format(
+                                self.picam[level_str]['framerate']))
+
+        # config light sensor
+        if 'sensor' in c:
+            setattrs_from_dict(self.light_sensor, c['sensor'])
+            if 'freq' in c['sensor']:
+                self.light_sensor.freq = timedelta(
+                    seconds=float(c['sensor']['freq']))
+            if 'max_age' in c['sensor']:
+                self.light_sensor.max_age = timedelta(
+                    seconds=float(c['sensor']['max_age']))
+            if 'power_off' in c['sensor']:
+                self.light_sensor.power_off = timedelta(
+                    seconds=float(c['sensor']['power_off']))
 
         # sanity checks
         if self.light_sensor.power_off <= self.inactive_min:
             # Otherwise we will never power off
             raise ConfigError("power_off ({}) must be longer than inactive_min ({}). "
                               .format(self.light_sensor.power_off, self.inactive_min))
-        
-        # todo: finsih
+
+        # todo: finish
         #known_keys = ['log_level', ]
         #unknown = (k for k in c if k not in known_keys)
 
-  
     def __str__(self):
         return pformat(vars(self))
 
@@ -673,14 +692,6 @@ class Camera(Tomlable):
         """
         Main loop. May shutdown machine if required.
         """
-        if self._camera is None:
-            try:
-                LOGGER.debug("Picamera() start")
-                self._camera = PiCamera()
-                LOGGER.debug("Picamera() returned")
-            except Exception:
-                raise CameraError("No camera hardware available")
-
         if self.run_start is None:
             self.run_start = dt.now()
             # Run the light senser so we know what to do on the first loop
@@ -691,11 +702,11 @@ class Camera(Tomlable):
         for _ in range(0, n):
 
             # wait until not OFF
-            while self.switch.position == OFF:
+            while self.mode_button.value == OFF:
                 time.sleep(1)
 
             # Sleep / power off / etc if the camera is inactive
-            if self.switch.position == AUTO:
+            if self.mode_button.value == AUTO:
                 waketime = self.active_timer.waketime()
                 if waketime - dt.now() >= self.inactive_min:
                     self.camera_inactive_until(waketime)
@@ -713,7 +724,7 @@ class Camera(Tomlable):
                 # Hence we check if we're really active after sleeping and consider if we
                 # should just run the light_sensor
 
-            if self.switch.position == ON or self.active_timer.active():
+            if self.mode_button.value == ON or self.active_timer.active():
 
                 # use instant here to ease debug, but dt.now()
                 # to sleep the exact amount
@@ -722,7 +733,7 @@ class Camera(Tomlable):
                 next_sense_mark = next_mark(self.light_sensor.freq, instant)
                 # logger.debug("instant: {} next_image_mark: {} next_sense_mark: {}".format(                        instant, next_image_mark, next_sense_mark))
 
-                if  self.light_sense_outstanding:
+                if self.light_sense_outstanding:
                     # run light sensor that we missed, immediately
                     set_picam(self._camera, {
                         ** self.picam_defaults, ** self.picam_sensing
@@ -730,8 +741,8 @@ class Camera(Tomlable):
                     self.capture_light(dt.now())
                     # no need to sense again this loop
                     self.light_sense_outstanding = False
-                    self.next_sense_mark = dt.now() + timedelta(days=9999)  # dt.max() overflows          
-                
+                    next_sense_mark = dt.now() + timedelta(days=9999)  # dt.max() overflows
+
                 if next_image_mark == next_sense_mark:
                     # they want the same time: do the image and note outstanding for the sensor
                     self.light_sense_outstanding = True
@@ -742,7 +753,7 @@ class Camera(Tomlable):
                     if self.calc_shutter_speed and settings['exposure_mode'] == 'off':
                         # exposure_speed: 'retrieve the current shutter speed'
                         # shutter_speeed is the requested value
-                        settings['shutter_speed'] = self.shutter_speed_from_last()  
+                        settings['shutter_speed'] = self.shutter_speed_from_last()
                         if settings['shutter_speed'] is None:
                             settings['shutter_speed'] = self.shutter_speed_from_sensor()
                     LOGGER.debug(settings)
@@ -781,7 +792,7 @@ class Camera(Tomlable):
         Empirical and not very good: use shutter_speed_from_list where possible
         Linear: pixel_average     length
                  PA                SL
-        Max:     0.0*             5s   
+        Max:     0.0*             5s
         Min      0.5              1/250
         * fixed
         SL = m * PA + c => c=max_length, m=min_length - c / (PA_min)
@@ -814,7 +825,7 @@ class Camera(Tomlable):
     @staticmethod
     def save_image(pil_image, image_filename):
         try:
-            if (pil_image.size[0] * pil_image.size[1] == 0):
+            if pil_image.size[0] * pil_image.size[1] == 0:
                 raise RuntimeError("Image has zero width or height")
             pil_image.verify()
         except Exception as exc:
@@ -830,19 +841,11 @@ class Camera(Tomlable):
     def capture_image(self, mark):
 
         start = dt.now()
-
-        
-        try:
-            GPIO.output(self.led, GPIO.HIGH)
-        except:
-            pass
-        self._camera.led = True
+        if self.led:
+            self.led.on()
         pil_image = self.capture()
-    
-        try:
-            GPIO.output(self.led, GPIO.LOW)
-        except:
-            pass
+        if self.led:
+            self.led.off()
 
         pa = image_pixel_average(pil_image)
         LOGGER.debug("CAPTURED mark: {} pa:{:.3f} took:{:.2f}".format(mark, pa, (dt.now() - start).total_seconds()))
@@ -905,10 +908,6 @@ class Camera(Tomlable):
                 text_size = 10
                 font = ImageFont.truetype(FONT_FILE, text_size, encoding='unic')
                 text_box_size = draw.textsize(text=text, font=font)
-                # left top corner
-                draw.text(
-                    xy=(0, 0), text=text, fill=text_colour, font=font)
-                # centre text
             if 'simple_settings' in self.overlays:
                 # Draw some of picam's settings
                 picam = get_picam(self._camera)
@@ -985,16 +984,16 @@ class Camera(Tomlable):
             else:
                 raise PiJuiceError("No pijuice available")
         elif self.camera_inactive_action == CameraInactiveAction.WAIT:
-            # "Light" sleep : monitor switches is case wakeup is called
+            # "Light" sleep : monitor buttones is case wakeup is called
 
-            LOGGER.info(f"Inactive until {wakeup}, unless switched ON.")
+            LOGGER.info(f"Inactive until {wakeup}, unless buttoned ON.")
             while dt.now() < wakeup:
-                if self.switch.position == ON:
-                    LOGGER.info("Switched ON during sleep. Waking")
+                if self.mode_button.value == ON:
+                    LOGGER.info("Buttoned ON during sleep. Waking")
                     return
                 time.sleep(1)
             LOGGER.debug(f"Awoke from inactive at {wakeup}")
-            
+
         elif self.camera_inactive_action == CameraInactiveAction.EXIT:
             LOGGER.info(
                 "Camera inactive. Exiting. Wake at {}".format(wakeup))
@@ -1004,7 +1003,7 @@ class Camera(Tomlable):
 
 
 class FakePiCamera():
-    """ Returns plain jane images via software and time-of-day"""
+    """ Returns synthetic images via software and time-of-day"""
 
     def __init__(self):
         self.lum = 0
@@ -1130,6 +1129,67 @@ def sig_handler(signal_received, frame):
     raise SignalException
 
 
+def buttons_console(cl_args=sys.argv[1:]):
+    try:
+        parser = argparse.ArgumentParser(
+            "Check and control TMV buttones.")
+        parser.add_argument('-c', '--config-file', default=CAMERA_CONFIG_FILE)
+        parser.add_argument('-v', '--verbose', action="store_true")
+        parser.add_argument('-r', '--restart', action="store_true", help="restart service to (e.g.) re-read config")
+        parser.add_argument('mode', type=OnOffAuto, choices=list(OnOffAuto), nargs="?")
+        parser.add_argument('speed', type=Speed, choices=list(Speed), nargs="?")
+        args = (parser.parse_args(cl_args))
+
+        if args.verbose:
+            print(args)
+
+        ensure_config_exists(args.config_file)
+
+        c = Camera(camera=FakePiCamera())
+        if args.verbose:
+            print(c.mode_button)
+            print(c.speed_button)
+
+        if args.mode:
+            try:
+                c.mode_button.value = args.mode
+            except ButtonError as e:
+                print(e)
+        else:
+            print(c.mode_button)
+
+        if args.speed:
+            try:
+                c.speed_button.value = args.mode
+            except ButtonError as e:
+                print(e)
+        else:
+            print(c.mode_button)
+
+        if args.restart:
+            if args.verbose:
+                print("Restarting camera")
+            ctlr = Unit("tmv-camera.service")
+            ctlr.restart()
+        sys.exit(0)
+
+    except PermissionError as exc:
+        print(f"{exc}: check your file access  permissions. Try root.", file=sys.stderr)
+        if args.verbose:
+            raise  # to get stack trace
+        sys.exit(10)
+    except CalledProcessError as exc:
+        print(f"{exc}: check your execute systemd permissions. Try root.", file=sys.stderr)
+        if args.verbose:
+            raise  # to get stack trace
+        sys.exit(20)
+    except Exception as exc:
+        print(exc, file=sys.stderr)
+        if args.verbose:
+            raise  # to get stack trace
+        sys.exit(30)
+
+
 def camera_console(cl_args=sys.argv[1:]):
     # pylint: disable=broad-except
     retval = 0
@@ -1137,7 +1197,7 @@ def camera_console(cl_args=sys.argv[1:]):
     signal(SIGTERM, sig_handler)
     parser = argparse.ArgumentParser("TMV Camera.")
     parser.add_argument('--log-level', '-ll', default='WARNING', type=lambda s: LOG_LEVELS(s).name, nargs='?', choices=LOG_LEVELS.choices())
-    parser.add_argument('--config-file', default=DFLT_CAMERA_CONFIG_FILE,
+    parser.add_argument('--config-file', default=CAMERA_CONFIG_FILE,
                         help="Config file is required. It will be created if non-existant.")
     parser.add_argument('--fake', action='store_true')
     parser.add_argument('--runs', type=int, default=sys.maxsize)
@@ -1189,4 +1249,3 @@ def camera_console(cl_args=sys.argv[1:]):
             time.sleep(1)
 
     sys.exit(retval)
-

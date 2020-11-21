@@ -63,8 +63,12 @@ class Tomlable:
         self.configd(config_dict)
 
     def config(self, config_pathname):
-        config_dict = toml.load(config_pathname)
-        self.configd(config_dict)
+        try:
+            config_dict = toml.load(config_pathname)
+            self.configd(config_dict)
+        except Exception as ex:
+            LOGGER.warning(f"error reading config file: {config_pathname}")
+            raise ex
 
     def configd(self, config_dict):
         raise NotImplementedError
