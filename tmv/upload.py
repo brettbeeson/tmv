@@ -22,8 +22,7 @@ from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
 
 from tmv.util import LOG_LEVELS, Tomlable, not_modified_for, check_internet, LOG_FORMAT
-from tmv.camera import ConfigError, SignalException
-from tmv.switch import get_switch, ON, OFF, AUTO
+from tmv.camera import ConfigError, SignalException, Camera, FakePiCamera
 from tmv.config import *
 
 try:
@@ -73,7 +72,8 @@ class S3Uploader(FileSystemEventHandler, Tomlable):
         self.profile = profile
         self.endpoint = endpoint
         self.backlog = False  # is there a backlog of images we should upload, due to s3 or internet down, etc?
-        self.switch = get_switch(DFLT_UPLOAD_SW_SWITCH_TOML)
+        
+        
         try:
             self._pj = None
             self._pj = TMVPiJuice()
@@ -99,9 +99,6 @@ class S3Uploader(FileSystemEventHandler, Tomlable):
             self.setattr_from_dict("file_filter", config)
             self.setattr_from_dict("profile", config)
             self.setattr_from_dict("endpoint", config)
-            if 'switch' in config:
-                self.switch = get_switch(config)
-                LOGGER.debug(f"Setting upload switch to: {self.switch}")
             if "internet_check_period" in config:
                 self.internet_check_period = timedelta(seconds=config['internet_check_period'])
             if "destination" in config:
@@ -184,9 +181,6 @@ class S3Uploader(FileSystemEventHandler, Tomlable):
 
 
         for src_file in src_files:
-            if self.switch.position == OFF:
-                LOGGER.info("Stopping upload: switched OFF")
-                break
             src_file_rel = src_file.relative_to(src_dir)
             dest_file = self._dest_root / dest_prefix / src_file_rel
             LOGGER.info(f"Uploading file (from dir) {src_file.name} to {self._dest_bucket}:{dest_file}")
@@ -337,13 +331,8 @@ class S3Uploader(FileSystemEventHandler, Tomlable):
         if self._pj:
             self._pj.blink(Blink.WIFI, observer_active)
 
-        switch_was = self.switch.position
+        
         while True:
-            # switch: upload backlog upon switch changing to "ON"
-            if switch_was == OFF and self.switch.position == ON:
-                self.backlog = True
-            switch_was = self.switch.position
-
             # internet
             the_internets = check_internet()
             if observer_active:
@@ -396,10 +385,7 @@ class S3Uploader(FileSystemEventHandler, Tomlable):
             # if in a backlog state, don't keep hitting head: wait for daemon() to clear it
             return
 
-        if self.switch.position == OFF:
-            LOGGER.debug("Upload is OFF. Ignoring created file.")
-            return
-
+        
         try:
             if event.is_directory:
                 return None  # Irrelevant for uploading to s3
@@ -476,8 +462,8 @@ def upload_console(cl_args=argv[1:]):
                             help="Directory (recursive) or file e.g. myfile, ./ or /var/here/")
         parser.add_argument('dest', type=str, nargs="?",
                             help="e.g. s3://tmv.brettbeeson.com.au/tmp/")
-        parser.add_argument('--config-file',
-                            help="Read [upload] settings. CLI options will override them.", default="./camera.toml")
+        parser.add_argument('-c','--config-file',
+                            help="Read [upload] settings. CLI options will override them.", default=CAMERA_CONFIG_FILE)
         parser.add_argument('-i', '--include', type=str,
                             help="When src is a folder, only upload files matching this pattern. Otherwise ignored.")
         parser.add_argument('-mv', '--move', action='store_true',
@@ -499,6 +485,7 @@ def upload_console(cl_args=argv[1:]):
         if not Path(args.config_file).is_file():
             shutil.copy(resource_filename(__name__, 'resources/camera.toml'), args.config_file)
             LOGGER.info("Writing default config file to {}.".format(args.config_file))
+        LOGGER.info(f"Using config file at {args.config_file}")
         uploader.config(args.config_file)
 
         # override config file with CLI options
@@ -516,27 +503,26 @@ def upload_console(cl_args=argv[1:]):
             uploader.move = args.move
         if args.dry_run:
             LOGGER.debug(pformat(vars(uploader)))
-            sys.exit(0)
+            return 0
 
         try:
-            if uploader.switch.position != OFF:
-                n = uploader.upload(args.src)
-                LOGGER.info(f"Initially uploaded {n} files")
-        except BaseException as exc:
+            n = uploader.upload(args.src)
+            LOGGER.info(f"Initially uploaded {n} files")
+        except Exception as exc:
             if not args.daemon:
                 raise
             else:
                 LOGGER.warning(f"Initial upload failed, continuing to daemon. Exception: {exc}")
 
         if not args.daemon:
-            sys.exit(0)
+            return 0
 
         uploader.daemon()
 
     except SignalException:
         LOGGER.info('SIGTERM, SIGINT or CTRL-C detected. Exiting gracefully.')
         sys.exit(0)
-    except BaseException as exc:
+    except Exception as exc:
         LOGGER.error(exc)
-        LOGGER.debug(exc, exc_info=exc)
-        sys.exit(1)
+        LOGGER.debug(exc, exc_info=True)
+        return 1
