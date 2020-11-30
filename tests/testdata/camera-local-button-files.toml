@@ -159,17 +159,17 @@ resolution = '1280x720'
 #light = 0.2
 #save_images = false
 
-# Button for camera on/off/auto
+# Switch camera on/off/auto
 # Software default. For hardware use
 # pins = [4, 17]    
 # instead of "file..."
 #   
-#[camera.mode_button]
+#[camera.mode_switch]
 #   file = '/etc/tmv/camera-mode'
 #   button = 17
 #   led = 4
 
-#[camera.speed_button]
+#[camera.speed_switch]
 #   file = '/etc/tmv/camera-speed'
 ##   button = 27
 #   led = 10  
@@ -192,6 +192,14 @@ resolution = '1280x720'
 #
 destination = "s3://BUCKET-NAME-TO-SET/HOSTNAME/daily-photos"
 
+#
+# Remove files after copy.
+# If false, files remain and will be re-uploaded when upload is re-started
+# They won't be continuously uploaded in daemon mode, as it does a batch upload,
+# then checks only for new files
+#
+# move=true
+
 # file_filter="*"
 # extraargs  = {
 #   ACL = 'public-read',
@@ -199,9 +207,6 @@ destination = "s3://BUCKET-NAME-TO-SET/HOSTNAME/daily-photos"
 # profile = 'aws-profile-name-with-my-credentials'
 # endpoint = 'http://my.s3server.com:9000'
 
-# Upload check every n seconds.
-# (Also uploads if a change is detected)
-# interval = 60
 
 #
 # Choose from DEBUG, INFO, WARNING, ERROR, CRITAL

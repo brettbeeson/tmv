@@ -1,12 +1,15 @@
 # pylint: disable=broad-except,logging-fstring-interpolation,logging-not-lazy, dangerous-default-value
-
-#
-# File-underlied 2- and 3-value buttones with hardware buttons and LEDs
-#
-
+""" 
+File-underlied 2- and 3-value buttones with hardware buttons and LEDs
+"""
+from sys import stderr
 from enum import Enum
 import logging
+from  debugpy import breakpoint
 from pathlib import Path
+from datetime import timedelta
+from _datetime import datetime as dt
+from time import sleep 
 # to enable monkeypatching, don't import "from tmv.util", but instead:
 import tmv.util
 
@@ -21,7 +24,7 @@ LOGGER = logging.getLogger("tmv.button")
 
 class Speed(Enum):
     """ Trimatic """
-    SLOW = 'fast'
+    SLOW = 'slow'
     MEDIUM = 'medium'
     FAST = 'fast'
 
@@ -36,42 +39,85 @@ FAST = Speed.FAST
 
 
 class AdvancedButton(tmv.util.Tomlable):
-    """ mode controlled by file and/or pushbutton, with optional LED indicator """
+    """ 
+    mode is controlled by file and/or pushbutton, with optional LED indicator
+    - if unlit, the first push will just illuminate (not change state)
+    - pushes when illuminated change state
+    - it will return to unlit after a time
+    """
 
     def __init__(self):
-        self.value = None
         self.button_path = None
         self.button = None
         self.led = None
+        self.lit_for = timedelta(seconds=20)  # seconds to display status for. 0 for always
+        self.last_pressed = dt.min
 
     def set(self, button_path=None, button_pin=None, led_pin=None):
         if button_path:
             self.button_path = Path(button_path)
-        if button_pin:
-            self.button = Button(button_pin)
-            self.button.when_pressed = self.push
-        if led_pin:
-            self.led = LED(led_pin)
+        try:
+            # only works on raspi
+            if button_pin:
+                self.button = Button(button_pin)
+                self.button.when_pressed = self.push
+            if led_pin:
+                self.led = LED(led_pin)
+        except Exception as e:
+            print(f"Exception but continuing:{e}", file=stderr)
 
-    def push(self):
-        raise NotImplementedError
+        self.push()          # first push will illuminate, not change
+
+    def push(self) -> bool:
+        """
+        Call with super().push() before your implementation
+        Resets the dormancy counter. 
+        Returns True if push was active (act upon) or False if it was dormant (ignore via return)
+        """
+        if self.lit_for is None:
+            # always on
+            return True
+        was_lit = dt.now() < self.last_pressed + self.lit_for
+        self.last_pressed = dt.now()
+        return was_lit
+
+    def led_on(self):
+        if self.lit_for is None:
+            self.led.on()
+        else:
+            self.led.blink(1,0,int(self.lit_for.total_seconds()))
+
+    def led_off(self):
+        self.led.off()
+
+    def led_blink(self,led_on_time: float, led_off_time: float):
+
+        if self.lit_for is None:
+            self.led.blink(on_time=led_on_time,off_time=led_off_time)
+        else:
+            one_n = led_on_time + led_off_time
+            led_n = int(self.lit_for.total_seconds() / one_n)
+            self.led.blink(on_time=led_on_time,off_time=led_off_time, n = led_n)
 
     def __str__(self):
-        return f"ModeButton ({self.button_path}): {self.value}"
+        return f"AdvancedButton ({self.button_path}): {self.value}"
 
     def __repr__(self):
-        return f"ModeButton ({self.button_path}): {self.value}"
+        return f"AdvancedButton ({self.button_path}): {self.value}"
 
     def configd(self, config_dict):
         if 'button' in config_dict:
             c = config_dict['button']
-            if 'file' in c:
-                self.button_path = Path(c['file'])
-            if 'buttonpin' in c:
-                self.button = Button(c['pin'])
-                self.button.when_pressed = self.push
-            if 'ledpin' in c:
-                self.led = LED['ledpin']
+        else:
+            c = config_dict
+
+        if 'file' in c:
+            self.button_path = Path(c['file'])
+        if 'buttonpin' in c:
+            self.button = Button(c['pin'])
+            self.button.when_pressed = self.push
+        if 'ledpin' in c:
+            self.led = LED['ledpin']
 
     @property
     def value(self):
@@ -82,8 +128,7 @@ class AdvancedButton(tmv.util.Tomlable):
 
     @value.setter
     def value(self, state):
-        with self.button_path.open(mode="w") as f:
-            f.write(state.name)
+        raise NotImplementedError
 
 
 class OnOffAuto(Enum):
@@ -110,20 +155,23 @@ class ModeButton(AdvancedButton):
         self.value = OFF
 
     def push(self):
-        if self.value == ON:
-            self.value = OFF
-        elif self.value == OFF:
-            self.value = AUTO
-        elif self.value == AUTO:
-            self.value = ON
+        if super().push():
+            # was lit : change mode
+            if self.value == ON:
+                self.value = OFF
+            elif self.value == OFF:
+                self.value = AUTO
+            elif self.value == AUTO:
+                self.value = ON
 
+        
         if self.led:
             if self.value == ON:
-                self.led.on()
+                self.led_blink(led_on_time=2, led_off_time=0.01)
             elif self.value == OFF:
-                self.led.off()
+                self.led_blink(led_on_time=0.01, led_off_time=2)
             elif self.value == AUTO:
-                self.led.blink()
+                self.led_blink(led_on_time=0.25, led_off_time=0.25)
 
     def __str__(self):
         return f"OnOffAutoButton ({self.button_path}): {self.value}"
@@ -143,6 +191,11 @@ class ModeButton(AdvancedButton):
             self.button_path.write_text(AUTO.name)
             return AUTO
 
+    @value.setter
+    def value(self, state):
+        if self.button_path:
+            with self.button_path.open(mode="w") as f:
+                f.write(state.name)
 
 
 class SpeedButton(AdvancedButton):
@@ -153,20 +206,21 @@ class SpeedButton(AdvancedButton):
         self.value = MEDIUM
 
     def push(self):
-        if self.value == SLOW:
-            self.value = MEDIUM
-        elif self.value == MEDIUM:
-            self.value = FAST
-        elif self.value == FAST:
-            self.value = SLOW
+        if super().push():
+            if self.value == SLOW:
+                self.value = MEDIUM
+            elif self.value == MEDIUM:
+                self.value = FAST
+            elif self.value == FAST:
+                self.value = SLOW
 
         if self.led:
             if self.value == SLOW:
-                self.led.blink(.1, 1)
+                self.led_blink(.1, 1)
             elif self.value == MEDIUM:
-                self.led.blink(.1, .5)
+                self.led_blink(.1, .5)
             elif self.value == FAST:
-                self.led.blink(.1, .1)
+                self.led_blink(.1, .1)
 
     def __str__(self):
         return f"SpeedButton ({self.button_path}): {self.value}"
@@ -187,6 +241,29 @@ class SpeedButton(AdvancedButton):
             return MEDIUM
 
     @value.setter
-    def value(self, state: OnOffAuto):
-        with self.button_path.open(mode="w") as f:
-            f.write(state.name)
+    def value(self, state):
+        if self.button_path:
+            with self.button_path.open(mode="w") as f:
+                f.write(state.name)
+
+def button_test():
+    speed = SpeedButton()
+    speed.lit_for = timedelta(seconds=5)
+    speed.set("speed", 27, 10)
+    mode = ModeButton()
+    mode.lit_for = timedelta(seconds=5)
+    mode.set("mode", 17, 4)
+    print("lit: 5s")
+    sleep(60)
+
+    speed.lit_for = None
+    mode.lit_for = None
+    print("lit: inf")
+    sleep(60)
+
+    print("done")
+
+
+if __name__ == "__main__":
+    breakpoint()
+    button_test()

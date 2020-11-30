@@ -3,7 +3,7 @@
 from signal import signal, SIGINT, SIGTERM
 import argparse
 from io import BytesIO
-import sys
+from sys import stderr, maxsize, argv
 from enum import Enum
 import datetime
 from datetime import datetime as dt, timedelta             # dt = class
@@ -16,6 +16,7 @@ from collections.abc import MutableSequence
 from pprint import pformat
 from pathlib import Path
 import shutil
+import debugpy
 from math import exp, sqrt, tau
 from pkg_resources import resource_filename
 import toml
@@ -23,7 +24,7 @@ from PIL import Image, ImageFont, ImageDraw, ImageStat
 import astral
 from astral.geocoder import database, lookup  # Get co-ordinates from city name
 from astral.sun import sun
-from systemd import Unit
+from tmv.systemd import Unit
 from tmv.util import penultimate_unique, next_mark, LOG_FORMAT, LOG_LEVELS
 from tmv.util import Tomlable, setattrs_from_dict, sleep_until, ensure_config_exists
 from tmv.exceptions import ConfigError, PiJuiceError, SignalException, CameraError, PowerOff, ButtonError
@@ -34,7 +35,7 @@ LOGGER = logging.getLogger("tmv.camera")  # __name__
 
 try:
     # optional, for controling power with a PiJuice
-    from tmv.pijuice import TMVPiJuice
+    from tmv.tmvpijuice import TMVPiJuice
 except (ImportError, NameError) as exc:
     LOGGER.debug(exc)
 
@@ -527,33 +528,35 @@ class Camera(Tomlable):
         'zoom': (0.0, 0.0, 1.0, 1.0)
     }
 
-    def __init__(self, camera=None):
-        """ Defaults to a PiCamera(), but you can pass FakePiCamera() """
+    def __init__(self, fake=False):
+        """Create the camera hardware setup.  
 
-        if self._camera is None:
-            try:
-                LOGGER.debug("Picamera() start")
-                self._camera = PiCamera()
-                LOGGER.debug("Picamera() returned")
-            except Exception:
-                raise CameraError("No camera hardware available.")
+        Raises:
+            CameraError: [description]       
+         
+        """
+
+        if  fake:
+            self._camera = FakePiCamera()
         else:
-            self._camera = camera
-
+            #try:
+            LOGGER.debug("Picamera() start")
+            self._camera = PiCamera()
+            LOGGER.debug("Picamera() returned")
+            #except PiCameraError:
+            #    raise  CameraError("No camera hardware available.") # from tmv
+        
+        self.speed_button = SpeedButton()
+        self.speed_button.set(SPEED_FILE, SPEED_BUTTON, SPEED_LED)
+        self.mode_button = ModeButton()
+        self.mode_button.set(MODE_FILE, MODE_BUTTON, MODE_LED)
+        self.led = None
         try:
-            self.speed_button = SpeedButton()
-            self.speed_button.set(SPEED_FILE, SPEED_BUTTON, SPEED_LED)
-            self.mode_button = ModeButton()
-            self.mode_button.set(MODE_FILE, MODE_BUTTON, MODE_LED)
             self.led = gpiozero.LED(ACTIVITY_LED)
-        except Exception as e:
-            print(e)
+        except NameError as e:
+            print(f"Continuing without buttons: {e}",file=stderr)
 
-        try:
-            self._pijuice = TMVPiJuice()
-        except (ImportError, NameError) as exc:
-            self._pijuice = None
-            print(exc)
+        self._pijuice = None
         self.calc_shutter_speed = False
         self.location = None
         self.recent_images = []
@@ -599,7 +602,7 @@ class Camera(Tomlable):
     def configd(self, config_dict):
         c = config_dict  # shortcut
         if 'camera' in config_dict:
-            raise ConfigError("'camera' element passed as element, not root, in config")
+            c = config_dict['camera'] # can accept config in root or [camera]
         if 'log_level' in c:
             LOGGER.setLevel(c['log_level'])
         if 'mode_button' in c:
@@ -609,7 +612,13 @@ class Camera(Tomlable):
                 button_pin=c['mode_button'].get('button', MODE_BUTTON),
                 led_pin=c['mode_button'].get('led', MODE_LED))
             LOGGER.info(f"Setting mode button to: {self.mode_button}")
-
+        if c.get('pijuice', False):
+            try:
+                self._pijuice = TMVPiJuice()
+            except (ImportError, NameError) as exc:
+                self._pijuice = None
+                LOGGER.warning(f"Failed to init pijuice. Continuting. Error: {exc}")
+            
         if 'speed_button' in c:
             self.speed_button = SpeedButton()
             self.speed_button.set(
@@ -688,7 +697,7 @@ class Camera(Tomlable):
     def __str__(self):
         return pformat(vars(self))
 
-    def run(self, n=sys.maxsize):
+    def run(self, n=maxsize):
         """
         Main loop. May shutdown machine if required.
         """
@@ -861,10 +870,14 @@ class Camera(Tomlable):
 
     def link_latest_image(self, image_filename):
         """ Add hardlink to the specified image at a well-known location """
-        d = Path(self.file_root) / self.latest_image
-        if d.exists():
-            d.unlink()
-        os.link(image_filename, d)
+        # Image may be uploaded in the meantime
+        try:
+            d = Path(self.file_root) / self.latest_image
+            if d.exists():
+                d.unlink()
+            os.link(image_filename, d)
+        except FileNotFoundError as ex:
+            LOGGER.warn(f"Unable to link latest image: {ex}")
 
     def capture_light(self, mark):
         image_filename = join(self.dt2dir(
@@ -982,7 +995,7 @@ class Camera(Tomlable):
                 self._pijuice.wakeup_enable(wakeup)
                 self._pijuice.power_off()
             else:
-                raise PiJuiceError("No pijuice available")
+                raise PiJuiceError("Trying to sleep but no pijuice available")
         elif self.camera_inactive_action == CameraInactiveAction.WAIT:
             # "Light" sleep : monitor buttones is case wakeup is called
 
@@ -997,7 +1010,7 @@ class Camera(Tomlable):
         elif self.camera_inactive_action == CameraInactiveAction.EXIT:
             LOGGER.info(
                 "Camera inactive. Exiting. Wake at {}".format(wakeup))
-            sys.exit(4)
+            exit(4)
         else:
             raise RuntimeError
 
@@ -1129,7 +1142,7 @@ def sig_handler(signal_received, frame):
     raise SignalException
 
 
-def buttons_console(cl_args=sys.argv[1:]):
+def buttons_console(cl_args=argv[1:]):
     try:
         parser = argparse.ArgumentParser(
             "Check and control TMV buttones.")
@@ -1145,7 +1158,9 @@ def buttons_console(cl_args=sys.argv[1:]):
 
         ensure_config_exists(args.config_file)
 
-        c = Camera(camera=FakePiCamera())
+        c = Camera(fake=True)
+        c.config(args.config_file)
+
         if args.verbose:
             print(c.mode_button)
             print(c.speed_button)
@@ -1156,41 +1171,42 @@ def buttons_console(cl_args=sys.argv[1:]):
             except ButtonError as e:
                 print(e)
         else:
-            print(c.mode_button)
+            print(c.mode_button.value)
 
         if args.speed:
             try:
-                c.speed_button.value = args.mode
+                c.speed_button.value = args.speed
             except ButtonError as e:
                 print(e)
         else:
-            print(c.mode_button)
+            print(c.speed_button.value)
 
         if args.restart:
             if args.verbose:
                 print("Restarting camera")
             ctlr = Unit("tmv-camera.service")
             ctlr.restart()
-        sys.exit(0)
+        exit(0)
 
     except PermissionError as exc:
-        print(f"{exc}: check your file access  permissions. Try root.", file=sys.stderr)
+        print(f"{exc}: check your file access  permissions. Try root.", file=stderr)
         if args.verbose:
             raise  # to get stack trace
-        sys.exit(10)
+        exit(10)
     except CalledProcessError as exc:
-        print(f"{exc}: check your execute systemd permissions. Try root.", file=sys.stderr)
+        print(f"{exc}: check your execute systemd permissions. Try root.", file=stderr)
         if args.verbose:
             raise  # to get stack trace
-        sys.exit(20)
-    except Exception as exc:
-        print(exc, file=sys.stderr)
-        if args.verbose:
-            raise  # to get stack trace
-        sys.exit(30)
+        exit(20)
+    #except Exception as exc:
+    #    print(exc, file=stderr)
+    #    if args.verbose:
+    #        raise  # to get stack trace
+    #
+    #     exit(30)
 
 
-def camera_console(cl_args=sys.argv[1:]):
+def camera_console(cl_args=argv[1:]):
     # pylint: disable=broad-except
     retval = 0
     signal(SIGINT, sig_handler)
@@ -1200,7 +1216,7 @@ def camera_console(cl_args=sys.argv[1:]):
     parser.add_argument('--config-file', default=CAMERA_CONFIG_FILE,
                         help="Config file is required. It will be created if non-existant.")
     parser.add_argument('--fake', action='store_true')
-    parser.add_argument('--runs', type=int, default=sys.maxsize)
+    parser.add_argument('--runs', type=int, default=maxsize)
 
     args = (parser.parse_args(cl_args))
 
@@ -1209,14 +1225,9 @@ def camera_console(cl_args=sys.argv[1:]):
     ensure_config_exists(args.config_file)
     LOGGER.info(f"Starting camera app. config-file: {Path(args.config_file).absolute()} ")
 
-    cam = Camera()
+    cam = Camera(fake=args.fake)
 
     try:
-
-        if args.fake:
-            LOGGER.warning("Using a fake camera")
-            # pylint: disable=protected-access
-            cam._camera = FakePiCamera()
 
         if not Path(args.config_file).is_file():
             shutil.copy(resource_filename(
@@ -1248,4 +1259,7 @@ def camera_console(cl_args=sys.argv[1:]):
             cam._camera.close()
             time.sleep(1)
 
-    sys.exit(retval)
+    exit(retval)
+
+if __name__ == "__main__":
+    camera_console()

@@ -1,6 +1,6 @@
 from tmv.util import Tomlable
 from pathlib import Path
-from tmv.switch import get_switch
+from tmv.button import get_switch
 from tmv.config import DLFT_CAMERA_SW_SWITCH_TOML
 
 class CameraConfig(Tomlable):

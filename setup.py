@@ -24,7 +24,7 @@ setuptools.setup(
     entry_points={
         'console_scripts': [
             "tmv-camera=tmv.camera:camera_console",
-            "tmv-switches = tmv.switch:switches_console",
+            "tmv-buttons = tmv.camera:buttons_console",
             "tmv-video-compile=tmv.video:video_compile_console",
             "tmv-video-join=tmv.video:video_join_console",
             "tmv-video-info=tmv.videotools:video_info_console",
@@ -33,7 +33,7 @@ setuptools.setup(
             "tmv-image-tools=tmv.images:image_tools_console",
             "tmv-influx-stats=tmv.util:influx_stats_console",
             "tmv-upload=tmv.upload:upload_console",          
-            "tmv-tunnel = tmv.monitor:tunnel_console",
+            "tmv-tunnel = tmv.tunnel:tunnel_console",
         ],
     },
     classifiers=[
@@ -45,9 +45,10 @@ setuptools.setup(
     #extras_require=extras
 
     # todo: change from boto to minio. boto is massive
+    # 'psutil'
     install_requires=['astral', 'toml', 'python-dateutil', 'pytimeparse',
                       'Pillow', 'watchdog', 'boto3', 'freezegun', 'nptime', 
-                      'Flask', 'flask-socketio','ascii_graph', 'datetimerange', 'psutil', 'RPi.GPIO'],
+                      'Flask', 'flask-socketio','ascii_graph', 'datetimerange', 'gpiozero', 'sshconf'],
 
     python_requires='>=3.6',
 

@@ -43,7 +43,7 @@ def notst_graph(self):
     mm = VideoMakerConcat()
     mm.files_from_glob(["3days1m/*.jpg"])
     mm.load_videos()
-    mm.graph_intervals(timedelta(seconds=3600))
+    #mm.graph_intervals(timedelta(seconds=3600))
     return
 
 
@@ -116,7 +116,7 @@ def txestDayMaker():
     mm.cache = False
     mm.files_from_glob([r"**\*.jpg"])
     mm.load_videos()
-    mm.save_videos()
+    #mm.save_videos()
     # print("%s"%mm)
     # [print(m) for m in  mm.videos]
     assert len(mm.videos) == 3
@@ -131,7 +131,7 @@ def txestDayHourMaker():
     mm.dayEndTime = time(17)
     mm.daySliceLength = timedelta(hours=3)
     mm.load_videos()
-    mm.save_videos()
+ #   mm.save_videos()
 
     print("%s" % mm)
     # [print(m) for m in  mm.videos]

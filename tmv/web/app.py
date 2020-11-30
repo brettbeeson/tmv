@@ -15,7 +15,7 @@ from flask import Flask, send_from_directory
 from flask_socketio import SocketIO, emit #, Namespace
 from toml import loads, TomlDecodeError
 from tmv.camera import CAMERA_CONFIG_FILE, DLFT_CAMERA_SW_SWITCH_TOML
-from tmv.switch import get_switch, OnOffAuto
+from tmv.button import get_switch, OnOffAuto
 from tmv.systemd import Unit
 from tmv.util import run_and_capture, unlink_safe, Tomlable, LOG_LEVELS, LOG_FORMAT, ensure_config_exists
 

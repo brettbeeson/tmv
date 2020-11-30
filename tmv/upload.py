@@ -1,8 +1,7 @@
-# pylint: disable=line-too-long, logging-fstring-interpolation, dangerous-default-value, logging-not-lazy
+# pylint: disable=line-too-long, logging-fstring-interpolation, dangerous-default-value, logging-not-lazy,
 
 import logging
 from pprint import pformat
-import sys
 from sys import argv
 import socket  # gethostname, monkeypatchable
 import uuid  # getnode, monkeypatchable
@@ -14,6 +13,7 @@ from bisect import bisect_left
 from urllib.parse import urlparse
 from pathlib import Path
 from time import sleep
+from _datetime import datetime as dt
 
 from pkg_resources import resource_filename
 import boto3
@@ -21,14 +21,9 @@ from botocore.exceptions import ClientError
 from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
 
-from tmv.util import LOG_LEVELS, Tomlable, not_modified_for, check_internet, LOG_FORMAT
-from tmv.camera import ConfigError, SignalException, Camera, FakePiCamera
-from tmv.config import *
-
-try:
-    from tmv.pijuice import Blink, TMVPiJuice
-except ImportError as exc:
-    print(exc)
+from tmv.util import LOG_LEVELS, Tomlable, check_internet, LOG_FORMAT, next_mark, not_modified_for
+from tmv.camera import ConfigError, SignalException
+from tmv.config import *  # pylint: disable=unused-wildcard-import, wildcard-import
 
 
 LOGGER = logging.getLogger(__name__)
@@ -43,18 +38,16 @@ class S3Uploader(FileSystemEventHandler, Tomlable):
     - Ends up at s3 (e.g. s3://bucket/root/dir1/file2)
     - watches file system for new files to upload
     - config via toml
+    todo: remove boto and replace will lightweight (minio client?)
     """
-    # There is a watchdog for new files, and a backlog mechanism
-    # Perhaps a simple "upload any files you see" would be better
-    # It would have the disadvantage of requiring a *move* and
-    # But the 'backlog' state and watchdog could be removed: just poll and
-    # upload!
-    # 1. Could split the class  to have "EventUploader" and "PollingUploader"
-    # 2. or on_create sets a thread-flag or simple flag or wakeup
-    #    and daemon() polls AND wakes up on on_create and does a full
+    # Uploading *moves* files. It simply tries to upload all
+    # files one first run and then on any filesystem change.
+    # Therefore if it copies, it would repeatedly upload the same
+    # files.
+    # The watchbog (on_create) sets a flag that something has changes.
+    # daemon() polls AND wakes up on on_create and does a full
     #    upload every time. do this. if necessary "copy" could be done
     #    via a move to a local location
-    #
 
     def __init__(self, destination=None, file_root="", profile=None, endpoint=None):
         super().__init__()
@@ -66,22 +59,12 @@ class S3Uploader(FileSystemEventHandler, Tomlable):
         self.file_root = file_root
         self.file_filter = "*.jpg"
         self.latest_image = "latest-image.jpg"
-        self.move = True  # generally want to move, otherwise every run we upload again
-        self.internet_check_period = timedelta(minutes=1)
         self._s3 = None
         self.profile = profile
         self.endpoint = endpoint
-        self.backlog = False  # is there a backlog of images we should upload, due to s3 or internet down, etc?
-        
-        
-        try:
-            self._pj = None
-            self._pj = TMVPiJuice()
-        except NameError as exc:
-            LOGGER.info(f"No PiJuice available: {exc}")
-        except BaseException as exc:
-            # Not TEOTWAWKI - warn and move on
-            LOGGER.info(f"No PiJuice available: {exc}")
+        self.upload_callback = None
+        self.upload_required = True
+        self.interval = timedelta(seconds=60)
 
     @property
     def s3(self):
@@ -94,13 +77,12 @@ class S3Uploader(FileSystemEventHandler, Tomlable):
     def configd(self, config_dict):
         if 'upload' in config_dict:
             config = config_dict['upload']
-            self.setattr_from_dict("move", config)
             self.setattr_from_dict("extraargs", config)
             self.setattr_from_dict("file_filter", config)
             self.setattr_from_dict("profile", config)
             self.setattr_from_dict("endpoint", config)
-            if "internet_check_period" in config:
-                self.internet_check_period = timedelta(seconds=config['internet_check_period'])
+            if "interval" in config:
+                self.interval = timedelta(seconds=config['interval'])
             if "destination" in config:
                 d = config['destination']
                 self.destination = d.replace("HOSTNAME", socket.gethostname()).replace("UUID", str(uuid.getnode()))
@@ -113,7 +95,7 @@ class S3Uploader(FileSystemEventHandler, Tomlable):
             raise ConfigError("No [upload] configuration section.")
 
         if 'camera' in config_dict:
-            config = config_dict['camera']    
+            config = config_dict['camera']
             self.setattr_from_dict("file_root", config)
             self.setattr_from_dict("latest_image", config)
 
@@ -132,21 +114,28 @@ class S3Uploader(FileSystemEventHandler, Tomlable):
         self._dest_bucket = d.netloc.strip("/")
         self._dest_root = d.path.strip("/")
 
+    def upload_notify(self, filename):
+        """ Call the callback (supplied by user). For example, it might blink a light on upload. """
+        LOGGER.debug(f"Uploaded {str(filename)}")
+        if self.upload_callback is not None:
+            pass
+            # self.upload_callback()
+
     def upload(self, src_file_or_dir=None, dest_prefix=""):  # , throw=False):
         """
         Upload a file or directory to s3
-        This appears(?) thread-safe but could have a mutex?
+        This appears thread-safe but could have a mutex?
         """
-        
+
         if src_file_or_dir is None:
             src_file_or_dir = self.file_root
 
         src_file_or_dir = Path(src_file_or_dir)
 
         if src_file_or_dir.is_dir():
-            return self._upload_dir(src_file_or_dir, self.file_filter, self.move, dest_prefix)
+            return self._upload_dir(src_file_or_dir, self.file_filter, True, dest_prefix)
         elif src_file_or_dir.is_file():
-            return self._upload_file(src_file_or_dir, self.move, dest_prefix)
+            return self._upload_file(src_file_or_dir, True, dest_prefix)
         else:
             raise FileNotFoundError(f"{src_file_or_dir} is not a file or dir")
 
@@ -176,21 +165,20 @@ class S3Uploader(FileSystemEventHandler, Tomlable):
         src_files = sorted(i for i in Path(src_dir).rglob(
             file_filter) if i.is_file())
         if src_dir / self.latest_image in src_files:
-            LOGGER.debug(f"Removing from list: {src_dir / self.latest_image}")
+            # don't upload the 'latest-image.jpg' copy
             src_files.remove(Path(src_dir / self.latest_image))
-
 
         for src_file in src_files:
             src_file_rel = src_file.relative_to(src_dir)
             dest_file = self._dest_root / dest_prefix / src_file_rel
-            LOGGER.info(f"Uploading file (from dir) {src_file.name} to {self._dest_bucket}:{dest_file}")
+
             try:
                 dest_file = Path(dest_file)
                 self.s3.upload_file(str(src_file), Bucket=self._dest_bucket,
                                     Key=str(dest_file),
                                     ExtraArgs=self._ExtraArgs)
-                if self._pj:
-                    self._pj.blink(Blink.UPLOAD, True)
+                self.upload_notify(f"Uploaded {src_file.name} to {self._dest_bucket}:{dest_file}")
+
             except FileNotFoundError as exc:
                 # when uploading a directory, a file may be moved by another process: log and continue
                 LOGGER.warning(exc)
@@ -215,18 +203,18 @@ class S3Uploader(FileSystemEventHandler, Tomlable):
             raise ConfigError("No destination set for upload")
         src_file = Path(src_file)
         dest_prefix = Path(dest_prefix)
-               
+
         if self.latest_image == src_file.name:
-            LOGGER.debug(f"Not uploading {src_file}")
+            # LOGGER.debug(f"Not uploading {src_file}")
             return
 
         dest_file = self._dest_root / dest_prefix / src_file.name
-        LOGGER.info(f"Uploading file {src_file.name} to {self._dest_bucket} {dest_file}")
+        
+        not_modified_for(src_file,timedelta(seconds=1))  # wait so we don't upload a file being modified / created
         self.s3.upload_file(str(src_file), Bucket=self._dest_bucket,
                             Key=str(dest_file),
                             ExtraArgs=self._ExtraArgs)
-        if self._pj:
-            self._pj.blink(Blink.UPLOAD, True)
+        self.upload_notify(f"Uploaded {src_file.name} to {self._dest_bucket} {dest_file}")
         if move:
             src_file.unlink()
 
@@ -312,101 +300,48 @@ class S3Uploader(FileSystemEventHandler, Tomlable):
                 self.s3.upload_file(
                     str(src_file), Bucket=self._dest_bucket,
                     Key=str(dest_file), ExtraArgs=self._ExtraArgs)
-                if self._pj:
-                    self._pj.blink(Blink.UPLOAD, True)
+                self.upload_notify("Uploading {src_file.name} to {self._dest_bucket} {dest_file}")
                 uploads += 1
         return uploads
 
     def daemon(self):
+        LOGGER.debug("Starting daemon")
+        observer = Observer()
+        observer.schedule(self, self.file_root, recursive=True)
+        observer.start()
 
-        
-        if check_internet():
-            LOGGER.debug("Starting daemon")
-            observer = Observer()
-            observer.schedule(self, self.file_root, recursive=True)
-            observer.start()
-            observer_active = True
-        else:
-            observer_active = False
-        if self._pj:
-            self._pj.blink(Blink.WIFI, observer_active)
-
-        
         while True:
-            # internet
-            the_internets = check_internet()
-            if observer_active:
-                if the_internets:
-                    # all good
-                    observer_active = True
-                else:
-                    LOGGER.debug("No internet: stopping watchdog")
-                    observer.stop()
-                    observer.join()
-                    observer_active = False
-            else:   # observer not active
-                if the_internets:
-                    LOGGER.debug(
-                        "Internet back baby: reloading and starting watchdog")
-                    self.backlog = True
-                    observer = Observer()
-                    observer.schedule(self, self.file_root, recursive=True)
-                    observer.start()
-                    observer_active = True
-                else:
-                    # continue to wait for internet
-                    observer_active = False
+            # sleep until next upload mark, or we detect a new file
+            next_upload = next_mark(self.interval, dt.now())
+            while dt.now() < next_upload and not self.upload_required:
+                sleep(1)
 
-            if self._pj:
-                self._pj.blink(Blink.WIFI, observer_active)
-            if the_internets and self.backlog:
+            #LOGGER.debug(f"Uploading files, interval: {self.interval} connected: {check_internet()} upload_required:{self.upload_required}")
+
+            if check_internet():
                 try:
                     n = self.upload()
-                    n = + self.upload()  # pick up stragerlers which came in during the last call (post glob)!
-                    self.backlog = False
-                    LOGGER.debug(f"Uploaded backlog of {n} files")
+                    #if n > 0:
+                    #    LOGGER.debug(f"Uploaded {n} files")
+                    self.upload_required = False
                 except Exception as exc:
-                    LOGGER.debug(f"Failed to upload backlog: {exc}")
-
-            sleep(self.internet_check_period.total_seconds())
+                    LOGGER.debug(f"Failed to upload: {exc}")
+            else:
+                LOGGER.debug("No internet. Not uploading")
 
     # def on_any_event(self, event):
         # LOGGER.debug(f'Ignoring event type: {event.event_type}  path : {event.src_path}')
 
     def on_created(self, event):
         """
-        watchdog for filesystem: upload new local files to s3
+        watchdog for filesystem: signal main loop to upload immediately
         """
-        # Be careful here, as files could have been change before we
-        # process the event. Wait for a second of non-modification
-        # to let processes finish writing.
-
-        if self.backlog:
-            # if in a backlog state, don't keep hitting head: wait for daemon() to clear it
+        #LOGGER.debug("file created detected")
+        if self.upload_required:
             return
-
-        
-        try:
-            if event.is_directory:
-                return None  # Irrelevant for uploading to s3
-            if Path(event.src_path).match(self.file_filter):
-                not_modified_for(event.src_path, timedelta(seconds=2))
-                # eg.
-                # src_path = /tmp/who/cares/test_files_3/dir1/dir2/file
-                # root_name = test_files_3
-                # dest_prefix = test_files_3/dir1/dir2/file
-                dest_prefix = Path(event.src_path).relative_to(
-                    self.file_root).parent
-                # LOGGER.debug(f'dest_prefix={dest_prefix} event.src_path={event.src_path} self.file_root={self.file_root}')
-                self.upload(event.src_path, dest_prefix=dest_prefix)
-        except FileNotFoundError as exc:
-            LOGGER.debug(f"Ignoring missing file to upload. Exception: {exc}")
-        except BaseException as exc:
-            if self._pj:
-                self._pj.blink(Blink.UPLOAD, False)
-            LOGGER.warning(f"Ignoring unexpected exception during on_created: {exc}")
-            # signal to daemon thread we should do a upload() when possible to upload the backlog
-            self.backlog = True
+        # wait to notify until file is finished creation
+        not_modified_for(event.src_path,timedelta(seconds=1))
+        self.upload_required = True
 
     def list_bucket_objects(self, bucket=None, prefix=None) -> [dict]:
         """
@@ -456,18 +391,16 @@ def upload_console(cl_args=argv[1:]):
 
         parser = argparse.ArgumentParser("S3 Upload",
                                          description="Upload files to s3. Overwrites existing. Can sense file system creations in daemon mode.")
-        parser.add_argument('--log-level', '-ll', default='WARNING', type=lambda s: LOG_LEVELS(s).name, nargs='?', 
+        parser.add_argument('--log-level', '-ll', default='WARNING', type=lambda s: LOG_LEVELS(s).name, nargs='?',
                             choices=LOG_LEVELS.choices())
         parser.add_argument('src', type=str, nargs="?",
                             help="Directory (recursive) or file e.g. myfile, ./ or /var/here/")
         parser.add_argument('dest', type=str, nargs="?",
                             help="e.g. s3://tmv.brettbeeson.com.au/tmp/")
-        parser.add_argument('-c','--config-file',
+        parser.add_argument('-c', '--config-file',
                             help="Read [upload] settings. CLI options will override them.", default=CAMERA_CONFIG_FILE)
         parser.add_argument('-i', '--include', type=str,
                             help="When src is a folder, only upload files matching this pattern. Otherwise ignored.")
-        parser.add_argument('-mv', '--move', action='store_true',
-                            help="Remove local copies of successful upload")
         parser.add_argument('-d', '--daemon', action='store_true',
                             help="Upload everything, then monitor for file creation and upload them too. Never returns: doesn't make itself background.")
         parser.add_argument('-dr', '--dry-run', action='store_true',
@@ -476,7 +409,7 @@ def upload_console(cl_args=argv[1:]):
         parser.add_argument("--endpoint", default=None)
 
         args = parser.parse_args(cl_args)
-        
+
         logging.basicConfig(format=LOG_FORMAT)
         LOGGER.setLevel(args.log_level)
 
@@ -499,8 +432,6 @@ def upload_console(cl_args=argv[1:]):
             uploader.file_root = args.src
         if args.include:
             uploader.file_filter = args.include
-        if args.move:
-            uploader.move = args.move
         if args.dry_run:
             LOGGER.debug(pformat(vars(uploader)))
             return 0
@@ -521,7 +452,7 @@ def upload_console(cl_args=argv[1:]):
 
     except SignalException:
         LOGGER.info('SIGTERM, SIGINT or CTRL-C detected. Exiting gracefully.')
-        sys.exit(0)
+        return 0
     except Exception as exc:
         LOGGER.error(exc)
         LOGGER.debug(exc, exc_info=True)

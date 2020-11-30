@@ -9,7 +9,7 @@ from posix import geteuid
 from subprocess import CalledProcessError
 # to enable monkeypatching, don't import "from tmv.util", but instead:
 import tmv.util
-from tmv.util import  service_details
+from tmv.util import service_details
 
 LOGGER = logging.getLogger("tmv.systemd")
 

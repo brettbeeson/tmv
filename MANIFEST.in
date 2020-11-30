@@ -1,2 +1,2 @@
 recursive-include tmv/resources/ *
-recursive-include tmv/camapp/static *
+recursive-include tmv/web/static *
