@@ -6,13 +6,13 @@ const TMV_SERVER = "http://home.brettbeeson.com.au/"
 function camera_switch(e) {
   let position = e.target.value;
   ws.emit("switches", { camera: position });
-  ws.emit("req_switches");
+  ws.emit("req-switches");
 }
 
 function upload_switch(e) {
   let position = e.target.value;
   ws.emit("switches", { upload: position });
-  ws.emit("req_switches");
+  ws.emit("req-switches");
 }
 
 $(document).ready(function () {
@@ -49,33 +49,33 @@ $(document).ready(function () {
 
   
   $("#services").on("click", function () {
-    ws.emit("req_services_status");
+    ws.emit("req-services_status");
   });
   $("#journal").on("click", function () {
-    ws.emit("req_journal");
+    ws.emit("req-journal");
   });
   $("#files").on("click", function () {
-    ws.emit("req_files");
+    ws.emit("req-files");
   });
-  $("#error").on("click", () => ws.emit("raise_error"));
+  $("#error").on("click", () => ws.emit("raise-error"));
   
   $("#restart").on("click", function () {
-    ws.emit("restart_service");
+    ws.emit("restart-service");
   });
   $("#saveandrestart").on("click", function () {
-    ws.emit("camera_config", editor.getValue());
-    ws.emit("restart_service");
+    ws.emit("camera-config", editor.getValue());
+    ws.emit("restart-service");
   });
 
   $("#camera-switch input").on("click", camera_switch);
   $("#upload-switch input").on("click", upload_switch);
 
   $("#save").on("click", function () {
-    ws.emit("camera_config", editor.getValue());
+    ws.emit("camera-config", editor.getValue());
   });
 
   $("#cancel").on("click", function () {
-    ws.emit("req_camera_config");
+    ws.emit("req-camera-config");
   });
 
   
@@ -132,12 +132,12 @@ $(document).ready(function () {
     ws = io(new_uri);
 
     ws.on("connect", function () {
-      ws.emit("req_camera_config");
-      ws.emit("req_switches");
-      ws.emit("req_camera_name");
+      ws.emit("req-camera-config");
+      ws.emit("req-switches");
+      ws.emit("req-camera-name");
     });
 
-    ws.on("camera_config", msg =>editor.setValue(msg.toml));
+    ws.on("camera-config", msg =>editor.setValue(msg.toml));
     
     ws.on("switches", function (msg) {
       // Unfocus current button as we are getting the real value from server
@@ -174,7 +174,7 @@ $(document).ready(function () {
        logta.scrollTop(logta[0].scrollHeight - logta.height());
     });
 
-    ws.on("services_status", function (msg) {
+    ws.on("services-status", function (msg) {
       let logta = $("#log-textarea");
       logta.val(logta.val() + "SERVICES\n");
       Object.keys(msg.services).forEach(function (key) {

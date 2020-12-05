@@ -458,7 +458,11 @@ def ensure_config_exists(config_file):
     """
     Make config_file if it doesn't exist. 
     """
-    if not Path(config_file).is_file():
+    try:
+        cf = Path(config_file)
+        if not cf.is_file():
+            raise FileNotFoundError("Found {cf} but not it is not a file")
+    except FileNotFoundError:    
         default_config_path = Path(resource_filename(__name__, 'resources/camera.toml'))
         LOGGER.info("Writing default config file to {} (from {})".format(config_file, default_config_path.absolute()))
         Path(config_file).parent.mkdir(parents=True, exist_ok=True)
