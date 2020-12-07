@@ -58,14 +58,18 @@ class Tomlable:
     Convenience class for configuring classes via Toml
     """
 
+    def __init__(self):
+        self.config_path = None  # if available, where the instance was config'd
+
     def configs(self, config_string):
         config_dict = toml.loads(config_string)
         self.configd(config_dict)
 
     def config(self, config_pathname):
         try:
-            config_dict = toml.load(config_pathname)
+            config_dict = toml.load(str(config_pathname))
             self.configd(config_dict)
+            self.config_path = Path(config_pathname)
         except Exception as ex:
             LOGGER.warning(f"error reading config file: {config_pathname}")
             raise ex
@@ -462,7 +466,7 @@ def ensure_config_exists(config_file):
         cf = Path(config_file)
         if not cf.is_file():
             raise FileNotFoundError("Found {cf} but not it is not a file")
-    except FileNotFoundError:    
+    except FileNotFoundError:
         default_config_path = Path(resource_filename(__name__, 'resources/camera.toml'))
         LOGGER.info("Writing default config file to {} (from {})".format(config_file, default_config_path.absolute()))
         Path(config_file).parent.mkdir(parents=True, exist_ok=True)
@@ -488,6 +492,3 @@ def file_by_day_console():
     if not os.path.exists(args.dest):
         os.mkdir(args.dest)
     file_by_day(file_list, args.dest, args.move)
-
-
-

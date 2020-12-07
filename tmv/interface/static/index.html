@@ -87,8 +87,8 @@
 
         <nav class="navbar fixed-bottom navbar-light bg-light">
             <div class="form-group mb-2">
-                <label for="camera-switch">Camera</label>
-                <div id="camera-switch" class="btn-group btn-group-toggle"
+                <label for="camera-mode">Camera</label>
+                <div id="camera-mode" class="btn-group btn-group-toggle"
                     data-toggle="buttons">
                     <label class="btn btn-secondary">
                         <input type="radio" value="On" name="options"
@@ -111,16 +111,20 @@
             </div>
 
             <div class="form-group mb-2">
-                <label for="upload-switch" class="ml-auto">Uploads</label>
-                <div id="upload-switch" class="btn-group btn-group-toggle"
+                <label for="camera-speed" class="ml-auto">Speed</label>
+                <div id="camera-speed" class="btn-group btn-group-toggle"
                     data-toggle="buttons">
                     <label class="btn btn-secondary active">
-                        <input type="radio" name="options" id="upload-on"
-                            autocomplete="off" value="On">On
+                        <input type="radio" name="options" id="speed-slow"
+                            autocomplete="off" value="Slow">Slow
                     </label>
                     <label class="btn btn-secondary">
-                        <input type="radio" name="options" id="upload-off"
-                            value="Off">Off
+                        <input type="radio" name="options" id="upload-Medium"
+                            value="Medium">Medium
+                    </label>
+                    <label class="btn btn-secondary">
+                        <input type="radio" name="options" id="upload-fast"
+                            value="Fast">Fast
                     </label>
                 </div>
             </div>
@@ -153,12 +157,14 @@
                                 <div id="editor" class="mb-2"></div>
                             </div>
                             <div class="row">
-                                <button class="btn btn-secondary" id="save">Save</button>
+                                
                                 <button class="btn btn-secondary ml-2"
                                     id="cancel">Cancel</button>
                                 <button class="btn btn-secondary ml-2"
                                     id="saveandrestart">Save &amp; Restart</button>
+                                    <button class="btn btn-secondary ml-2" id="save">Save Only</button>
                             </div>
+                            
                             <div class="form-group row">
                                 <button class="btn btn-secondary mt-3"
                                     data-target="#modal-zoom"
@@ -185,9 +191,8 @@
                                         </button>
                                     </div>
                                     <div class="modal-body">
-                                        <div id="zoom-image-divls">
-                                            <img id="zoom-image"
-                                                src="">
+                                        <div id="zoom-image-div">
+                                            <img id="zoom-image" src="">
                                         </div>
                                     </div>
                                     <div class="modal-footer">

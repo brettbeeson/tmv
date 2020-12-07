@@ -8,25 +8,25 @@ from base64 import b64encode
 from time import sleep
 from shutil import copy
 import argparse
-from threading import Thread
-import logging
 
-#from pkg_resources import resource_filename
-#from flask import Flask, send_from_directory
+import logging
+from socket import gethostname, gethostbyname
+
 from flask_socketio import emit, SocketIO
-from flask import Flask, render_template
+from flask import Flask, send_from_directory
 
 from toml import loads, TomlDecodeError
 from tmv.camera import CAMERA_CONFIG_FILE, Camera
-from tmv.buttons import OnOffAuto
+from tmv.buttons import OnOffAuto, Speed
 from tmv.systemd import Unit
 from tmv.util import run_and_capture, unlink_safe, LOG_LEVELS, LOG_FORMAT, ensure_config_exists
 
 LOGGER = logging.getLogger("tmv.interface")
 
-app = Flask("tmv.interface.app", static_url_path="/",static_folder="static")
+app = Flask("tmv.interface.app", static_url_path="/", static_folder="static")
 app.config['SECRET_KEY'] = 'secret!'
-camera = None
+app.config["EXPLAIN_TEMPLATE_LOADING"] = True
+interface_camera = Camera(fake=True)
 socketio = SocketIO(app)
 
 
@@ -35,17 +35,16 @@ def report_errors(func):
     def wrappers(*args, **kwargs):
         try:
             func(*args, **kwargs)
-        except Exception as exc:
+        except Exception as exc:  # pylint: disable=broad-except
             print("report_errors")
             emit('warning', f"Error: {exc}")
     return wrappers
 
 
 def send_image(broadcast, binary=True):
-    if camera is None or camera.latest_image is None or not Path(camera.latest_image).exists():
+    if interface_camera is None or interface_camera.latest_image is None or not Path(interface_camera.latest_image).exists():
         return
-    socketio.emit('message', f"Sending image {camera.latest_image}")
-    im = Path(camera.latest_image)
+    im = Path(interface_camera.latest_image)
     with im.open(mode='rb') as f:
         image_data_bin = f.read()
     if binary:
@@ -53,7 +52,6 @@ def send_image(broadcast, binary=True):
     else:
         image_data_b64 = b64encode(image_data_bin)
         socketio.emit('image', {'src-b64': image_data_b64.decode('utf-8')}, broadcast=broadcast)
-    socketio.emit('message', f"New image sent: {camera.latest_image}")
 
 
 def manage_screen_interface_thread():
@@ -63,10 +61,6 @@ def manage_screen_interface_thread():
     LOGGER.debug("manage_screen_interface_thread starting")
     while True:
         sleep(10)
-        print(__name__)
-            
-
-        socketio.emit('message', 'Ping  from TMV Camera.')
 
 
 def broadcast_image_thread():
@@ -78,57 +72,62 @@ def broadcast_image_thread():
     while True:
         sleep(1)
         try:
-            if camera:
-                im = Path(camera.latest_image)
+            if interface_camera:
+                im = Path(interface_camera.latest_image)
                 if im.exists():
                     image_mtime_is = im.stat().st_mtime
                     if image_mtime_was is None or image_mtime_is > image_mtime_was:
                         send_image(broadcast=True)
                         image_mtime_was = image_mtime_is
+                        socketio.emit('message', f"New image sent: {interface_camera.latest_image}")
         except FileNotFoundError as exc:
-            socketio.emit('warning', f"{camera.latest_image}: {repr(exc)}")
+            socketio.emit('warning', f"{interface_camera.latest_image}: {repr(exc)}")
             print(exc, file=sys.stderr)
 
 
-def broadcast_status_thread():
+def broadcast_buttons_thread():
     mode_was = None
+    speed_was = None
     while True:
         sleep(1)
-        if camera:
-            mode_is = camera.mode_button.value
+        if interface_camera:
+            mode_is = interface_camera.mode_button.value
             if mode_was is None or mode_is != mode_was:
-                socketio.emit('mode', {'message': "Camera mode changed", 'camera': str(mode_is)})
+                socketio.emit('message', f"Mode changed to {mode_is}")
                 mode_was = mode_is
 
+            speed_is = interface_camera.speed_button.value
+            if speed_was is None or speed_is != speed_was:
+                socketio.emit('message', f"speed changed to {speed_is}")
+                speed_was = speed_is
+
+
+@app.route("/")
+def index():
+    return send_from_directory("static", "index.html")
 
 
 @socketio.on('req-services-status')
-def services_status():
-    try:
-        cl = Unit("tmv-interface.service")
-        cam = Unit("tmv-camera.service")
-        ul = Unit("tmv-upload.service")
-        services = {
-            str(cl): cl.status(),
-            str(cam): cl.status(),
-            str(ul): cl.status(),
-        }
-        emit("services-status", {"message": "Read service statuses", "services": services})
-    except Exception as exc:
-        emit('warning', f"Couldn't get service statuses: {exc}")
-
-#@app.route('/')
-#def index():
- #   return render_template('index.html')
-
-
-@socketio.on('restart')
 @report_errors
-def restart():
-    ctlr = Unit("tmv-controller.service")
+def services_status():
+    cl = Unit("tmv-interface.service")
+    cam = Unit("tmv-camera.service")
+    ul = Unit("tmv-upload.service")
+    services = {
+        str(cl): cl.status(),
+        str(cam): cl.status(),
+        str(ul): cl.status(),
+    }
+    emit("services-status", services)
+
+
+@socketio.on('restart-camera')
+@report_errors
+def restart_service():
+    ctlr = Unit("tmv-camera.service")
     ctlr.restart()
     sleep(5)
-    emit("message", f"tmv-controller: {ctlr.status()}")
+    emit("message", f"Restarted camera.\ntmv-camera: {ctlr.status()}")
 
 
 @socketio.on('req-journal')
@@ -142,93 +141,121 @@ def req_journal():
 @socketio.on('req-files')
 @report_errors
 def req_files():
-    if camera:
+    if interface_camera:
         fls = []
-        for f in camera.file_root.glob("*"):
+        for f in Path(interface_camera.file_root).glob("*"):
             fls.append(str(f))
         emit("files", {"files": fls})
     emit('message', 'Send files')
 
 
-@socketio.on('switches')
+@socketio.on('mode')
 @report_errors
 def set_mode(pos: str):
-    if camera and camera.mode_button:
-        camera.mode_button.value = OnOffAuto(pos.lower())
+    if interface_camera and interface_camera.mode_button:
+        interface_camera.mode_button.value = OnOffAuto(pos.lower())
     else:
         raise RuntimeError("No button available")
 
 
-@socketio.on('req-switches')
+@socketio.on('req-mode')
 @report_errors
 def req_mode():
-    if camera:
-        emit('mode', {'camera': str(camera.mode_button.value)})
+    if interface_camera:
+        emit('mode', str(interface_camera.mode_button.value))
+
+
+@socketio.on('speed')
+@report_errors
+def set_speed(pos: str):
+    if interface_camera and interface_camera.speed_button:
+        interface_camera.speed_button.value = Speed(pos.lower())
+    else:
+        raise RuntimeError("No button available")
+
+
+@socketio.on('req-speed')
+@report_errors
+def req_speed():
+    if interface_camera:
+        emit('speed', str(interface_camera.speed_button.value))
+
+
+@socketio.on('raise-error')
+@report_errors
+def raise_error():
+    raise RuntimeError("What did you expect?")
 
 
 @socketio.on('req-camera-config')
 @report_errors
 def req_camera_config():
     print("camera-config requested")
-    config_path = Path("/etc/tmv/camera.toml")
-    emit('camera-config', {'toml': config_path.read_text()})
+    config_path = interface_camera.config_path
+    if config_path is None:
+        raise RuntimeError("No config path available")
+    else:
+        emit('camera-config', config_path.read_text())
+
+
+@socketio.on('req-camera-name')
+@report_errors
+def req_camera_name():
+    emit('camera-name', gethostname())
+    emit('message', f"hostname: {gethostname()}")
+
+
+@socketio.on('req-camera-ip')
+@report_errors
+def req_camera_ip():
+    emit('camera-ip', gethostbyname(gethostname()))
+    emit('message', f"IP: {gethostbyname(gethostname())}")
 
 
 @socketio.on('camera-config')
 @report_errors
 def camera_config(configs):
-    if camera:
+    if interface_camera:
         loads(configs)  # check syntax
-        cf = CAMERA_CONFIG_FILE
-        unlink_safe(cf + ".bak")
-        copy(cf, cf + ".bak")
+        cf = interface_camera.config_path
+        unlink_safe(cf.with_suffix(".bak"))
+        copy(cf, cf.with_suffix(".bak"))
         Path(cf).write_text(configs)
         # re-read this ourselves, too, to get new file_root, etc
-        camera.config(cf)
-        emit("message", "Saved config. (Consider a restart)")
+        interface_camera.config(cf)
+        emit("message", "Saved config.")
 
 
 @socketio.on('connect')
 @report_errors
 def connect():
-    print("Client connected!")
-    emit('message', 'Hello from TMV Camera.')
+    emit('message', 'Hello from TMV!')
     try:
         send_image(broadcast=False)
     except FileNotFoundError:
         pass
-    
 
 
 def start_threads():
-  # status_thread = Thread(target=broadcast_status)
-        # status_thread.start()
-        # image_thread = Thread(target=broadcast_image_thread)
-        # image_thread.start()
-        # unsure of decorator
     socketio.start_background_task(manage_screen_interface_thread)
-    socketio.start_background_task(broadcast_status_thread)
-    socketio.start_background_task(broadcast_status_thread)
- 
-def create_camera(config_file):
-    global camera
-    camera = Camera(fake=True)
-    camera.config(config_file)
+    socketio.start_background_task(broadcast_buttons_thread)
+    socketio.start_background_task(broadcast_image_thread)
 
-def web_console():
-    # cl_args=sys.argv[1:]
-    parser = argparse.ArgumentParser("Interface (screen, web, web-socket server) to TMV Camera.")
+
+def interface_console(cl_args):
+    parser = argparse.ArgumentParser("Interface (screen, web, web-socket server) to TMV interface_camera.")
     parser.add_argument('--log-level', '-ll', default='WARNING', type=lambda s: LOG_LEVELS(s).name, nargs='?', choices=LOG_LEVELS.choices())
     parser.add_argument('--config-file', '-cf', default=CAMERA_CONFIG_FILE)
-    args = parser.parse_args()
+    args = parser.parse_args(cl_args)
 
     LOGGER.setLevel(args.log_level)
     logging.getLogger("tmv.util").setLevel(args.log_level)
     logging.basicConfig(format=LOG_FORMAT, level=args.log_level)
-  
+
     try:
-        ensure_config_exists(args.config_file)       
-        create_camera(args.config_file)
+        ensure_config_exists(args.config_file)
+        global interface_camera  # pylint: disable=global-statement
+        interface_camera.config(args.config_file)
         start_threads()
         socketio.run(app)
         while True:
@@ -237,10 +264,10 @@ def web_console():
     except (FileNotFoundError, TomlDecodeError) as exc:
         print(exc, file=sys.stderr)
         return 1
-    except Exception as exc:
+    except Exception as exc:  # pylint: disable=broad-except
         print(exc, file=sys.stderr)
         return 1
 
+
 if __name__ == '__main__':
-    # sys.exit(web_console(sys.argv))
-    web_console()
+    interface_console(sys.argv[1:])

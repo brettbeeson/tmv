@@ -164,13 +164,13 @@ resolution = '1280x720'
 # pins = [4, 17]    
 # instead of "file..."
 #   
-#[camera.mode_button]
-#   file = '/etc/tmv/camera-mode'
+[camera.mode_button]
+   file = 'camera-mode'
 #   button = 17
 #   led = 4
 
-#[camera.speed_button]
-#   file = '/etc/tmv/camera-speed'
+[camera.speed_button]
+   file = 'camera-speed'
 ##   button = 27
 #   led = 10  
 

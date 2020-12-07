@@ -3,16 +3,16 @@
 let ws;
 const TMV_SERVER = "http://home.brettbeeson.com.au/"
 
-function camera_switch(e) {
+function mode(e) {
   let position = e.target.value;
-  ws.emit("switches", { camera: position });
-  ws.emit("req-switches");
+  ws.emit("mode",  position );
+  ws.emit("req-mode");
 }
 
-function upload_switch(e) {
+function speed(e) {
   let position = e.target.value;
-  ws.emit("switches", { upload: position });
-  ws.emit("req-switches");
+  ws.emit("speed", position );
+  ws.emit("req-speed");
 }
 
 $(document).ready(function () {
@@ -44,12 +44,9 @@ $(document).ready(function () {
     let server = $("#server").attr("href");    
       window.open(server,"_blank");
   });
-  
-  
-
-  
+   
   $("#services").on("click", function () {
-    ws.emit("req-services_status");
+    ws.emit("req-services-status");
   });
   $("#journal").on("click", function () {
     ws.emit("req-journal");
@@ -60,15 +57,16 @@ $(document).ready(function () {
   $("#error").on("click", () => ws.emit("raise-error"));
   
   $("#restart").on("click", function () {
-    ws.emit("restart-service");
+    ws.emit("restart-camera");
   });
   $("#saveandrestart").on("click", function () {
     ws.emit("camera-config", editor.getValue());
-    ws.emit("restart-service");
+    ws.emit("restart-camera");
   });
 
-  $("#camera-switch input").on("click", camera_switch);
-  $("#upload-switch input").on("click", upload_switch);
+  $("#camera-mode input").on("click", mode);
+
+  $("#camera-speed  input").on("click", speed);
 
   $("#save").on("click", function () {
     ws.emit("camera-config", editor.getValue());
@@ -99,14 +97,17 @@ $(document).ready(function () {
       viewMode: 2,
       aspectRatio: $image.width() / $image.height(),
       crop: function(event) {
-        cropbox = event.detail // remember last crop
-    }});
+        cropbox = event.detail // remember last crop - donesn't work
+      },
+         
+    });
     cropper = $image.data('cropper');
     $("#close-zoom").on("click",() => {
       let img = cropper.getImageData()
       zoom = [(cropbox.x / img.naturalWidth).toFixed(3), (cropbox.y / img.naturalHeight).toFixed(3), (cropbox.width / img.naturalWidth).toFixed(3), (cropbox.height / img.naturalHeight).toFixed(3)]
       $("#zoom-result").val("zoom = [" + zoom + "]")      
     });
+  
   });
 
   function connect(uri) {
@@ -133,36 +134,41 @@ $(document).ready(function () {
 
     ws.on("connect", function () {
       ws.emit("req-camera-config");
-      ws.emit("req-switches");
+      ws.emit("req-mode");
+      ws.emit("req-speed");
       ws.emit("req-camera-name");
+      ws.emit("req-camera-ip");
     });
 
-    ws.on("camera-config", msg =>editor.setValue(msg.toml));
+    ws.on("camera-config", msg =>editor.setValue(msg));
     
-    ws.on("switches", function (msg) {
+    ws.on("mode", function (msg) {
       // Unfocus current button as we are getting the real value from server
       let ae = document.activeElement;
       ae.blur();
+  
+      toggle_active($("#camera-mode input"), tc(msg));     
+    });
 
-      if ("camera" in msg) {
-        toggle_active($("#camera-switch input"), tc(msg.camera));
-      }
-      if ("upload" in msg) {
-        toggle_active($("#upload-switch input"), tc(msg.upload));
-      }
+    ws.on("speed", function (msg) {
+      // Unfocus current button as we are getting the real value from server
+      let ae = document.activeElement;
+      ae.blur();
+  
+      toggle_active($("#camera-speed input"), tc(msg));     
     });
 
     ws.on("message", msg =>  toastr.info(msg));
   
     ws.on("warning", msg => toastr.warning(msg));
 
-    ws.on("camera_name", msg => {
+    ws.on("camera-name", msg => {
       $('#camera-name').text(msg);
       document.title = "TMV - " + msg
       $('#server').attr('href',TMV_SERVER + msg)
       
     });
-    
+
     ws.on("files", function (msg) {
       let logta = $("#log-textarea");
       logta.val(logta.val() + "FILES\n");
@@ -170,6 +176,7 @@ $(document).ready(function () {
       for (let f in msg["files"]) {
         logta.val(logta.val() + msg["files"][f] + "\n");
       }
+      logta.val(logta.val() + "---\n");
        // autoscroll
        logta.scrollTop(logta[0].scrollHeight - logta.height());
     });
@@ -177,9 +184,10 @@ $(document).ready(function () {
     ws.on("services-status", function (msg) {
       let logta = $("#log-textarea");
       logta.val(logta.val() + "SERVICES\n");
-      Object.keys(msg.services).forEach(function (key) {
-        logta.val(logta.val() + key + " : " + msg.services[key] + "\n");
+      Object.keys(msg).forEach(function (key) {
+        logta.val(logta.val() + key + " : " + msg[key] + "\n");
       });
+      logta.val(logta.val() + "---\n");
       // autoscroll
       logta.scrollTop(logta[0].scrollHeight - logta.height());
     });
@@ -189,6 +197,7 @@ $(document).ready(function () {
       logta.val(logta.val() + "JOURNAL\n");
       if ("journal" in msg) {
         logta.val(logta.val() + msg["journal"]);
+        logta.val(logta.val() + "---\n");
         // autoscroll
         logta.scrollTop(logta[0].scrollHeight - logta.height());
       }
@@ -207,7 +216,7 @@ $(document).ready(function () {
         console.log("Error: Bad Image: " + msg);
       }
       imgtag.attr("src", src);
-      toastr.info("Updated image")
+      //toastr.info("Updated image")
     });
 
     ws.on("close", () => toastr.warning("Closed connection"));
