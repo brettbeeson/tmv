@@ -32,13 +32,13 @@ mkdir ~/tmv-data
 echo Installing service files
 sudo cp scripts/tmv-camera.service /etc/systemd/system/
 sudo cp scripts/tmv-upload.service /etc/systemd/system/
-sudo cp scripts/tmv-web.service /etc/systemd/system/
+sudo cp scripts/tmv-interface.service /etc/systemd/system/
 
 echo Registering services
 sudo systemctl daemon-reload 
 sudo systemctl enable tmv-camera
 sudo systemctl enable tmv-upload
-sudo systemctl enable tmv-web
+sudo systemctl enable tmv-interface
 
 echo Restarting lighttpd
 sudo systemctl restart lighttpd 

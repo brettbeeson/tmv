@@ -11,7 +11,7 @@ import argparse
 
 import logging
 from socket import gethostname, gethostbyname
-
+from debugpy import breakpoint
 from flask_socketio import emit, SocketIO
 from flask import Flask, send_from_directory
 
@@ -71,6 +71,7 @@ def broadcast_image_thread():
     image_mtime_is = None
     while True:
         sleep(1)
+        breakpoint()
         try:
             if interface_camera:
                 im = Path(interface_camera.latest_image)
@@ -242,7 +243,7 @@ def start_threads():
     socketio.start_background_task(broadcast_image_thread)
 
 
-def interface_console(cl_args):
+def interface_console(cl_args=sys.argv[1:]):
     parser = argparse.ArgumentParser("Interface (screen, web, web-socket server) to TMV interface_camera.")
     parser.add_argument('--log-level', '-ll', default='WARNING', type=lambda s: LOG_LEVELS(s).name, nargs='?', choices=LOG_LEVELS.choices())
     parser.add_argument('--config-file', '-cf', default=CAMERA_CONFIG_FILE)
@@ -257,7 +258,7 @@ def interface_console(cl_args):
         global interface_camera  # pylint: disable=global-statement
         interface_camera.config(args.config_file)
         start_threads()
-        socketio.run(app)
+        socketio.run(app,host="0.0.0.0")
         while True:
             sleep(1)
 
@@ -270,4 +271,5 @@ def interface_console(cl_args):
 
 
 if __name__ == '__main__':
+    breakpoint()
     interface_console(sys.argv[1:])

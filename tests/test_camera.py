@@ -23,7 +23,7 @@ from tmv.util import today_at, tomorrow_at
 from tmv.camera import ActiveTimes, Camera, CameraInactiveAction, FakePiCamera, LightLevel, Timed, calc_pixel_average, camera_console
 import tmv
 from tmv.exceptions import PowerOff
-from tmv.buttons import OnOffAuto, ON, OFF, AUTO
+from tmv.buttons import ON, AUTO
 
 TEST_DATA = Path(__file__).parent / "testdata"
 FDT = None
@@ -45,6 +45,20 @@ def setup_test():
         Path("camera.toml").unlink()
     except FileNotFoundError:
         pass
+
+def test_latest_image(setup_test):
+    cf = """
+    [camera]
+    file_root = "."
+    latest_image = "moose.jpg"
+    """
+    c = Camera(fake=True)
+    c.configs(cf)
+    cwd = Path(os.getcwd())
+
+    assert cwd / "moose.jpg" == c.latest_image
+
+
 
 
 def test_write_config(setup_test):

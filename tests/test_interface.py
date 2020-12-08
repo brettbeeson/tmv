@@ -7,7 +7,7 @@ from pathlib import Path
 from tempfile import mkdtemp
 import pytest
 
-from tmv.util import files_from_glob, LOG_FORMAT
+from tmv.util import LOG_FORMAT
 import tmv.interface.app
 from tmv.interface.app import app, socketio, interface_console, interface_camera
 

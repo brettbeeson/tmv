@@ -16,7 +16,6 @@ from collections.abc import MutableSequence
 from pprint import pformat
 from pathlib import Path
 import shutil
-import debugpy
 from math import exp, sqrt, tau
 from pkg_resources import resource_filename
 import toml
@@ -27,9 +26,9 @@ from astral.sun import sun
 from tmv.systemd import Unit
 from tmv.util import penultimate_unique, next_mark, LOG_FORMAT, LOG_LEVELS
 from tmv.util import Tomlable, setattrs_from_dict, sleep_until, ensure_config_exists
-from tmv.exceptions import ConfigError, PiJuiceError, SignalException, CameraError, PowerOff, ButtonError
+from tmv.exceptions import ConfigError, PiJuiceError, SignalException, PowerOff, ButtonError
 from tmv.buttons import OnOffAuto, ON, OFF, AUTO, ModeButton, SpeedButton, Speed
-from tmv.config import *
+from tmv.config import * #pylint: disable=wildcard-import
 
 LOGGER = logging.getLogger("tmv.camera")  # __name__
 
@@ -528,6 +527,8 @@ class Camera(Tomlable):
         'zoom': (0.0, 0.0, 1.0, 1.0)
     }
 
+
+
     def __init__(self, fake=False):
         """Create the camera hardware setup.  
 
@@ -560,7 +561,8 @@ class Camera(Tomlable):
         self.calc_shutter_speed = False
         self.location = None
         self.recent_images = []
-        self.latest_image = "latest-image.jpg"
+        self._latest_image = "latest-image.jpg" # relative to file_root
+          
         self.run_start = None
         self.light_sensor = LightLevelSensor(0.2, 0.05, max_age=timedelta(minutes=30), freq=timedelta(minutes=5))
         self.light_sense_outstanding = False
@@ -598,6 +600,16 @@ class Camera(Tomlable):
             "exposure_mode": 'off',
             "shutter_speed": 10000
         }
+
+    @property
+    def latest_image(self):
+        """ return with file_root as the ... file root! """
+        print(Path(self.file_root) / self._latest_image)
+        return Path(self.file_root) / self._latest_image
+
+    @latest_image.setter
+    def latest_image(self, value):
+        self._latest_image = value
 
     def configd(self, config_dict):
         c = config_dict  # shortcut
@@ -872,12 +884,12 @@ class Camera(Tomlable):
         """ Add hardlink to the specified image at a well-known location """
         # Image may be uploaded in the meantime
         try:
-            d = Path(self.file_root) / self.latest_image
+            d = self.latest_image
             if d.exists():
                 d.unlink()
             os.link(image_filename, d)
         except FileNotFoundError as ex:
-            LOGGER.warn(f"Unable to link latest image: {ex}")
+            LOGGER.warning(f"Unable to link latest image: {ex}")
 
     def capture_light(self, mark):
         image_filename = join(self.dt2dir(

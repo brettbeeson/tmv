@@ -21,4 +21,4 @@ def nearby_city():
     #city = DbIpCity.get(public_ip, api_key='free')
 
     #return city
-    pass
+

@@ -74,11 +74,14 @@ class AdvancedButton(tmv.util.Tomlable):
         Resets the dormancy counter. 
         Returns True if push was active (act upon) or False if it was dormant (ignore via return)
         """
+        LOGGER.debug(f"{self}: pushed")
         if self.lit_for is None:
             # always on
+            LOGGER.debug(f"{self}: always on")
             return True
         was_lit = dt.now() < self.last_pressed + self.lit_for
         self.last_pressed = dt.now()
+        LOGGER.debug(f"{self}: always on")
         return was_lit
 
     def led_on(self):
@@ -166,6 +169,7 @@ class ModeButton(AdvancedButton):
 
         
         if self.led:
+            LOGGER.debug(f"{self}: set led to {self.value}")
             if self.value == ON:
                 self.led_blink(led_on_time=2, led_off_time=0.01)
             elif self.value == OFF:
@@ -215,6 +219,7 @@ class SpeedButton(AdvancedButton):
                 self.value = SLOW
 
         if self.led:
+            LOGGER.debug(f"{self}: set led to {self.value}")
             if self.value == SLOW:
                 self.led_blink(.1, 1)
             elif self.value == MEDIUM:
@@ -235,6 +240,7 @@ class SpeedButton(AdvancedButton):
         """
         try:
             return Speed[self.button_path.read_text(encoding='UTF-8').strip('\n').upper()]
+            
         except (FileNotFoundError, KeyError):
             LOGGER.info(f"Creating {str(self.button_path)}")
             self.button_path.write_text(MEDIUM.name)
@@ -254,6 +260,7 @@ def button_test():
     mode.lit_for = timedelta(seconds=5)
     mode.set("mode", 17, 4)
     print("lit: 5s")
+    LOGGER.debug("debug")
     sleep(60)
 
     speed.lit_for = None
@@ -266,4 +273,7 @@ def button_test():
 
 if __name__ == "__main__":
     breakpoint()
+    LOGGER.setLevel(logging.DEBUG)
+    logging.basicConfig(format=tmv.util.LOG_FORMAT, level=logging.DEBUG)
     button_test()
+    
