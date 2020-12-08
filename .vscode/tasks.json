@@ -1,0 +1,42 @@
+    {
+        "version": "2.0.0",
+        "tasks": [
+            {
+                "label": "copyToRemote",
+                "type": "shell",
+                "command": "./sync.sh" 
+            },
+            {
+                "label": "startOnRemote",
+                "type": "shell",
+                "command": "ssh -f ${config:sshUser}@${config:sshEndpoint} 'python3 -m debugpy --wait-for-client --listen 0.0.0.0:5678 ~/tmv/tmv/${fileBasename}  > ~/tmv/tmv/${fileBasename}.log 2>&1'"
+            },
+            {
+                "label": "startOnRemoteInterface",
+                "type": "shell",
+                "command": "ssh -f ${config:sshUser}@${config:sshEndpoint} 'python3 -m debugpy --wait-for-client --listen 0.0.0.0:5678 ~/tmv/tmv/interface/app.py  > ~/tmv/tmv/interface/app.py.log 2>&1'"
+            },
+            {
+                "label": "wait",
+                "type": "shell",
+                "command": "sleep 10"
+            },
+            {
+                "label": "copyAndStartOnRemote",
+                "dependsOrder": "sequence",
+                "dependsOn": ["copyToRemote", "startOnRemote", "wait"]
+            },
+            {
+                "label": "copyAndStartOnRemoteInterface",
+                "dependsOrder": "sequence",
+                "dependsOn": ["copyToRemote", "startOnRemoteInterface", "wait"]
+            },
+            {
+                "label": "cleanupOnRemote",
+                "type": "shell",
+                "command": "ssh ${config:sshUser}@${config:sshEndpoint} 'killall -9 --younger-than 1h python3'"
+            },
+        ]    
+
+    }
+

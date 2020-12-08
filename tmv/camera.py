@@ -604,7 +604,6 @@ class Camera(Tomlable):
     @property
     def latest_image(self):
         """ return with file_root as the ... file root! """
-        print(Path(self.file_root) / self._latest_image)
         return Path(self.file_root) / self._latest_image
 
     @latest_image.setter

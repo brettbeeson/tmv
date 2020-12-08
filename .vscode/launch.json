@@ -1,0 +1,72 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Python: Remote Attach",
+      "type": "python",
+      "request": "attach",
+      "connect": {
+        "host": "cubey",
+        "port": 5678
+      },
+      "pathMappings": [
+        {
+          "localRoot": "${workspaceFolder}",
+          "remoteRoot": "~/tmv/tmv"
+        }
+      ]
+    },
+    {
+      "name": "Python: Current File",
+      "type": "python",
+      "request": "launch",
+      "program": "${file}",
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "Interface Console",
+      "type": "python",
+      "request": "launch",
+      "program": "${workspaceFolder}/tmv/interface/app.py",
+      "args": [
+        "--config-file",
+        "${workspaceFolder}/tests/testdata/test-interface.toml",
+        "-ll",
+        "DEBUG"
+      ],
+      "cwd": "/tmp",
+      "console": "integratedTerminal",
+      "justMyCode": false
+    },
+    {
+      "name": "Python: RunAndAttach",
+      "type": "python",
+      "request": "attach",
+      "port": 5678,
+      "host": "lunchbox",
+      "pathMappings": [
+        {
+          "localRoot": "${workspaceFolder}",
+          "remoteRoot": "~/${workspaceFolderBasename}/"
+        }
+      ],
+      "preLaunchTask": "copyAndStartOnRemote",
+      "postDebugTask": "cleanupOnRemote"
+    },
+    {
+      "name": "Debug Interface",
+      "type": "python",
+      "request": "attach",
+      "port": 5678,
+      "host": "lunchbox",
+      "pathMappings": [
+        {
+          "localRoot": "${workspaceFolder}",
+          "remoteRoot": "~/tmv/tmv/interface/"
+        }
+      ],
+      "preLaunchTask": "copyAndStartOnRemoteInterface",
+      "postDebugTask": "cleanupOnRemote"
+    },
+  ],
+}

@@ -11,7 +11,7 @@ import argparse
 
 import logging
 from socket import gethostname, gethostbyname
-from debugpy import breakpoint
+from debugpy import breakpoint 
 from flask_socketio import emit, SocketIO
 from flask import Flask, send_from_directory
 
@@ -36,7 +36,6 @@ def report_errors(func):
         try:
             func(*args, **kwargs)
         except Exception as exc:  # pylint: disable=broad-except
-            print("report_errors")
             emit('warning', f"Error: {exc}")
     return wrappers
 
@@ -71,7 +70,7 @@ def broadcast_image_thread():
     image_mtime_is = None
     while True:
         sleep(1)
-        breakpoint()
+        #breakpoint()
         try:
             if interface_camera:
                 im = Path(interface_camera.latest_image)
@@ -191,7 +190,6 @@ def raise_error():
 @socketio.on('req-camera-config')
 @report_errors
 def req_camera_config():
-    print("camera-config requested")
     config_path = interface_camera.config_path
     if config_path is None:
         raise RuntimeError("No config path available")
@@ -251,11 +249,13 @@ def interface_console(cl_args=sys.argv[1:]):
 
     LOGGER.setLevel(args.log_level)
     logging.getLogger("tmv.util").setLevel(args.log_level)
+    logging.getLogger("tmv.buttons").setLevel(args.log_level)
     logging.basicConfig(format=LOG_FORMAT, level=args.log_level)
 
     try:
         ensure_config_exists(args.config_file)
         global interface_camera  # pylint: disable=global-statement
+        LOGGER.info(f"config from {args.config_file}")
         interface_camera.config(args.config_file)
         start_threads()
         socketio.run(app,host="0.0.0.0")

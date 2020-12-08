@@ -10,7 +10,6 @@ venv/
 media/
 pi-timolo.dat
 pi-timolo.log
-.vscode/
 /camera/__init__.py
 camera_app/tests/images/
 tlmm/

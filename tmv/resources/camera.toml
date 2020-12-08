@@ -159,19 +159,14 @@ resolution = '1280x720'
 #light = 0.2
 #save_images = false
 
-# Button for camera on/off/auto
-# Software default. For hardware use
-# pins = [4, 17]    
-# instead of "file..."
-#   
 #[camera.mode_button]
 #   file = '/etc/tmv/camera-mode'
 #   button = 17
-#   led = 4
+#   led = 4 # alterative: 18
 
 #[camera.speed_button]
 #   file = '/etc/tmv/camera-speed'
-##   button = 27
+#   button = 27
 #   led = 10  
 
 #[camera.statusled]

@@ -5,7 +5,7 @@ File-underlied 2- and 3-value buttones with hardware buttons and LEDs
 from sys import stderr
 from enum import Enum
 import logging
-from  debugpy import breakpoint
+#from  debugpy import breakpoint
 from pathlib import Path
 from datetime import timedelta
 from _datetime import datetime as dt
@@ -81,7 +81,6 @@ class AdvancedButton(tmv.util.Tomlable):
             return True
         was_lit = dt.now() < self.last_pressed + self.lit_for
         self.last_pressed = dt.now()
-        LOGGER.debug(f"{self}: always on")
         return was_lit
 
     def led_on(self):
@@ -113,7 +112,7 @@ class AdvancedButton(tmv.util.Tomlable):
             c = config_dict['button']
         else:
             c = config_dict
-
+        LOGGER.debug(f"button config: {c}")
         if 'file' in c:
             self.button_path = Path(c['file'])
         if 'buttonpin' in c:
@@ -121,6 +120,7 @@ class AdvancedButton(tmv.util.Tomlable):
             self.button.when_pressed = self.push
         if 'ledpin' in c:
             self.led = LED['ledpin']
+        LOGGER.debug(f"button configd: {self.button_path}, button: {self.button}, led: {self.led}")
 
     @property
     def value(self):
@@ -169,7 +169,7 @@ class ModeButton(AdvancedButton):
 
         
         if self.led:
-            LOGGER.debug(f"{self}: set led to {self.value}")
+            LOGGER.debug(f"{self}: set led {self.led} to {self.value}")
             if self.value == ON:
                 self.led_blink(led_on_time=2, led_off_time=0.01)
             elif self.value == OFF:
@@ -219,7 +219,7 @@ class SpeedButton(AdvancedButton):
                 self.value = SLOW
 
         if self.led:
-            LOGGER.debug(f"{self}: set led to {self.value}")
+            LOGGER.debug(f"{self}: set led {self.led} to {self.value}")
             if self.value == SLOW:
                 self.led_blink(.1, 1)
             elif self.value == MEDIUM:
@@ -272,7 +272,7 @@ def button_test():
 
 
 if __name__ == "__main__":
-    breakpoint()
+    #breakpoint()
     LOGGER.setLevel(logging.DEBUG)
     logging.basicConfig(format=tmv.util.LOG_FORMAT, level=logging.DEBUG)
     button_test()
