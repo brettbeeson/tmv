@@ -1,4 +1,4 @@
-# Time Made Visible
+# Time Made Visible !
 
 TMV provides a "camera to video" timelapse system. The system is comprised of:
 - Raspberry PiZeroW camera: take photos, save to disk, upload to S3. USB or battery-and-solar-powered.
