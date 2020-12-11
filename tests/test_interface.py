@@ -2,14 +2,13 @@
 
 import os
 import logging
-from time import sleep
+#from time import sleep
 from pathlib import Path
 from tempfile import mkdtemp
 import pytest
 
 from tmv.util import LOG_FORMAT
-import tmv.interface.app
-from tmv.interface.app import app, socketio, interface_console, interface_camera
+from tmv.interface.app import app, socketio, interface_console, interface_camera, buttons_console
 
 
 TEST_DATA = Path(__file__).parent / "testdata"
@@ -70,6 +69,34 @@ def test_buttons(setup_module):
     assert s == "FAST"
 
 
+def test_control_console(setup_module, capsys):
+    """
+    Run buttons console, testing output. Use local button files.
+    """
+    
+    local_config = TEST_DATA / "test-interface.toml" # local buttons
+    
+    # default - should create files
+    with pytest.raises(SystemExit) as excinfo:
+        buttons_console(["-c",str(local_config)])
+        assert excinfo.value.code == 0
+    out = capsys.readouterr().out.strip() 
+    assert out == "auto\nmedium"
+    
+    # set
+    cl = ["-c",str(local_config),"on", "slow"]
+    with pytest.raises(SystemExit) as excinfo:
+        buttons_console(cl)
+        assert excinfo.value.code == 0
+    
+    # get (from file - should be the set'd values)
+    with pytest.raises(SystemExit) as excinfo:
+        buttons_console(["-c",str(local_config)])
+        assert excinfo.value.code == 0
+    out = capsys.readouterr().out.strip() 
+    assert out == "on\nslow"
+
+
 def manual_test_start_server(setup_module):
     """ Test webpage manually """
 
@@ -80,5 +107,5 @@ def manual_test_start_server(setup_module):
         ["--config-file", "tests/testdata/test-interface.toml", "-ll", "DEBUG"],)
 
 
-if __name__ == '__main__':
-    manual_test_start_server(None)
+#if __name__ == '__main__':
+#    manual_test_start_server(None)

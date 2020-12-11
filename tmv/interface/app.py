@@ -14,19 +14,20 @@ from socket import gethostname, gethostbyname
 from debugpy import breakpoint 
 from flask_socketio import emit, SocketIO
 from flask import Flask, send_from_directory
-
+from subprocess import CalledProcessError
 from toml import loads, TomlDecodeError
-from tmv.camera import CAMERA_CONFIG_FILE, Camera
+from tmv.camera import CAMERA_CONFIG_FILE, Camera, SOFTWARE, HARDWARE
 from tmv.buttons import OnOffAuto, Speed
 from tmv.systemd import Unit
 from tmv.util import run_and_capture, unlink_safe, LOG_LEVELS, LOG_FORMAT, ensure_config_exists
+from tmv.exceptions import ButtonError
 
 LOGGER = logging.getLogger("tmv.interface")
 
 app = Flask("tmv.interface.app", static_url_path="/", static_folder="static")
 app.config['SECRET_KEY'] = 'secret!'
 app.config["EXPLAIN_TEMPLATE_LOADING"] = True
-interface_camera = Camera(fake=True)
+interface_camera = Camera(camera_firmness=SOFTWARE, buttons_firmness=HARDWARE)
 socketio = SocketIO(app)
 
 
@@ -91,15 +92,17 @@ def broadcast_buttons_thread():
     while True:
         sleep(1)
         if interface_camera:
-            mode_is = interface_camera.mode_button.value
-            if mode_was is None or mode_is != mode_was:
-                socketio.emit('message', f"Mode changed to {mode_is}")
-                mode_was = mode_is
+            if interface_camera.mode_button.ready():
+                mode_is = interface_camera.mode_button.value
+                if mode_was is None or mode_is != mode_was:
+                    socketio.emit('message', f"Mode changed to {mode_is}")
+                    mode_was = mode_is
 
-            speed_is = interface_camera.speed_button.value
-            if speed_was is None or speed_is != speed_was:
-                socketio.emit('message', f"speed changed to {speed_is}")
-                speed_was = speed_is
+            if interface_camera.speed_button.ready():
+                speed_is = interface_camera.speed_button.value
+                if speed_was is None or speed_is != speed_was:
+                    socketio.emit('message', f"speed changed to {speed_is}")
+                    speed_was = speed_is
 
 
 @app.route("/")
@@ -256,6 +259,7 @@ def interface_console(cl_args=sys.argv[1:]):
         ensure_config_exists(args.config_file)
         global interface_camera  # pylint: disable=global-statement
         LOGGER.info(f"config from {args.config_file}")
+        interface_camera.default_buttons_config(config_dir=Path(args.config_file).parent)
         interface_camera.config(args.config_file)
         start_threads()
         socketio.run(app,host="0.0.0.0")
@@ -268,6 +272,73 @@ def interface_console(cl_args=sys.argv[1:]):
     except Exception as exc:  # pylint: disable=broad-except
         print(exc, file=sys.stderr)
         return 1
+
+
+
+def buttons_console(cl_args=sys.argv[1:]):
+    try:
+        parser = argparse.ArgumentParser(
+            "Check and control TMV buttons.")
+        parser.add_argument('-c', '--config-file', default=CAMERA_CONFIG_FILE)
+        parser.add_argument('-v', '--verbose', action="store_true")
+        parser.add_argument('-r', '--restart', action="store_true", help="restart service to (e.g.) re-read config")
+        parser.add_argument('mode', type=OnOffAuto, choices=list(OnOffAuto), nargs="?")
+        parser.add_argument('speed', type=Speed, choices=list(Speed), nargs="?")
+        args = (parser.parse_args(cl_args))
+
+        if args.verbose:
+            print(args)
+
+        ensure_config_exists(args.config_file)
+
+        c = Camera(camera_firmness=SOFTWARE, buttons_firmness=HARDWARE)
+        c.default_buttons_config(config_dir=Path(args.config_file).parent)
+        
+        c.config(args.config_file)
+
+        if args.verbose:
+            print(c.mode_button)
+            print(c.speed_button)
+
+        if args.mode:
+            try:
+                c.mode_button.value = args.mode
+            except ButtonError as e:
+                print(e)
+        else:
+            print(c.mode_button.value)
+
+        if args.speed:
+            try:
+                c.speed_button.value = args.speed
+            except ButtonError as e:
+                print(e)
+        else:
+            print(c.speed_button.value)
+
+        if args.restart:
+            if args.verbose:
+                print("Restarting camera")
+            ctlr = Unit("tmv-camera.service")
+            ctlr.restart()
+        exit(0)
+
+    except PermissionError as exc:
+        print(f"{exc}: check your file access permissions. Try root.", file=sys.stderr)
+        if args.verbose:
+            raise  # to get stack trace
+        exit(10)
+    except CalledProcessError as exc:
+        print(f"{exc}: check your execute systemd permissions. Try root.", file=sys.stderr)
+        if args.verbose:
+            raise  # to get stack trace
+        exit(20)
+    # except Exception as exc:
+    #    print(exc, file=stderr)
+    #    if args.verbose:
+    #        raise  # to get stack trace
+    #
+    #     exit(30)
 
 
 if __name__ == '__main__':

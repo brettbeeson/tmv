@@ -94,6 +94,15 @@ class Tomlable:
                 setattr(self, attr_name, default_value)
 
 
+class SoftHard(Enum):
+    SOFTWARE = 'SOFTWARE',
+    HARDWARE = 'HARDWARE'
+
+
+SOFTWARE = SoftHard.SOFTWARE
+HARDWARE = SoftHard.HARDWARE
+
+
 def log_level_string_to_int(log_level_string):
 
     if log_level_string not in LOG_LEVEL_STRINGS:
@@ -213,9 +222,9 @@ def file_by_day(file_list, dest, move):
             try:
                 # Filename date
                 datetime_taken = str2dt(fn)
-            except ValueError:
+            except ValueError as e:
                 # Try to get EXIF
-                raise NotImplementedError("No exif library availble")
+                raise NotImplementedError("No exif library availble") from e
                 #datetime_taken = exif_datetime_taken(fn)
             # got a date. Move it
             n_moved += 1
@@ -318,7 +327,7 @@ def run_and_capture(cl: list, log_filename=None, timeout=None):
     try:
         proc = run(cl, encoding="UTF-8", stdout=PIPE, stderr=PIPE, check=False, timeout=timeout)
     except OSError as e:
-        raise OSError("Subprocess failed to even run: {}. Cause: {}".format(' '.join(cl), str(e)))
+        raise OSError("Subprocess failed to even run") from e
 
     if proc.returncode != 0:
         if log_filename:
@@ -343,8 +352,7 @@ def subprocess_stdout(cl):
     try:
         proc = run(cl, encoding="UTF-8", stdout=PIPE, stderr=PIPE, check=True)
     except OSError as e:
-        raise OSError(
-            "Subprocess failed to run: {}. Cause: {}".format(' '.join(cl), str(e)))
+        raise OSError("Subprocess failed to run") from e
 
     return str(proc.stdout)
 

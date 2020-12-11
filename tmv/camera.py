@@ -11,24 +11,23 @@ import time
 import os
 from os.path import join
 import logging
-from subprocess import CalledProcessError
+
 from collections.abc import MutableSequence
 from pprint import pformat
 from pathlib import Path
-import shutil
 from math import exp, sqrt, tau
-from pkg_resources import resource_filename
+
 import toml
 from PIL import Image, ImageFont, ImageDraw, ImageStat
 import astral
 from astral.geocoder import database, lookup  # Get co-ordinates from city name
 from astral.sun import sun
-from tmv.systemd import Unit
+
 from tmv.util import penultimate_unique, next_mark, LOG_FORMAT, LOG_LEVELS
-from tmv.util import Tomlable, setattrs_from_dict, sleep_until, ensure_config_exists
-from tmv.exceptions import ConfigError, PiJuiceError, SignalException, PowerOff, ButtonError
-from tmv.buttons import OnOffAuto, ON, OFF, AUTO, ModeButton, SpeedButton, Speed
-from tmv.config import * #pylint: disable=wildcard-import
+from tmv.util import Tomlable, setattrs_from_dict, sleep_until, ensure_config_exists, SoftHard, SOFTWARE, HARDWARE
+from tmv.exceptions import ConfigError, PiJuiceError, SignalException, PowerOff
+from tmv.buttons import ON, OFF, AUTO, ModeButton, SpeedButton
+from tmv.config import *  # pylint: disable=wildcard-import, unused-wildcard-import
 
 LOGGER = logging.getLogger("tmv.camera")  # __name__
 
@@ -527,42 +526,40 @@ class Camera(Tomlable):
         'zoom': (0.0, 0.0, 1.0, 1.0)
     }
 
-
-
-    def __init__(self, fake=False):
-        """Create the camera hardware setup.  
+    def __init__(self, camera_firmness: SoftHard, buttons_firmness: SoftHard):
+        """Create the camera hardware setup.
 
         Raises:
-            CameraError: [description]       
-         
-        """
+            CameraError: [description]
 
-        if  fake:
+        """
+        super().__init__()
+        if camera_firmness == SOFTWARE:
             self._camera = FakePiCamera()
         else:
-            #try:
+            # try:
             LOGGER.debug("Picamera() start")
             self._camera = PiCamera()
             LOGGER.debug("Picamera() returned")
-            #except PiCameraError:
+            # except PiCameraError:
             #    raise  CameraError("No camera hardware available.") # from tmv
-        
-        self.speed_button = SpeedButton()
-        self.speed_button.set(SPEED_FILE, SPEED_BUTTON, SPEED_LED)
-        self.mode_button = ModeButton()
-        self.mode_button.set(MODE_FILE, MODE_BUTTON, MODE_LED)
+
+        self.buttons_firmness = buttons_firmness
+        self.speed_button = None
+        self.mode_button = None
         self.led = None
+
         try:
             self.led = gpiozero.LED(ACTIVITY_LED)
         except NameError as e:
-            print(f"Continuing without buttons: {e}",file=stderr)
+            print(f"Continuing after exception configuring activity LED: {e}", file=stderr)
 
         self._pijuice = None
         self.calc_shutter_speed = False
         self.location = None
         self.recent_images = []
-        self._latest_image = "latest-image.jpg" # relative to file_root
-          
+        self._latest_image = "latest-image.jpg"  # relative to file_root
+
         self.run_start = None
         self.light_sensor = LightLevelSensor(0.2, 0.05, max_age=timedelta(minutes=30), freq=timedelta(minutes=5))
         self.light_sense_outstanding = False
@@ -601,6 +598,25 @@ class Camera(Tomlable):
             "shutter_speed": 10000
         }
 
+
+    def default_buttons_config(self, config_dir: str):
+        """Configure camera with standard buttons"""
+
+        cd = Path(config_dir)
+        sf = cd / Path(SPEED_FILE)
+        mf = cd / Path(MODE_FILE)
+
+        self.speed_button = SpeedButton(firmness=self.buttons_firmness)
+        self.mode_button = ModeButton(firmness=self.buttons_firmness)
+
+        if self.buttons_firmness  == SOFTWARE:
+            self.speed_button.set(sf)
+            self.mode_button.set(mf)
+        else:
+            self.speed_button.set(sf, SPEED_BUTTON, SPEED_LED)
+            self.mode_button.set(mf, MODE_BUTTON, MODE_LED)
+
+
     @property
     def latest_image(self):
         """ return with file_root as the ... file root! """
@@ -613,11 +629,11 @@ class Camera(Tomlable):
     def configd(self, config_dict):
         c = config_dict  # shortcut
         if 'camera' in config_dict:
-            c = config_dict['camera'] # can accept config in root or [camera]
+            c = config_dict['camera']  # can accept config in root or [camera]
         if 'log_level' in c:
             LOGGER.setLevel(c['log_level'])
         if 'mode_button' in c:
-            self.mode_button = ModeButton()
+            self.mode_button = ModeButton(firmness=self.buttons_firmness)
             self.mode_button.set(
                 button_path=c['mode_button'].get('file', MODE_FILE),
                 button_pin=c['mode_button'].get('button', MODE_BUTTON),
@@ -629,9 +645,9 @@ class Camera(Tomlable):
             except (ImportError, NameError) as exc:
                 self._pijuice = None
                 LOGGER.warning(f"Failed to init pijuice. Continuting. Error: {exc}")
-            
+
         if 'speed_button' in c:
-            self.speed_button = SpeedButton()
+            self.speed_button = SpeedButton(firmness=self.buttons_firmness)
             self.speed_button.set(
                 button_path=c['speed_button'].get('file', SPEED_FILE),
                 button_pin=c['speed_button'].get('button', SPEED_BUTTON),
@@ -643,6 +659,8 @@ class Camera(Tomlable):
         self.setattr_from_dict('file_root', c)
         self.setattr_from_dict('overlays', c)
         self.setattr_from_dict('calc_shutter_speed', c)
+        if 'latest_image' in c:
+            self._latest_image = c['latest_image']
 
         if 'city' in c:
             # pylint: disable=no-else-raise
@@ -712,6 +730,8 @@ class Camera(Tomlable):
         """
         Main loop. May shutdown machine if required.
         """
+        print("run")
+        LOGGER.debug("run")
         if self.run_start is None:
             self.run_start = dt.now()
             # Run the light senser so we know what to do on the first loop
@@ -1153,70 +1173,6 @@ def sig_handler(signal_received, frame):
     raise SignalException
 
 
-def buttons_console(cl_args=argv[1:]):
-    try:
-        parser = argparse.ArgumentParser(
-            "Check and control TMV buttones.")
-        parser.add_argument('-c', '--config-file', default=CAMERA_CONFIG_FILE)
-        parser.add_argument('-v', '--verbose', action="store_true")
-        parser.add_argument('-r', '--restart', action="store_true", help="restart service to (e.g.) re-read config")
-        parser.add_argument('mode', type=OnOffAuto, choices=list(OnOffAuto), nargs="?")
-        parser.add_argument('speed', type=Speed, choices=list(Speed), nargs="?")
-        args = (parser.parse_args(cl_args))
-
-        if args.verbose:
-            print(args)
-
-        ensure_config_exists(args.config_file)
-
-        c = Camera(fake=True)
-        c.config(args.config_file)
-
-        if args.verbose:
-            print(c.mode_button)
-            print(c.speed_button)
-
-        if args.mode:
-            try:
-                c.mode_button.value = args.mode
-            except ButtonError as e:
-                print(e)
-        else:
-            print(c.mode_button.value)
-
-        if args.speed:
-            try:
-                c.speed_button.value = args.speed
-            except ButtonError as e:
-                print(e)
-        else:
-            print(c.speed_button.value)
-
-        if args.restart:
-            if args.verbose:
-                print("Restarting camera")
-            ctlr = Unit("tmv-camera.service")
-            ctlr.restart()
-        exit(0)
-
-    except PermissionError as exc:
-        print(f"{exc}: check your file access  permissions. Try root.", file=stderr)
-        if args.verbose:
-            raise  # to get stack trace
-        exit(10)
-    except CalledProcessError as exc:
-        print(f"{exc}: check your execute systemd permissions. Try root.", file=stderr)
-        if args.verbose:
-            raise  # to get stack trace
-        exit(20)
-    #except Exception as exc:
-    #    print(exc, file=stderr)
-    #    if args.verbose:
-    #        raise  # to get stack trace
-    #
-    #     exit(30)
-
-
 def camera_console(cl_args=argv[1:]):
     # pylint: disable=broad-except
     retval = 0
@@ -1231,23 +1187,27 @@ def camera_console(cl_args=argv[1:]):
 
     args = (parser.parse_args(cl_args))
 
-    logging.getLogger("tmv.camera").setLevel(args.log_level)
-    logging.basicConfig(format=LOG_FORMAT, level=args.log_level)
+    logging.basicConfig(format=LOG_FORMAT)  # set all debuggers, level=args.log_level)
+    print(args.log_level)
+    LOGGER.setLevel(args.log_level)
     ensure_config_exists(args.config_file)
-    LOGGER.info(f"Starting camera app. config-file: {Path(args.config_file).absolute()} ")
 
-    cam = Camera(fake=args.fake)
+    if args.fake:
+        LOGGER.info(f"Starting camera app. camera=SW buttons=SW config-file: {Path(args.config_file).absolute()} ")
+        cam = Camera(camera_firmness=SOFTWARE,buttons_firmness=SOFTWARE)
+    else:
+        LOGGER.info(f"Starting camera app. camera=HW buttons=HW config-file: {Path(args.config_file).absolute()} ")
+        cam = Camera(camera_firmness=HARDWARE, buttons_firmness=SOFTWARE)  # camera reads buttons so read the files ("SOFTWARE") (interface sets them)
 
     try:
-
-        if not Path(args.config_file).is_file():
-            shutil.copy(resource_filename(
-                __name__, 'resources/camera.toml'), args.config_file)
-            LOGGER.info(
-                "Writing default config file to {}.".format(args.config_file))
-
+        
+     #   if not Path(args.config_file).is_file():
+     #       shutil.copy(resource_filename(__name__, 'resources/camera.toml'), args.config_file)
+     #       LOGGER.info("Writing default config file to {}.".format(args.config_file))
+        ensure_config_exists(args.config_file)
+        cam.default_buttons_config(config_dir=Path(args.config_file).parent)
         cam.config(args.config_file)
-
+        LOGGER.setLevel(args.log_level)  # cl overrides config
         cam.run(args.runs)
 
     except SignalException:
@@ -1271,6 +1231,7 @@ def camera_console(cl_args=argv[1:]):
             time.sleep(1)
 
     exit(retval)
+
 
 if __name__ == "__main__":
     camera_console()

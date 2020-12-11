@@ -11,7 +11,7 @@ from datetime import timedelta
 from _datetime import datetime as dt
 from time import sleep 
 # to enable monkeypatching, don't import "from tmv.util", but instead:
-import tmv.util
+from tmv.util import SoftHard, SOFTWARE, HARDWARE, Tomlable, LOG_FORMAT
 
 try:
     from gpiozero import Button
@@ -38,7 +38,7 @@ MEDIUM = Speed.MEDIUM
 FAST = Speed.FAST
 
 
-class AdvancedButton(tmv.util.Tomlable):
+class AdvancedButton(Tomlable):
     """ 
     mode is controlled by file and/or pushbutton, with optional LED indicator
     - if unlit, the first push will just illuminate (not change state)
@@ -46,22 +46,28 @@ class AdvancedButton(tmv.util.Tomlable):
     - it will return to unlit after a time
     """
 
-    def __init__(self):
+    def __init__(self, firmness: SoftHard):
+        super().__init__()
         self.button_path = None
         self.button = None
         self.led = None
         self.lit_for = timedelta(seconds=20)  # seconds to display status for. 0 for always
         self.last_pressed = dt.min
+        self.firmness = firmness
 
+    def ready(self):
+        return self.button_path is not None
+
+   
     def set(self, button_path=None, button_pin=None, led_pin=None):
         if button_path:
             self.button_path = Path(button_path)
         try:
             # only works on raspi
-            if button_pin:
+            if button_pin and self.firmness==HARDWARE:
                 self.button = Button(button_pin)
                 self.button.when_pressed = self.push
-            if led_pin:
+            if led_pin and self.firmness==HARDWARE:
                 self.led = LED(led_pin)
         except Exception as e:
             print(f"Exception but continuing:{e}", file=stderr)
@@ -153,8 +159,8 @@ AUTO = OnOffAuto.AUTO
 class ModeButton(AdvancedButton):
     """ ON/OFF/AUTO controlled by file and/or pushbutton, with optional LED indicator """
 
-    def __init__(self):
-        super().__init__()
+    def __init__(self, firmness):
+        super().__init__(firmness)
         self.value = OFF
 
     def push(self):
@@ -186,14 +192,19 @@ class ModeButton(AdvancedButton):
     @property
     def value(self) -> OnOffAuto:
         """
-        Get button state. If no file exists, create it and default to AUTO.
+        Get button state. If no file exists, create it and default it.
         """
         try:
+            if self.button_path is None:
+                LOGGER.warning("No button_path set for ModeButton")
+                raise FileNotFoundError("No button_path set for ModeButton.")
+            if not self.button_path.exists():
+                LOGGER.info(f"Creating {str(self.button_path)}")
+                self.button_path.write_text(AUTO.name)
             return OnOffAuto[self.button_path.read_text(encoding='UTF-8').strip('\n').upper()]
-        except (FileNotFoundError, KeyError):
-            LOGGER.info(f"Creating {str(self.button_path)}")
-            self.button_path.write_text(AUTO.name)
-            return AUTO
+        except (FileNotFoundError, KeyError) as exc:
+            LOGGER.warning(f"Cannot read {self.button_path}. Returning MEDIUM",exc_info=exc) 
+            return MEDIUM
 
     @value.setter
     def value(self, state):
@@ -205,8 +216,8 @@ class ModeButton(AdvancedButton):
 class SpeedButton(AdvancedButton):
     """ Discrete speeds controlled by file and/or pushbutton, with optional LED indicator """
 
-    def __init__(self):
-        super().__init__()
+    def __init__(self, firmness):
+        super().__init__(firmness)
         self.value = MEDIUM
 
     def push(self):
@@ -236,14 +247,17 @@ class SpeedButton(AdvancedButton):
     @property
     def value(self) -> Speed:
         """
-        Get button state. If no file exists, create it and default to AUTO.
+        Get button state. If no file exists, create it and default it.
         """
         try:
+            if self.button_path is None:
+                raise FileNotFoundError("No button_path set for SpeedButton.")
+            if not self.button_path.exists():
+                LOGGER.info(f"Creating {str(self.button_path)}")
+                self.button_path.write_text(MEDIUM.name)
             return Speed[self.button_path.read_text(encoding='UTF-8').strip('\n').upper()]
-            
-        except (FileNotFoundError, KeyError):
-            LOGGER.info(f"Creating {str(self.button_path)}")
-            self.button_path.write_text(MEDIUM.name)
+        except (FileNotFoundError, KeyError) as exc:
+            LOGGER.warning(f"Cannot read {self.button_path}. Returning MEDIUM",exc_info=exc) 
             return MEDIUM
 
     @value.setter
@@ -253,10 +267,10 @@ class SpeedButton(AdvancedButton):
                 f.write(state.name)
 
 def button_test():
-    speed = SpeedButton()
+    speed = SpeedButton(SOFTWARE)
     speed.lit_for = timedelta(seconds=5)
     speed.set("speed", 27, 10)
-    mode = ModeButton()
+    mode = ModeButton(SOFTWARE)
     mode.lit_for = timedelta(seconds=5)
     mode.set("mode", 17, 4)
     print("lit: 5s")
@@ -274,6 +288,6 @@ def button_test():
 if __name__ == "__main__":
     #breakpoint()
     LOGGER.setLevel(logging.DEBUG)
-    logging.basicConfig(format=tmv.util.LOG_FORMAT, level=logging.DEBUG)
+    logging.basicConfig(format=LOG_FORMAT, level=logging.DEBUG)
     button_test()
     
