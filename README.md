@@ -26,8 +26,8 @@ sudo apt install -y libjpeg-dev libopenjp2-7 libtiff5
 git clone https://github.com/brettbeeson/tmv
 cd tmv
 sudo python3 setup.py install      # local production 
-#sudo python3 -m pip install timemv # production from pypi
 #sudo python3 setup.py develop      # dev
+#sudo python3 -m pip install timemv # production from pypi - unlikely to be current
 sudo scripts/install-tmv-camera.sh # install systemd services                
 sudo scripts/install-autossh.sh    # optional
 #sudo scripts/install-pijuice.sh   # optional
@@ -50,6 +50,9 @@ Refer to the docs, but briefly:
 - `sudo systemctl enable pijuice`
 - `echo dtoverlay=i2c-rtc,ds1339 | sudo -a /boot/config.txt` to enable real time clock
 - `pijuice_cli` to get settings
+
+### Optional, configure autossh
+- `sudo vi /etc/systemd/system/autossh.service`
 
 ### Start Camera
 - browse to [your-pi-ip](http://tmv.local) to see the Camera App and RaspAP. THis allows you to control most everything you need to take photos.
