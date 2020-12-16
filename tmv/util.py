@@ -20,6 +20,8 @@ from enum import Enum
 from pkg_resources import resource_filename
 import toml
 import pytimeparse
+import humanize
+
 
 
 class LOG_LEVELS(Enum):
@@ -315,7 +317,7 @@ def check_internet(host="8.8.8.8", port=53, timeout=5):
         LOGGER.debug(exc)
         return False
 
-
+    
 def run_and_capture(cl: list, log_filename=None, timeout=None):
     """
     Only for python <=3.6. Use "capture" keyword for >3.6

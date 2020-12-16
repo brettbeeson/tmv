@@ -8,13 +8,13 @@ from tempfile import mkdtemp
 import pytest
 
 from tmv.util import LOG_FORMAT
-from tmv.interface.app import app, socketio, interface_console, interface_camera, buttons_console
+from tmv.interface.app import app, socketio, interface_console, interface, buttons_console
 
 
 TEST_DATA = Path(__file__).parent / "testdata"
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture(scope="function")
 def setup_module():
     # steart flask and scoketio
     os.chdir(mkdtemp())
@@ -27,7 +27,7 @@ def test_connection(setup_module):
 
     cf = Path(TEST_DATA / 'test-interface.toml')
 
-    interface_camera.config(cf)
+    interface.config(cf)
 
     flask_test_client = app.test_client()
 
@@ -49,7 +49,7 @@ def test_buttons(setup_module):
 
     cf = Path(TEST_DATA / 'test-interface.toml')
 
-    interface_camera.config(cf)
+    interface.config(cf)
 
     flask_test_client = app.test_client()
 
@@ -60,13 +60,12 @@ def test_buttons(setup_module):
     r = socketio_test_client.get_received()
     assert r[0]['args'] == "Hello from TMV!"
 
-    socketio_test_client.emit("mode", "Off")
-    socketio_test_client.emit("speed", "Fast")
-
-    m = interface_camera.mode_button.button_path.read_text()
-    s = interface_camera.speed_button.button_path.read_text()
-    assert m == "OFF"
-    assert s == "FAST"
+    socketio_test_client.emit("mode", "off")
+    socketio_test_client.emit("speed", "fast")
+    m = interface.mode_button.path.read_text()
+    s = interface.speed_button.path.read_text()
+    assert m == "off"
+    assert s == "fast"
 
 
 def test_control_console(setup_module, capsys):
@@ -81,7 +80,7 @@ def test_control_console(setup_module, capsys):
         buttons_console(["-c",str(local_config)])
         assert excinfo.value.code == 0
     out = capsys.readouterr().out.strip() 
-    assert out == "auto\nmedium"
+    assert out == "on\nslow"
     
     # set
     cl = ["-c",str(local_config),"on", "slow"]
@@ -101,8 +100,8 @@ def manual_test_start_server(setup_module):
     """ Test webpage manually """
 
     cf = Path(TEST_DATA / 'test-interface.toml')
-    interface_camera.config(cf)
-    interface_camera.latest_image = (TEST_DATA / 'interface/latest-image.jpg')
+    interface.config(cf)
+    interface.latest_image = (TEST_DATA / 'interface/latest-image.jpg')
     interface_console(
         ["--config-file", "tests/testdata/test-interface.toml", "-ll", "DEBUG"],)
 

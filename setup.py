@@ -50,7 +50,7 @@ setuptools.setup(
     # 'sshconf'
     install_requires=['astral', 'toml', 'python-dateutil', 'pytimeparse',
                       'Pillow', 'watchdog', 'boto3', 'freezegun', 'nptime', 
-                      'Flask', 'flask-socketio','ascii_graph', 'datetimerange', 'gpiozero'],
+                      'Flask', 'flask-socketio','ascii_graph', 'datetimerange', 'gpiozero','humanize'],
 
     python_requires='>=3.6',
 

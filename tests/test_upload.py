@@ -11,7 +11,6 @@ import os
 from tempfile import mkdtemp
 import pytest
 
-from watchdog.observers import Observer
 from tmv.util import not_modified_for
 from tmv.upload import S3Uploader, upload_console, ConfigError
 
@@ -272,11 +271,6 @@ def test_upload_console(caplog):
 
     assert upload_console(console_args) == 0
 
-    #assert "*.png" in (caplog.records[1]).message
-
-    console_args = ["--log-level=DEBUG"]
-    assert upload_console(console_args) == 1
-    # assert "*.png" in (cap.records[1]).message
 
 
 def test_id():

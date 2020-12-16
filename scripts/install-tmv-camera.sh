@@ -15,16 +15,12 @@ sudo chgrp tmv /etc/tmv
 # new files should take tmv group
 sudo chmod g+s /etc/tmv 
 # change any existing too
-sudo chmod 664 /etc/tmv/*
-sudo chgrp tmv /etc/tmv/*
+sudo chmod 664 /etc/tmv/* 2>/dev/null
+sudo chgrp tmv /etc/tmv/* 2>/dev/null
 
 echo Setting sudoers
-# allow user to run systemctl, to allow restart of services by camapp webbie, running as pi
+# allow user to run systemctl, to allow restart of services by interface app, running as pi
 sudo cp scripts/030_tmv /etc/sudoers.d/
-
-# install lighttpd script to redirect just "/" to our camapp
-echo Configuring lighttpd
-sudo cp scripts/50-tmv.conf /etc/lighttpd/conf-enabled/
 
 echo Making a data directory
 mkdir ~/tmv-data
@@ -40,8 +36,13 @@ sudo systemctl enable tmv-camera
 sudo systemctl enable tmv-upload
 sudo systemctl enable tmv-interface
 
-echo Restarting lighttpd
-sudo systemctl restart lighttpd 
+echo Redirecting port 80 to 5000
+sudo iptables -t nat -I PREROUTING -p tcp --dport 80 -j REDIRECT --to-ports 5000
+sudo iptables -t nat -I OUTPUT -p tcp -d 127.0.0.1 --dport 80 -j REDIRECT --to-ports 5000
+sudo iptables-save 
+
+echo Changing /etc/wpa_supplicant/wpa_supplicant.conf permissions
+sudo chgrp netdev /etc/wpa_supplicant/wpa_supplicant.conf 
+sudo chmod 664 /etc/wpa_supplicant/wpa_supplicant.conf 
+
 echo Done
-
-

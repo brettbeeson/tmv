@@ -22,7 +22,7 @@ from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
 
 from tmv.util import LOG_LEVELS, Tomlable, check_internet, LOG_FORMAT, next_mark, not_modified_for
-from tmv.camera import ConfigError, SignalException
+from tmv.camera import ConfigError, SignalException, CAMERA_CONFIG_FILE
 from tmv.config import *  # pylint: disable=unused-wildcard-import, wildcard-import
 
 
@@ -324,7 +324,7 @@ class S3Uploader(FileSystemEventHandler, Tomlable):
                     #if n > 0:
                     #    LOGGER.debug(f"Uploaded {n} files")
                     self.upload_required = False
-                except Exception as exc:
+                except Exception as exc: 
                     LOGGER.debug(f"Failed to upload: {exc}")
             else:
                 LOGGER.debug("No internet. Not uploading")

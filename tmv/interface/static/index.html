@@ -69,9 +69,11 @@
                                 aria-selected="false">Console</a>
                         </li>
                         <li class="nav-item">
-                            <a class="nav-link" id="wifi" data-toggle="pill"
-                                href="">
-                                Wifi</a>
+                            <a class="nav-link" id="pills-wifi-tab" d
+                                data-toggle="pill" href="#pills-wifi" role="tab"
+                                aria-controls="pills-wifi"
+                                aria-selected="false">Wifi</a>
+                                
                         </li>
                         <li class="nav-item">
                             <a class="nav-link" id="server" data-toggle="pill"
@@ -134,7 +136,6 @@
             <div class="row justify-content-center">
                 <div class="col-md-12">
                     <div class="tab-content" id="pills-tabContent">
-
                         <div class="tab-pane fade show active" id="pills-home"
                             role="tabpanel"
                             aria-labelledby="pills-home-tab">
@@ -152,6 +153,7 @@
                         <div class="tab-pane fade" id="pills-settings"
                             role="tabpanel"
                             aria-labelledby="pills-settings-tab">
+                            <!-- ACE editor for camera.toml -->
                             <div class="row">
                                 <h1>Configuration</h1>
                                 <div id="editor" class="mb-2"></div>
@@ -217,9 +219,34 @@
                             <button class="btn btn-secondary ml-2" id="restart">Restart</button>
                             <button class="btn btn-secondary ml-2" id="files">Files</button>
                             <button class="btn btn-secondary ml-2" id="error">Error</button>
+                            <button class="btn btn-secondary ml-2" id="latest-image-time">Latest Image Time</button>
                         </div>
-                    </div>
-                    <!--tabs-->
+                        <!-- edit wifi creds-->
+                        <div class="tab-pane fade" id="pills-wifi"
+                            role="tabpanel" aria-labelledby="pills-wifi-tab">
+                            <div class="row">
+                                <h1>Wifi Settings</h1>
+                                <div id="wifieditor" class="mb-2"></div>
+                            </div>
+                            <div class="row">
+                                <button class="btn btn-secondary ml-2"
+                                    id="wifi-save">Save</button>
+                                <button class="btn btn-secondary ml-2"
+                                        id="wifi-reconfigure">Restart WiFi</button>
+                                <button class="btn btn-secondary ml-2"
+                                    id="wifi-cancel">Cancel</button>
+                            </div>
+                            <h1>Wifi Tools</h1>
+                            <textarea spellcheck="false" id="wifi-textarea"
+                                    class="text-smaller
+                                    w-100" rows="10" columns="80"></textarea>
+                            <div class="row">
+                                <button class="btn btn-secondary ml-2"
+                                    id="wifi-scan">Scan</button>
+                                
+                            </div>
+                        </div>
+                    </div>  <!--tabs-->
                 </div><!-- col-->
             </div><!-- rows -->
         </div>

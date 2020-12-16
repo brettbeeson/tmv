@@ -4,10 +4,10 @@ from tempfile import TemporaryDirectory, mkdtemp
 import logging
 import pytest
 from pathlib import Path
-from tmv.buttons import AUTO, OFF, ON, ModeButton
-
+from tmv.config import *  # pylint: disable=unused-wildcard-import, wildcard-import
 from tmv.camera import Camera, FakePiCamera
 from tmv.util import LOG_FORMAT
+from tmv.buttons import StatefulButton
 
 cwd_buttons = """
     [camera.mode_button]
@@ -25,10 +25,10 @@ def setup_module():
 
 
 def test_buttons(setup_module):
-
-    s = ModeButton()
-    s.set(button_path="./buttonfile")
-    assert s.value == AUTO
-    s.value = ON
+    s = StatefulButton("./buttonfile",MODE_BUTTON_STATES)
     assert s.value == ON
-    assert s.value != AUTO
+    s.value = AUTO
+    assert s.value == AUTO
+    assert s.value != ON
+
+# todo: test read-only and permission errors

@@ -8,27 +8,33 @@ from base64 import b64encode
 from time import sleep
 from shutil import copy
 import argparse
-
+from datetime import datetime as dt             # dt = class
+from subprocess import CalledProcessError
 import logging
 from socket import gethostname, gethostbyname
-from debugpy import breakpoint 
+
+from debugpy import breakpoint
 from flask_socketio import emit, SocketIO
 from flask import Flask, send_from_directory
-from subprocess import CalledProcessError
 from toml import loads, TomlDecodeError
-from tmv.camera import CAMERA_CONFIG_FILE, Camera, SOFTWARE, HARDWARE
+from humanize import naturaldelta
+
+from tmv.camera import CAMERA_CONFIG_FILE
+from tmv.camera import Interface
 from tmv.buttons import OnOffAuto, Speed
 from tmv.systemd import Unit
-from tmv.util import run_and_capture, unlink_safe, LOG_LEVELS, LOG_FORMAT, ensure_config_exists
+from tmv.util import run_and_capture, unlink_safe, LOG_LEVELS, LOG_FORMAT, ensure_config_exists, dt2str
 from tmv.exceptions import ButtonError
+from tmv.interface.wifi import scan, reconfigure
 
 LOGGER = logging.getLogger("tmv.interface")
 
 app = Flask("tmv.interface.app", static_url_path="/", static_folder="static")
 app.config['SECRET_KEY'] = 'secret!'
 app.config["EXPLAIN_TEMPLATE_LOADING"] = True
-interface_camera = Camera(camera_firmness=SOFTWARE, buttons_firmness=HARDWARE)
+interface = Interface()
 socketio = SocketIO(app)
+shutdown = False
 
 
 def report_errors(func):
@@ -42,9 +48,9 @@ def report_errors(func):
 
 
 def send_image(broadcast, binary=True):
-    if interface_camera is None or interface_camera.latest_image is None or not Path(interface_camera.latest_image).exists():
+    if interface is None or interface.latest_image is None or not Path(interface.latest_image).exists():
         return
-    im = Path(interface_camera.latest_image)
+    im = Path(interface.latest_image)
     with im.open(mode='rb') as f:
         image_data_bin = f.read()
     if binary:
@@ -58,9 +64,9 @@ def manage_screen_interface_thread():
     """
      Display key parameters and image on the screen and react to screen button presses
     """
-    LOGGER.debug("manage_screen_interface_thread starting")
-    while True:
-        sleep(10)
+
+    while not shutdown:
+        sleep(1)
 
 
 def broadcast_image_thread():
@@ -69,39 +75,42 @@ def broadcast_image_thread():
     """
     image_mtime_was = None
     image_mtime_is = None
-    while True:
+    while not shutdown:
         sleep(1)
-        #breakpoint()
+        # breakpoint()
         try:
-            if interface_camera:
-                im = Path(interface_camera.latest_image)
+            if interface:
+                im = Path(interface.latest_image)
                 if im.exists():
                     image_mtime_is = im.stat().st_mtime
                     if image_mtime_was is None or image_mtime_is > image_mtime_was:
                         send_image(broadcast=True)
                         image_mtime_was = image_mtime_is
-                        socketio.emit('message', f"New image sent: {interface_camera.latest_image}")
+                        socketio.emit('message', f"New image sent: {interface.latest_image}")
         except FileNotFoundError as exc:
-            socketio.emit('warning', f"{interface_camera.latest_image}: {repr(exc)}")
+            socketio.emit('warning', f"{interface.latest_image}: {repr(exc)}")
             print(exc, file=sys.stderr)
 
 
 def broadcast_buttons_thread():
     mode_was = None
     speed_was = None
-    while True:
+    while not shutdown:
         sleep(1)
-        if interface_camera:
-            if interface_camera.mode_button.ready():
-                mode_is = interface_camera.mode_button.value
+        if interface:
+            if interface.mode_button.ready():
+                mode_is = interface.mode_button.value
                 if mode_was is None or mode_is != mode_was:
                     socketio.emit('message', f"Mode changed to {mode_is}")
+                    #socketio.emit('mode', str(mode_is))
+                    req_mode()
                     mode_was = mode_is
 
-            if interface_camera.speed_button.ready():
-                speed_is = interface_camera.speed_button.value
+            if interface.speed_button.ready():
+                speed_is = interface.speed_button.value
                 if speed_was is None or speed_is != speed_was:
                     socketio.emit('message', f"speed changed to {speed_is}")
+                    req_speed()
                     speed_was = speed_is
 
 
@@ -144,19 +153,41 @@ def req_journal():
 @socketio.on('req-files')
 @report_errors
 def req_files():
-    if interface_camera:
+    if interface:
         fls = []
-        for f in Path(interface_camera.file_root).glob("*"):
+        for f in Path(interface.file_root).glob("*"):
             fls.append(str(f))
-        emit("files", {"files": fls})
-    emit('message', 'Send files')
+        fls.sort()
+        emit("n-files", len(fls))
+        emit("files", fls)
+
+
+@socketio.on('req-latest-image-time')
+@report_errors
+def req_latest_image_time():
+    if interface:
+        ts = interface.latest_image.stat().st_mtime
+        mt = dt.fromtimestamp(ts)
+        mt_str = dt2str(mt)
+        td = dt.now() - mt
+        emit("latest-image-time", mt_str)
+        emit("latest-image-ago", f"{naturaldelta(td)} ago")
+
+
+@socketio.on('req-n-files')
+@report_errors
+def req_n_files():
+    if interface:
+        i = len(Path(interface.file_root).glob("*"))
+        emit("n-files", i)
 
 
 @socketio.on('mode')
 @report_errors
 def set_mode(pos: str):
-    if interface_camera and interface_camera.mode_button:
-        interface_camera.mode_button.value = OnOffAuto(pos.lower())
+    if interface and interface.mode_button:
+        interface.mode_button.value = OnOffAuto(pos.lower())
+        interface.mode_button.set_LED()
     else:
         raise RuntimeError("No button available")
 
@@ -164,15 +195,16 @@ def set_mode(pos: str):
 @socketio.on('req-mode')
 @report_errors
 def req_mode():
-    if interface_camera:
-        emit('mode', str(interface_camera.mode_button.value))
+    if interface:
+        socketio.emit('mode', str(interface.mode_button.value))
 
 
 @socketio.on('speed')
 @report_errors
 def set_speed(pos: str):
-    if interface_camera and interface_camera.speed_button:
-        interface_camera.speed_button.value = Speed(pos.lower())
+    if interface and interface.speed_button:
+        interface.speed_button.value = Speed(pos.lower())
+        interface.speed_button.set_LED()
     else:
         raise RuntimeError("No button available")
 
@@ -180,8 +212,8 @@ def set_speed(pos: str):
 @socketio.on('req-speed')
 @report_errors
 def req_speed():
-    if interface_camera:
-        emit('speed', str(interface_camera.speed_button.value))
+    if interface:
+        socketio.emit('speed', str(interface.speed_button.value))
 
 
 @socketio.on('raise-error')
@@ -193,7 +225,7 @@ def raise_error():
 @socketio.on('req-camera-config')
 @report_errors
 def req_camera_config():
-    config_path = interface_camera.config_path
+    config_path = interface.config_path
     if config_path is None:
         raise RuntimeError("No config path available")
     else:
@@ -217,16 +249,44 @@ def req_camera_ip():
 @socketio.on('camera-config')
 @report_errors
 def camera_config(configs):
-    if interface_camera:
+    if interface:
         loads(configs)  # check syntax
-        cf = interface_camera.config_path
+        cf = interface.config_path
         unlink_safe(cf.with_suffix(".bak"))
         copy(cf, cf.with_suffix(".bak"))
         Path(cf).write_text(configs)
         # re-read this ourselves, too, to get new file_root, etc
-        interface_camera.config(cf)
+        interface.config(cf)
         emit("message", "Saved config.")
 
+
+@socketio.on('req-wpa-supplicant')
+@report_errors
+def req_wpa_supplicant():
+    emit('wpa-supplicant', Path("/etc/wpa_supplicant/wpa_supplicant.conf").read_text())
+    
+
+@socketio.on('wpa-supplicant')
+@report_errors
+def wpa_supplicant(wpa_supplicant_text):
+    fn = Path("/etc/wpa_supplicant/wpa_supplicant.conf")
+    fn.write_text(wpa_supplicant_text)
+    emit('message',f"Saved to {fn}. Consider a reconfigure.")
+    
+
+@socketio.on('wpa-reconfigure')
+@report_errors
+def wpa_reconfigure():
+    result = reconfigure()
+    emit('message',f"Reconfiguring: {result}")
+
+
+@socketio.on('req-wpa-scan')
+@report_errors
+def req_wpa_scan():
+    s= scan()
+    LOGGER.warning(s)
+    emit('wpa-scan',s)
 
 @socketio.on('connect')
 @report_errors
@@ -234,45 +294,57 @@ def connect():
     emit('message', 'Hello from TMV!')
     try:
         send_image(broadcast=False)
+        req_mode()
+        req_speed()
+        req_wpa_supplicant()
     except FileNotFoundError:
         pass
 
 
 def start_threads():
-    socketio.start_background_task(manage_screen_interface_thread)
-    socketio.start_background_task(broadcast_buttons_thread)
-    socketio.start_background_task(broadcast_image_thread)
+    socketio.threads = []
+    socketio.threads.append(socketio.start_background_task(manage_screen_interface_thread))
+    socketio.threads.append(socketio.start_background_task(broadcast_buttons_thread))
+    socketio.threads.append(socketio.start_background_task(broadcast_image_thread))
 
 
 def interface_console(cl_args=sys.argv[1:]):
-    parser = argparse.ArgumentParser("Interface (screen, web, web-socket server) to TMV interface_camera.")
+    parser = argparse.ArgumentParser("Interface (screen, web, web-socket server) to TMV interface.")
     parser.add_argument('--log-level', '-ll', default='WARNING', type=lambda s: LOG_LEVELS(s).name, nargs='?', choices=LOG_LEVELS.choices())
+    parser.add_argument('--port', '-p', default=5000, type=int)
     parser.add_argument('--config-file', '-cf', default=CAMERA_CONFIG_FILE)
     args = parser.parse_args(cl_args)
 
     LOGGER.setLevel(args.log_level)
     logging.getLogger("tmv.util").setLevel(args.log_level)
     logging.getLogger("tmv.buttons").setLevel(args.log_level)
-    logging.basicConfig(format=LOG_FORMAT, level=args.log_level)
+    logging.basicConfig(format=LOG_FORMAT)
+    log = logging.getLogger('werkzeug')
+    log.setLevel(logging.WARNING)
 
     try:
         ensure_config_exists(args.config_file)
-        global interface_camera  # pylint: disable=global-statement
-        LOGGER.info(f"config from {args.config_file}")
-        interface_camera.default_buttons_config(config_dir=Path(args.config_file).parent)
-        interface_camera.config(args.config_file)
+        global interface  # pylint: disable=global-statement
+        LOGGER.info(f"config file: {Path(args.config_file).absolute()}")
+        interface.config(args.config_file)
+        interface.illuminate()
         start_threads()
-        socketio.run(app,host="0.0.0.0")
+        socketio.run(app, host="0.0.0.0", port=args.port)
         while True:
             sleep(1)
 
     except (FileNotFoundError, TomlDecodeError) as exc:
         print(exc, file=sys.stderr)
         return 1
+    except KeyboardInterrupt as exc:
+        return 0
     except Exception as exc:  # pylint: disable=broad-except
         print(exc, file=sys.stderr)
         return 1
-
+    finally:
+        LOGGER.info("Stopping server and threads")
+        global shutdown  # pylint:disable = global-statement
+        shutdown = True
 
 
 def buttons_console(cl_args=sys.argv[1:]):
@@ -291,10 +363,9 @@ def buttons_console(cl_args=sys.argv[1:]):
 
         ensure_config_exists(args.config_file)
 
-        c = Camera(camera_firmness=SOFTWARE, buttons_firmness=HARDWARE)
-        c.default_buttons_config(config_dir=Path(args.config_file).parent)
-        
+        c = Interface()
         c.config(args.config_file)
+        c.illuminate()
 
         if args.verbose:
             print(c.mode_button)

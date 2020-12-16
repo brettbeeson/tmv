@@ -7,6 +7,6 @@ sudo apt-get install gcc python3-dev
 # tmv!
 git clone https://github.com/brettbeeson/tmv
 cd tmv
-sudo python3 -m pip install timemv # production
-#sudo python3 setup.py develop   # dev
+#sudo python3 -m pip install timemv # production
+sudo python3 setup.py develop   # dev
 sudo scripts/install-tmv-camera.sh # install systemd services       

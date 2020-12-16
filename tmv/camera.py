@@ -2,6 +2,7 @@
 
 from signal import signal, SIGINT, SIGTERM
 import argparse
+import gc
 from io import BytesIO
 from sys import stderr, maxsize, argv
 from enum import Enum
@@ -24,9 +25,9 @@ from astral.geocoder import database, lookup  # Get co-ordinates from city name
 from astral.sun import sun
 
 from tmv.util import penultimate_unique, next_mark, LOG_FORMAT, LOG_LEVELS
-from tmv.util import Tomlable, setattrs_from_dict, sleep_until, ensure_config_exists, SoftHard, SOFTWARE, HARDWARE
+from tmv.util import Tomlable, setattrs_from_dict, sleep_until, ensure_config_exists
 from tmv.exceptions import ConfigError, PiJuiceError, SignalException, PowerOff
-from tmv.buttons import ON, OFF, AUTO, ModeButton, SpeedButton
+from tmv.buttons import ON, OFF, AUTO, StatefulButton, StatefulHWButton
 from tmv.config import *  # pylint: disable=wildcard-import, unused-wildcard-import
 
 LOGGER = logging.getLogger("tmv.camera")  # __name__
@@ -44,6 +45,25 @@ try:
 except ImportError as exc:
     LOGGER.debug(exc)
 
+def ModeButtonFactory(config_dict):
+    path=config_dict.get('file', MODE_FILE)
+    return StatefulButton(path, MODE_BUTTON_STATES)   
+
+def ModeHWButtonFactory(config_dict):
+    path=config_dict.get('file', MODE_FILE)
+    button=config_dict.get('button', MODE_BUTTON)
+    led=config_dict.get('led', MODE_LED)
+    return StatefulHWButton(path, MODE_BUTTON_STATES,led,button)
+
+def SpeedButtonFactory(config_dict):
+    path=config_dict.get('file', SPEED_FILE)
+    return StatefulButton(path, SPEED_BUTTON_STATES)   
+
+def SpeedHWButtonFactory(config_dict):
+    path=config_dict.get('file', SPEED_FILE)
+    button=config_dict.get('button', SPEED_BUTTON)
+    led=config_dict.get('led', SPEED_LED)
+    return StatefulHWButton(path, SPEED_BUTTON_STATES,led,button)
 
 class LightLevel(Enum):
     """ Measured by a sensor, or an image. Unit ~ = lux or pixel_average"""
@@ -497,9 +517,10 @@ class SunCalc(Timed):
         self.update_calcs()
         return super().active()
 
-
 class Camera(Tomlable):
     """ A timelapse camera with a real/synth/dummy camera"""
+
+    
 
     # Defaults as per docs. Note:
     # - awb_gains: get/set, unknown default
@@ -526,7 +547,7 @@ class Camera(Tomlable):
         'zoom': (0.0, 0.0, 1.0, 1.0)
     }
 
-    def __init__(self, camera_firmness: SoftHard, buttons_firmness: SoftHard):
+    def __init__(self, sw_cam = False):
         """Create the camera hardware setup.
 
         Raises:
@@ -534,7 +555,7 @@ class Camera(Tomlable):
 
         """
         super().__init__()
-        if camera_firmness == SOFTWARE:
+        if sw_cam:
             self._camera = FakePiCamera()
         else:
             # try:
@@ -544,9 +565,10 @@ class Camera(Tomlable):
             # except PiCameraError:
             #    raise  CameraError("No camera hardware available.") # from tmv
 
-        self.buttons_firmness = buttons_firmness
-        self.speed_button = None
-        self.mode_button = None
+       
+        # software only : read-only
+        self.speed_button = StatefulButton(SPEED_FILE,SPEED_BUTTON_STATES)
+        self.mode_button = StatefulButton(MODE_FILE,MODE_BUTTON_STATES)
         self.led = None
 
         try:
@@ -599,24 +621,6 @@ class Camera(Tomlable):
         }
 
 
-    def default_buttons_config(self, config_dir: str):
-        """Configure camera with standard buttons"""
-
-        cd = Path(config_dir)
-        sf = cd / Path(SPEED_FILE)
-        mf = cd / Path(MODE_FILE)
-
-        self.speed_button = SpeedButton(firmness=self.buttons_firmness)
-        self.mode_button = ModeButton(firmness=self.buttons_firmness)
-
-        if self.buttons_firmness  == SOFTWARE:
-            self.speed_button.set(sf)
-            self.mode_button.set(mf)
-        else:
-            self.speed_button.set(sf, SPEED_BUTTON, SPEED_LED)
-            self.mode_button.set(mf, MODE_BUTTON, MODE_LED)
-
-
     @property
     def latest_image(self):
         """ return with file_root as the ... file root! """
@@ -633,26 +637,18 @@ class Camera(Tomlable):
         if 'log_level' in c:
             LOGGER.setLevel(c['log_level'])
         if 'mode_button' in c:
-            self.mode_button = ModeButton(firmness=self.buttons_firmness)
-            self.mode_button.set(
-                button_path=c['mode_button'].get('file', MODE_FILE),
-                button_pin=c['mode_button'].get('button', MODE_BUTTON),
-                led_pin=c['mode_button'].get('led', MODE_LED))
-            LOGGER.info(f"Setting mode button to: {self.mode_button}")
+            self.mode_button = ModeButtonFactory(c['mode_button'])
+            LOGGER.debug(f"config'd button: {self.mode_button}")
+        if 'speed_button' in c:
+            self.speed_button = SpeedButtonFactory(c['speed_button'])
+            LOGGER.debug(f"config'd button: {self.speed_button}")
+
         if c.get('pijuice', False):
             try:
                 self._pijuice = TMVPiJuice()
             except (ImportError, NameError) as exc:
                 self._pijuice = None
-                LOGGER.warning(f"Failed to init pijuice. Continuting. Error: {exc}")
-
-        if 'speed_button' in c:
-            self.speed_button = SpeedButton(firmness=self.buttons_firmness)
-            self.speed_button.set(
-                button_path=c['speed_button'].get('file', SPEED_FILE),
-                button_pin=c['speed_button'].get('button', SPEED_BUTTON),
-                led_pin=c['speed_button'].get('led', SPEED_LED))
-            LOGGER.info(f"Setting speed button to: {self.speed_button}")
+                LOGGER.warning("Failed to init pijuice. Continuting.",exc_info=exc)
 
         # self.setattr_from_dict(manual.abspath(
         # os.path.expanduser(self.file_root)
@@ -730,8 +726,6 @@ class Camera(Tomlable):
         """
         Main loop. May shutdown machine if required.
         """
-        print("run")
-        LOGGER.debug("run")
         if self.run_start is None:
             self.run_start = dt.now()
             # Run the light senser so we know what to do on the first loop
@@ -799,6 +793,8 @@ class Camera(Tomlable):
                     LOGGER.debug(settings)
                     set_picam(self._camera, settings)
                     sleep_until(next_image_mark, dt.now())
+                    
+
                     self.capture_image(next_image_mark)
                 else:
                     # run light sensor
@@ -888,7 +884,7 @@ class Camera(Tomlable):
             self.led.off()
 
         pa = image_pixel_average(pil_image)
-        LOGGER.debug("CAPTURED mark: {} pa:{:.3f} took:{:.2f}".format(mark, pa, (dt.now() - start).total_seconds()))
+        LOGGER.info("CAPTURED mark: {} pa:{:.3f} took:{:.2f}".format(mark, pa, (dt.now() - start).total_seconds()))
 
         image_filename = self.dt2filename(mark)
         self.recent_images.append((dt.now(), image_filename, self._camera.exposure_speed, pa),)
@@ -1081,6 +1077,52 @@ class FakePiCamera():
             return im
 
 
+class Interface(Tomlable):
+    """Represents the interface to the camera (not the camera itself), such as the config file, buttons and screen    """
+    def __init__(self):
+        super().__init__()
+        self.mode_button = StatefulHWButton(MODE_FILE, MODE_BUTTON_STATES, MODE_LED, MODE_BUTTON)
+        self.mode_button.lit_for = timedelta(seconds=30)
+        self.speed_button = StatefulHWButton(SPEED_FILE, SPEED_BUTTON_STATES, SPEED_LED, SPEED_BUTTON)
+        self.speed_button.lit_for = timedelta(seconds=30)
+        self.file_root = "."
+        self._latest_image = "latest-image.jpg"  
+
+    @property
+    def latest_image(self):
+        """ return with file_root as the ... file root! """
+        return Path(self.file_root) / self._latest_image
+
+    @latest_image.setter
+    def latest_image(self, value):
+        self._latest_image = value
+
+    def illuminate(self):
+        self.mode_button.value
+        self.mode_button.illuminate()
+        self.speed_button.illuminate()
+
+    def configd(self, config_dict):
+        c = config_dict  # shortcut
+        #LOGGER.debug(f"Interface config_dict:{config_dict}")
+        if 'camera' in config_dict:
+            c = config_dict['camera']  # can accept config in root or [camera]
+        if 'mode_button' in c:
+            self.mode_button = None # release gpio pins
+            gc.collect()
+            self.mode_button = ModeHWButtonFactory(c['mode_button'])
+            self.mode_button.lit_for = timedelta(seconds=30)
+        if 'speed_button' in c:
+            self.speed_button = None # release gpio pins
+            gc.collect()
+            self.speed_button = SpeedHWButtonFactory(c['speed_button'])
+            self.speed_button.lit_for = timedelta(seconds=30)
+
+        self.setattr_from_dict('file_root', c)
+        self.setattr_from_dict('latest_image', c)
+        
+
+
 def sun_calc_lightlevel(observer, instant) -> LightLevel:
     """Categorise a datetime based on sun's position and a location
 
@@ -1180,7 +1222,7 @@ def camera_console(cl_args=argv[1:]):
     signal(SIGTERM, sig_handler)
     parser = argparse.ArgumentParser("TMV Camera.")
     parser.add_argument('--log-level', '-ll', default='WARNING', type=lambda s: LOG_LEVELS(s).name, nargs='?', choices=LOG_LEVELS.choices())
-    parser.add_argument('--config-file', default=CAMERA_CONFIG_FILE,
+    parser.add_argument('--config-file','-cf', default=CAMERA_CONFIG_FILE,
                         help="Config file is required. It will be created if non-existant.")
     parser.add_argument('--fake', action='store_true')
     parser.add_argument('--runs', type=int, default=maxsize)
@@ -1188,16 +1230,11 @@ def camera_console(cl_args=argv[1:]):
     args = (parser.parse_args(cl_args))
 
     logging.basicConfig(format=LOG_FORMAT)  # set all debuggers, level=args.log_level)
-    print(args.log_level)
     LOGGER.setLevel(args.log_level)
     ensure_config_exists(args.config_file)
 
-    if args.fake:
-        LOGGER.info(f"Starting camera app. camera=SW buttons=SW config-file: {Path(args.config_file).absolute()} ")
-        cam = Camera(camera_firmness=SOFTWARE,buttons_firmness=SOFTWARE)
-    else:
-        LOGGER.info(f"Starting camera app. camera=HW buttons=HW config-file: {Path(args.config_file).absolute()} ")
-        cam = Camera(camera_firmness=HARDWARE, buttons_firmness=SOFTWARE)  # camera reads buttons so read the files ("SOFTWARE") (interface sets them)
+    LOGGER.info(f"Starting camera app. config-file: {Path(args.config_file).absolute()} ")
+    cam = Camera(sw_cam = args.fake)      
 
     try:
         
@@ -1205,7 +1242,7 @@ def camera_console(cl_args=argv[1:]):
      #       shutil.copy(resource_filename(__name__, 'resources/camera.toml'), args.config_file)
      #       LOGGER.info("Writing default config file to {}.".format(args.config_file))
         ensure_config_exists(args.config_file)
-        cam.default_buttons_config(config_dir=Path(args.config_file).parent)
+        #cam.default_buttons_config(config_dir=Path(args.config_file).parent)
         cam.config(args.config_file)
         LOGGER.setLevel(args.log_level)  # cl overrides config
         cam.run(args.runs)

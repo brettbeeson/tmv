@@ -20,6 +20,14 @@ $(document).ready(function () {
   editor.setTheme("ace/theme/xcode");
   editor.setFontSize(20);
   editor.session.setMode("ace/mode/toml");
+
+  var wifieditor = ace.edit("wifieditor");
+  wifieditor.setTheme("ace/theme/xcode");
+  wifieditor.setFontSize(20);
+  //wifieditor.session.setMode("ace/mode/wpa?");
+  
+
+
   //toastr.options.preventDuplicates = true;
   toastr.options.positionClass = "toast-bottom-center";
 
@@ -55,6 +63,7 @@ $(document).ready(function () {
     ws.emit("req-files");
   });
   $("#error").on("click", () => ws.emit("raise-error"));
+  $("#latest-image-time").on("click", () => ws.emit("req-latest-image-time"));
   
   $("#restart").on("click", function () {
     ws.emit("restart-camera");
@@ -62,6 +71,22 @@ $(document).ready(function () {
   $("#saveandrestart").on("click", function () {
     ws.emit("camera-config", editor.getValue());
     ws.emit("restart-camera");
+  });
+
+  $("#wifi-save").on("click", function () {
+    ws.emit("wpa-supplicant", wifieditor.getValue());
+  });
+
+  $("#wifi-scan").on("click", function () {
+    ws.emit("req-wpa-scan");
+  });
+
+  $("#wifi-cancel").on("click", function () {
+    ws.emit("req-wpa-supplicant");
+  });
+
+  $("#wifi-reconfigure").on("click", function () {
+    ws.emit("wpa-reconfigure");
   });
 
   $("#camera-mode input").on("click", mode);
@@ -141,6 +166,17 @@ $(document).ready(function () {
     });
 
     ws.on("camera-config", msg =>editor.setValue(msg));
+
+    ws.on("wpa-supplicant", msg => wifieditor.setValue(msg));
+
+    ws.on("wpa-scan", function (msg) {
+      let wifita = $("#wifi-textarea");
+      wifita.val(wifita.val() + "WIFI SCAN\n");
+      wifita.val(wifita.val() + msg);
+      wifita.val(wifita.val() + "---\n");
+       // autoscroll
+       wifita.scrollTop(wifita[0].scrollHeight - wifita.height());
+    });
     
     ws.on("mode", function (msg) {
       // Unfocus current button as we are getting the real value from server
@@ -162,6 +198,11 @@ $(document).ready(function () {
   
     ws.on("warning", msg => toastr.warning(msg));
 
+    ws.on("latest-image-time", msg => toastr.info(msg));
+
+    
+    ws.on("latest-image-ago", msg => toastr.info(msg));
+
     ws.on("camera-name", msg => {
       $('#camera-name').text(msg);
       document.title = "TMV - " + msg
@@ -173,12 +214,18 @@ $(document).ready(function () {
       let logta = $("#log-textarea");
       logta.val(logta.val() + "FILES\n");
 
-      for (let f in msg["files"]) {
-        logta.val(logta.val() + msg["files"][f] + "\n");
+      for (let f in msg) {
+        logta.val(logta.val() + msg[f] + "\n");
       }
       logta.val(logta.val() + "---\n");
+
        // autoscroll
        logta.scrollTop(logta[0].scrollHeight - logta.height());
+    });
+
+
+    ws.on("n-files", function (msg) {
+      toastr.info(msg + " files on-board")
     });
 
     ws.on("services-status", function (msg) {
