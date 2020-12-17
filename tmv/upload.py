@@ -38,7 +38,7 @@ class S3Uploader(FileSystemEventHandler, Tomlable):
     - Ends up at s3 (e.g. s3://bucket/root/dir1/file2)
     - watches file system for new files to upload
     - config via toml
-    todo: remove boto and replace will lightweight (minio client?)
+    todo: remove boto and replace will lightweight (minio client: https://docs.min.io/docs/python-client-api-reference.html)
     """
     # Uploading *moves* files. It simply tries to upload all
     # files one first run and then on any filesystem change.
@@ -320,11 +320,9 @@ class S3Uploader(FileSystemEventHandler, Tomlable):
 
             if check_internet():
                 try:
-                    n = self.upload()
-                    #if n > 0:
-                    #    LOGGER.debug(f"Uploaded {n} files")
+                    self.upload()
                     self.upload_required = False
-                except Exception as exc: 
+                except Exception as exc:  # pylint: disable=broad-except
                     LOGGER.debug(f"Failed to upload: {exc}")
             else:
                 LOGGER.debug("No internet. Not uploading")

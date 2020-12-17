@@ -1,24 +1,33 @@
-
-# pylint: disable=line-too-long, logging-fstring-interpolation, dangerous-default-value, import-error
+# pylint: disable=line-too-long, logging-fstring-interpolation, dangerous-default-value, import-error, redefined-outer-name, unused-argument
 
 import logging
+import os
+from tempfile import mkdtemp
 from tempfile import TemporaryDirectory
 from os import chdir
 from pathlib import Path
 from distutils.dir_util import copy_tree
-
 import pytest
 from _datetime import timedelta, datetime as dt
 
 from tmv.videotools import VideoInfo, frames, video_decompile_console
-from tmv.util import str2dt
+from tmv.util import * # pylint:disable=unused-wildcard-import, wildcard-import
 from tmv.video import video_compile_console
 
 
 TEST_DATA = Path(__file__).parent / "testdata"
 
 
-def test_video_info():
+@pytest.fixture(scope="function")
+def setup_module():
+    # steart flask and scoketio
+    os.chdir(mkdtemp())
+    print("Setting cwd to {}".format(os.getcwd()))
+    logging.basicConfig(format=LOG_FORMAT)
+    logging.getLogger("tmv.web").setLevel(logging.DEBUG)
+
+
+def test_video_info(setup_module):
     v1 = VideoInfo(TEST_DATA / "sample1.mp4")
     assert v1.frames == 55
     assert v1.valid
@@ -34,7 +43,7 @@ def test_video_info():
     assert v3.real_start == dt(2000, 1, 1, 1, 0, 0)
 
 
-def test_video_decompile_console():
+def test_video_decompile_console(setup_module):
     with TemporaryDirectory() as tempd:
 
         chdir(tempd)
@@ -75,7 +84,7 @@ def test_video_decompile_console():
         assert video_frankie.real_start == video_orig.real_start
 
 
-def test_video_decompile_nometa():
+def test_video_decompile_nometa(setup_module):
     # this file has no metadata - we have to take a guess of 9 to 5
     with TemporaryDirectory() as tempd:
         logging.getLogger().setLevel(logging.DEBUG)
@@ -93,7 +102,7 @@ def test_video_decompile_nometa():
             Path(images[-1]).stem).timestamp(), dt(2000, 1, 1, 19, 0, 0).timestamp(), abs=30)
 
 
-def test_video_decompile_nometa2():
+def test_video_decompile_nometa2(setup_module):
     # this file has no metadata - and is disjoint
     # specify start, end and deduce interval
     with TemporaryDirectory() as tempd:
@@ -106,7 +115,8 @@ def test_video_decompile_nometa2():
 
         tempp = Path(tempd)
         images = sorted(list((tempp/"2019-11-07").glob("*.jpg")))
-        assert len(images) == frames(TEST_DATA / "2019-11-07-disjoint-no-meta.mp4")
+        assert len(images) == frames(
+            TEST_DATA / "2019-11-07-disjoint-no-meta.mp4")
         assert str2dt(Path(images[0]).stem) == dt(2019, 11, 7, 9, 55, 0)
         assert pytest.approx(str2dt(
             Path(images[-1]).stem).timestamp(), dt(2019, 11, 7, 12, 15, 0).timestamp(), abs=30)

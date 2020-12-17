@@ -3,6 +3,7 @@
 
 
 import sys
+from os import system
 from pathlib import Path
 from base64 import b64encode
 from time import sleep
@@ -17,13 +18,12 @@ from debugpy import breakpoint
 from flask_socketio import emit, SocketIO
 from flask import Flask, send_from_directory
 from toml import loads, TomlDecodeError
-from humanize import naturaldelta
 
 from tmv.camera import CAMERA_CONFIG_FILE
 from tmv.camera import Interface
 from tmv.buttons import OnOffAuto, Speed
 from tmv.systemd import Unit
-from tmv.util import run_and_capture, unlink_safe, LOG_LEVELS, LOG_FORMAT, ensure_config_exists, dt2str
+from tmv.util import run_and_capture, unlink_safe, LOG_LEVELS, LOG_FORMAT, ensure_config_exists
 from tmv.exceptions import ButtonError
 from tmv.interface.wifi import scan, reconfigure
 
@@ -38,7 +38,7 @@ shutdown = False
 
 
 def report_errors(func):
-    """ My first decorator: try errors and report to client. Not rul securz """
+    """ "try"  and report to client. Not rul securz """
     def wrappers(*args, **kwargs):
         try:
             func(*args, **kwargs)
@@ -86,7 +86,7 @@ def broadcast_image_thread():
                     if image_mtime_was is None or image_mtime_is > image_mtime_was:
                         send_image(broadcast=True)
                         image_mtime_was = image_mtime_is
-                        socketio.emit('message', f"New image sent: {interface.latest_image}")
+                        # socketio.emit('message', f"New image sent: {interface.latest_image}")
         except FileNotFoundError as exc:
             socketio.emit('warning', f"{interface.latest_image}: {repr(exc)}")
             print(exc, file=sys.stderr)
@@ -131,15 +131,17 @@ def services_status():
         str(ul): cl.status(),
     }
     emit("services-status", services)
+    emit("message", "Warning: services status is not reliable")
 
 
 @socketio.on('restart-camera')
 @report_errors
 def restart_service():
     ctlr = Unit("tmv-camera.service")
+    emit("message", "Restarting camera.")
     ctlr.restart()
-    sleep(5)
-    emit("message", f"Restarted camera.\ntmv-camera: {ctlr.status()}")
+    sleep(3)
+    emit("message", f"Camera status: {ctlr.status()}")
 
 
 @socketio.on('req-journal')
@@ -147,39 +149,37 @@ def restart_service():
 def req_journal():
     lines = 100
     so, se = run_and_capture(["journalctl", "-u", "tmv*", "-n", str(lines)])
-    emit("journal", {"journal": so + se})
+    emit("journal", so + se)
 
 
 @socketio.on('req-files')
 @report_errors
 def req_files():
-    if interface:
-        fls = []
-        for f in Path(interface.file_root).glob("*"):
+    fls = []
+    for f in Path(interface.file_root).glob("*"):
+        if f.is_file():
             fls.append(str(f))
-        fls.sort()
-        emit("n-files", len(fls))
-        emit("files", fls)
+    fls.sort()
+    emit("n-files", len(fls))
+    emit("files", fls)
 
 
 @socketio.on('req-latest-image-time')
 @report_errors
 def req_latest_image_time():
-    if interface:
-        ts = interface.latest_image.stat().st_mtime
-        mt = dt.fromtimestamp(ts)
-        mt_str = dt2str(mt)
-        td = dt.now() - mt
-        emit("latest-image-time", mt_str)
-        emit("latest-image-ago", f"{naturaldelta(td)} ago")
+    ts = interface.latest_image.stat().st_mtime
+    mt = dt.fromtimestamp(ts)
+    mt_str = mt.isoformat()
+    emit("latest-image-time", mt_str)
+    #td = dt.now() - mt
+    # emit("latest-image-ago", f"{naturaldelta(td)} ago")
 
 
 @socketio.on('req-n-files')
 @report_errors
 def req_n_files():
-    if interface:
-        i = len(Path(interface.file_root).glob("*"))
-        emit("n-files", i)
+    i = len(Path(interface.file_root).glob("*"))
+    emit("n-files", i)
 
 
 @socketio.on('mode')
@@ -195,8 +195,7 @@ def set_mode(pos: str):
 @socketio.on('req-mode')
 @report_errors
 def req_mode():
-    if interface:
-        socketio.emit('mode', str(interface.mode_button.value))
+    socketio.emit('mode', str(interface.mode_button.value))
 
 
 @socketio.on('speed')
@@ -212,8 +211,7 @@ def set_speed(pos: str):
 @socketio.on('req-speed')
 @report_errors
 def req_speed():
-    if interface:
-        socketio.emit('speed', str(interface.speed_button.value))
+    socketio.emit('speed', str(interface.speed_button.value))
 
 
 @socketio.on('raise-error')
@@ -236,14 +234,39 @@ def req_camera_config():
 @report_errors
 def req_camera_name():
     emit('camera-name', gethostname())
-    emit('message', f"hostname: {gethostname()}")
+#    emit('message', f"hostname: {gethostname()}")
 
 
 @socketio.on('req-camera-ip')
 @report_errors
 def req_camera_ip():
     emit('camera-ip', gethostbyname(gethostname()))
-    emit('message', f"IP: {gethostbyname(gethostname())}")
+#    emit('message', f"IP: {gethostbyname(gethostname())}")
+
+
+@socketio.on('restart-hw')
+@report_errors
+def restart_hw():
+    emit('message', 'Restarting in 60s')
+    system("sudo shutdown -r 60")
+    sleep(50)
+    emit('message', 'Restarting')
+
+
+@socketio.on('shutdown-hw')
+@report_errors
+def shutdown_hw():
+    emit('message', 'Shutdown in 60s')
+    system("sudo shutdown 60")
+    sleep(55)
+    emit('message', 'Shutting down')
+
+
+@socketio.on('cancel-shutdown')
+@report_errors
+def cancel_shutdown():
+    system("sudo shutdown -c")
+    emit('message', 'Shutdown cancelled')
 
 
 @socketio.on('camera-config')
@@ -264,29 +287,30 @@ def camera_config(configs):
 @report_errors
 def req_wpa_supplicant():
     emit('wpa-supplicant', Path("/etc/wpa_supplicant/wpa_supplicant.conf").read_text())
-    
+
 
 @socketio.on('wpa-supplicant')
 @report_errors
 def wpa_supplicant(wpa_supplicant_text):
     fn = Path("/etc/wpa_supplicant/wpa_supplicant.conf")
     fn.write_text(wpa_supplicant_text)
-    emit('message',f"Saved to {fn}. Consider a reconfigure.")
-    
+    emit('message', f"Saved to {fn}. Consider a reconfigure.")
+
 
 @socketio.on('wpa-reconfigure')
 @report_errors
 def wpa_reconfigure():
     result = reconfigure()
-    emit('message',f"Reconfiguring: {result}")
+    emit('message', f"Reconfiguring: {result}")
 
 
 @socketio.on('req-wpa-scan')
 @report_errors
 def req_wpa_scan():
-    s= scan()
+    s = scan()
     LOGGER.warning(s)
-    emit('wpa-scan',s)
+    emit('wpa-scan', s)
+
 
 @socketio.on('connect')
 @report_errors

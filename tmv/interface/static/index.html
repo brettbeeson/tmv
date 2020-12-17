@@ -20,6 +20,8 @@
         <script src="js/ace-builds/src-min/ace.js" type="text/javascript"></script>
         <script src="js/cropper.min.js"></script>
         <script src="js/jquery-cropper.min.js"></script>
+        <script src="js/jquery.timeago.js" type="text/javascript"></script>
+        <script src="js/strftime.js" type="text/javascript"></script>
 
         <script src="app.js"></script>
     </head>
@@ -136,7 +138,7 @@
             <div class="row justify-content-center">
                 <div class="col-md-12">
                     <div class="tab-content" id="pills-tabContent">
-                        <div class="tab-pane fade show active" id="pills-home"
+                        <div class="tab-pane fade show active " id="pills-home"
                             role="tabpanel"
                             aria-labelledby="pills-home-tab">
                             <div class="row">
@@ -144,9 +146,15 @@
                                     <img class="img-responsive"
                                         src="favicon.ico" style="width: 100%;
                                         height: auto;" id="image" />
-                                    <figcaption id="image-caption" class="mt-1
-                                        figure-caption"></figcaption>
                                 </figure>
+                            </div>
+                            <div class="row mt-1 justify-content-center">
+                                <figcaption class="figure-caption" id="latest-image-time"></figcaption>
+                            </div>
+                            <div class="row mt-1 justify-content-center">
+                                <figcaption class="figure-caption">
+                                    <time id="latest-image-ago" class="timeago "></time>
+                                </figcaption>
                             </div>
                         </div>
 
@@ -160,19 +168,21 @@
                             </div>
                             <div class="row">
                                 
-                                <button class="btn btn-secondary ml-2"
-                                    id="cancel">Cancel</button>
-                                <button class="btn btn-secondary ml-2"
-                                    id="saveandrestart">Save &amp; Restart</button>
-                                    <button class="btn btn-secondary ml-2" id="save">Save Only</button>
+                                <button class="btn btn-primary"
+                                    id="saveandrestart">Save &amp; Restart TMV</button>
+                                    <button class="btn btn-primary ml-2" id="save">Save</button>
+                                    <button class="btn btn-secondary ml-auto"
+                                    id="reload">Reload</button>
+                         
+                                
                             </div>
                             
-                            <div class="form-group row">
-                                <button class="btn btn-secondary mt-3"
+                            <div class="form-group row mt-2">
+                                <button class="btn btn-primary"
                                     data-target="#modal-zoom"
                                     data-toggle="modal"
                                     id="zoom">Zoom</button>
-                                <input type="text" class="ml-2 mt-3" id="zoom-result"
+                                <input type="text" class="ml-2" id="zoom-result"
                                     placeholder="[x,y,w,h]" />
                             </div>
                         </div>
@@ -214,12 +224,15 @@
                                     class="text-smaller
                                     w-100" rows="20" columns="80"></textarea>
                             </div>
-                            <button class="btn btn-secondary" id="services">Services</button>
-                            <button class="btn btn-secondary ml-2" id="journal">Journal</button>
-                            <button class="btn btn-secondary ml-2" id="restart">Restart</button>
-                            <button class="btn btn-secondary ml-2" id="files">Files</button>
-                            <button class="btn btn-secondary ml-2" id="error">Error</button>
-                            <button class="btn btn-secondary ml-2" id="latest-image-time">Latest Image Time</button>
+                            <div class="row">
+                                <button class="btn btn-primary" id="services">Services</button>
+                                <button class="btn btn-primary ml-2" id="journal">Journal</button>
+                                <button class="btn btn-primary ml-2" id="files">Files</button>
+                                <button class="btn btn-primary ml-2" id="about">About</button>
+                                <button class="btn btn-danger ml-auto" id="restart-hw">Restart HW</button>
+                                <button class="btn btn-danger ml-2" id="shutdown-hw">Shutdown HW</button>
+                                <button class="btn btn-secondary ml-2" id="cancel-shutdown">Cancel</button>
+                            </div>
                         </div>
                         <!-- edit wifi creds-->
                         <div class="tab-pane fade" id="pills-wifi"
@@ -229,12 +242,12 @@
                                 <div id="wifieditor" class="mb-2"></div>
                             </div>
                             <div class="row">
-                                <button class="btn btn-secondary ml-2"
+                                <button class="btn btn-primary ml-2"
                                     id="wifi-save">Save</button>
-                                <button class="btn btn-secondary ml-2"
+                                <button class="btn btn-primary ml-2"
                                         id="wifi-reconfigure">Restart WiFi</button>
-                                <button class="btn btn-secondary ml-2"
-                                    id="wifi-cancel">Cancel</button>
+                                <button class="btn btn-secondary ml-auto"
+                                    id="wifi-cancel">Reload</button>
                             </div>
                             <h1>Wifi Tools</h1>
                             <textarea spellcheck="false" id="wifi-textarea"

@@ -40,6 +40,9 @@ echo Redirecting port 80 to 5000
 sudo iptables -t nat -I PREROUTING -p tcp --dport 80 -j REDIRECT --to-ports 5000
 sudo iptables -t nat -I OUTPUT -p tcp -d 127.0.0.1 --dport 80 -j REDIRECT --to-ports 5000
 sudo iptables-save 
+sudo mkdir /etc/iptables 2>/dev/null
+sudo iptables-save | sudo tee -a /etc/iptables/rules.v4 1>/dev/null
+sudo ip6tables-save | sudo tee -a /etc/iptables/rules.v6 1>/dev/null
 
 echo Changing /etc/wpa_supplicant/wpa_supplicant.conf permissions
 sudo chgrp netdev /etc/wpa_supplicant/wpa_supplicant.conf 

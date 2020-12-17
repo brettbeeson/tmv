@@ -16,6 +16,9 @@ function speed(e) {
 }
 
 $(document).ready(function () {
+
+  $("time.timeago").timeago(); //https://github.com/rmm5t/jquery-timeago
+
   var editor = ace.edit("editor");
   editor.setTheme("ace/theme/xcode");
   editor.setFontSize(20);
@@ -26,9 +29,6 @@ $(document).ready(function () {
   wifieditor.setFontSize(20);
   //wifieditor.session.setMode("ace/mode/wpa?");
   
-
-
-  //toastr.options.preventDuplicates = true;
   toastr.options.positionClass = "toast-bottom-center";
 
   if ("WebSocket" in window) {
@@ -38,14 +38,6 @@ $(document).ready(function () {
     alert("WebSockets are NOT supported by your browser!");
   }
 
-  // Redirect to http://localhost:80/index.php to pickup lighttpd server with raspap
-  $("#wifi").on("click", function() {
-    let raspap = $("#wifi").attr("href");
-      window.open(raspap,"_blank");
-      // window.open(raspap,"_self"); same window
-  });
-  $("#wifi").attr("href",location.protocol + "//" + location.hostname+ ":80/index.php")
-  
   $("#server").on("click", function() {
     // force open in new tab
     // set via camera_name
@@ -53,55 +45,51 @@ $(document).ready(function () {
       window.open(server,"_blank");
   });
    
-  $("#services").on("click", function () {
-    ws.emit("req-services-status");
-  });
-  $("#journal").on("click", function () {
-    ws.emit("req-journal");
-  });
-  $("#files").on("click", function () {
-    ws.emit("req-files");
-  });
+  $("#services").on("click",  () =>     ws.emit("req-services-status"));
+  
+  $("#journal").on("click",  () =>     ws.emit("req-journal"));
+
+  $("#files").on("click", () =>  ws.emit("req-files"));
+  
   $("#error").on("click", () => ws.emit("raise-error"));
+  
   $("#latest-image-time").on("click", () => ws.emit("req-latest-image-time"));
   
-  $("#restart").on("click", function () {
-    ws.emit("restart-camera");
-  });
+  $("#restart").on("click", () =>  ws.emit("restart-camera"));
+  
   $("#saveandrestart").on("click", function () {
     ws.emit("camera-config", editor.getValue());
     ws.emit("restart-camera");
   });
 
-  $("#wifi-save").on("click", function () {
-    ws.emit("wpa-supplicant", wifieditor.getValue());
-  });
+  $("#wifi-save").on("click", () =>  ws.emit("wpa-supplicant", wifieditor.getValue()));
+  
 
-  $("#wifi-scan").on("click", function () {
-    ws.emit("req-wpa-scan");
-  });
-
-  $("#wifi-cancel").on("click", function () {
-    ws.emit("req-wpa-supplicant");
-  });
-
-  $("#wifi-reconfigure").on("click", function () {
-    ws.emit("wpa-reconfigure");
-  });
-
+  $("#wifi-scan").on("click", () => ws.emit("req-wpa-scan"));
+  
+  $("#wifi-cancel").on("click",  () => ws.emit("req-wpa-supplicant"));
+  
+  $("#wifi-reconfigure").on("click", () =>ws.emit("wpa-reconfigure"));
+  
   $("#camera-mode input").on("click", mode);
 
   $("#camera-speed  input").on("click", speed);
 
-  $("#save").on("click", function () {
-    ws.emit("camera-config", editor.getValue());
-  });
-
-  $("#cancel").on("click", function () {
-    ws.emit("req-camera-config");
-  });
-
+  $("#save").on("click", () =>  ws.emit("camera-config", editor.getValue()));
   
+  $("#cancel").on("click", () =>  ws.emit("cancel-shutdown"));
+
+  $("#reload").on("click", () => ws.emit("req-camera-config"));
+
+  $("#about").on("click", () => {
+    ws.emit("req-camera-ip")
+  });
+    
+  $("#restart-hw").on("click", () => ws.emit("restart-hw"));
+  
+  $("#shutdown-hw").on("click", () => ws.emit("shutdown-hw"));
+
+  $("#cancel-shutdown").on("click", () => ws.emit("cancel-shutdown"));
   
   let cropper
   let zoom
@@ -154,7 +142,6 @@ $(document).ready(function () {
     } else {
       new_uri = uri;
     }
-    toastr.info("Connecting to " + new_uri);
     ws = io(new_uri);
 
     ws.on("connect", function () {
@@ -162,7 +149,6 @@ $(document).ready(function () {
       ws.emit("req-mode");
       ws.emit("req-speed");
       ws.emit("req-camera-name");
-      ws.emit("req-camera-ip");
     });
 
     ws.on("camera-config", msg =>editor.setValue(msg));
@@ -182,7 +168,6 @@ $(document).ready(function () {
       // Unfocus current button as we are getting the real value from server
       let ae = document.activeElement;
       ae.blur();
-  
       toggle_active($("#camera-mode input"), tc(msg));     
     });
 
@@ -190,7 +175,6 @@ $(document).ready(function () {
       // Unfocus current button as we are getting the real value from server
       let ae = document.activeElement;
       ae.blur();
-  
       toggle_active($("#camera-speed input"), tc(msg));     
     });
 
@@ -198,34 +182,28 @@ $(document).ready(function () {
   
     ws.on("warning", msg => toastr.warning(msg));
 
-    ws.on("latest-image-time", msg => toastr.info(msg));
-
-    
-    ws.on("latest-image-ago", msg => toastr.info(msg));
+    ws.on("latest-image-time", msg => {
+      let dt = strftime("%Y-%m-%d %H:%M:%S",msg)
+      $("#latest-image-time").text(dt);
+      $("#latest-image-ago").timeago("update",msg);
+      $("#latest-image-ago").text("(" + $("#latest-image-ago").text() + ")");
+      
+    });
 
     ws.on("camera-name", msg => {
       $('#camera-name').text(msg);
       document.title = "TMV - " + msg
       $('#server').attr('href',TMV_SERVER + msg)
-      
     });
 
     ws.on("files", function (msg) {
-      let logta = $("#log-textarea");
-      logta.val(logta.val() + "FILES\n");
-
+      let fs = ""
       for (let f in msg) {
-        logta.val(logta.val() + msg[f] + "\n");
+        fs = fs + msg[f] + "\n"
       }
-      logta.val(logta.val() + "---\n");
+      fs = fs + "Total: " + msg.length
+      append_to_textarea($("#log-textarea"),"FILES",fs);
 
-       // autoscroll
-       logta.scrollTop(logta[0].scrollHeight - logta.height());
-    });
-
-
-    ws.on("n-files", function (msg) {
-      toastr.info(msg + " files on-board")
     });
 
     ws.on("services-status", function (msg) {
@@ -239,17 +217,14 @@ $(document).ready(function () {
       logta.scrollTop(logta[0].scrollHeight - logta.height());
     });
 
-    ws.on("journal", function (msg) {
-      let logta = $("#log-textarea");
-      logta.val(logta.val() + "JOURNAL\n");
-      if ("journal" in msg) {
-        logta.val(logta.val() + msg["journal"]);
-        logta.val(logta.val() + "---\n");
-        // autoscroll
-        logta.scrollTop(logta[0].scrollHeight - logta.height());
-      }
+    ws.on("camera-ip", function (msg) {
+      append_to_textarea($("#log-textarea"),"CAMERA IP",msg);
     });
-  
+    
+    ws.on("journal", function (msg) {
+      append_to_textarea($("#log-textarea"),"JOURNAL",msg);
+    });
+    
     ws.on("image", function (msg) {
       let imgtag = $("#image");
       let src
@@ -263,7 +238,7 @@ $(document).ready(function () {
         console.log("Error: Bad Image: " + msg);
       }
       imgtag.attr("src", src);
-      //toastr.info("Updated image")
+      ws.emit("req-latest-image-time") // ask the date and hanlders will displayu it
     });
 
     ws.on("close", () => toastr.warning("Closed connection"));
@@ -337,3 +312,13 @@ function copyToClipboard(element) {
   document.execCommand("copy");
   $temp.remove();
  }
+
+
+function append_to_textarea(textarea, title, msg) {
+  textarea.val(textarea.val() + "*** " + title + " ***\n");
+  textarea.val(textarea.val() + msg);
+  textarea.val(textarea.val() + "\n^^^ " + title + " ^^^\n");
+  // autoscroll
+  textarea.scrollTop(textarea[0].scrollHeight - textarea.height());
+  }
+  
