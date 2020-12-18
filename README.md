@@ -1,4 +1,4 @@
-# Time Made Visible !
+# Time, Made Visible
 
 TMV provides a "camera to video" timelapse system. The system is comprised of:
 - Raspberry PiZeroW camera: take photos, save to disk, upload to S3. USB or battery-and-solar-powered.
@@ -46,7 +46,7 @@ The uploader runs on the camera and sends images to an s3 bucket when possible o
 - the directory /home/pi/.aws/ should contain your s3 credentials
 
 ### Optionally, make the Pi an access point
-Use a out-of-the-box such as [RaspAP](https://github.com/billz/raspap-webgui). 
+Use a out-of-the-box such as [RaspAP](https://github.com/billz/raspap-webgui)(didn't work for me) or manually:
 ```
 wget -O rpi-wifi.sh https://raw.githubusercontent.com/lukicdarkoo/rpi-wifi/master/configure 
 chmod 755 rpi-wifi.sh
