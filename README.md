@@ -1,4 +1,4 @@
-# Time Made Visible !
+# Time, Made Visible
 
 TMV provides a "camera to video" timelapse system. The system is comprised of:
 - Raspberry PiZeroW camera: take photos, save to disk, upload to S3. USB or battery-and-solar-powered.
@@ -12,7 +12,7 @@ Testing on a PiZeroW. This is only one of many options on how to setup.
 - [Write fresh Raspbian Lite](http://brettbeeson.com.au/raspberry-pi-setup-zerow/) to SD and boot headless.
 - Use raspi-config to setup passwd, hostname, timezone, _camera_, WiFi country. Reboot.
 - Do a `sudo apt upgrade && sudo apt dist-upgrade && sudo reboot`
-- Optionally, install a WiFi provisioner such as [RaspAP](https://github.com/billz/raspap-webgui). See [more info](http://brettbeeson.com.au/pizerow-ap-wifi-client/)
+- Optionally, add a Wifi access point 
 - Optionally, install `sudo pip install -U tzupdate` to update your timezone if you travel
 - Optionally, use a [PiJuice](https://github.com/PiSupply/PiJuice) to power it. Install API and RTC sync via service: see install-pijuice.sh.
 - Optionally, use autossh to 'phone home'. See install script: install-autossh.sh
@@ -40,18 +40,27 @@ The camera writes images to the local storage
 - (It will then only flash during taking a photo)
 
 
-### Optionally, Configure Camera Uploads
+### Optionally, configure Camera Uploads
 The uploader runs on the camera and sends images to an s3 bucket when possible or locally caches.
 - again edit `/etc/tmv/camera.toml` to set s3 upload details such as destination, profile and endpoint
 - the directory /home/pi/.aws/ should contain your s3 credentials
 
-### Optionally, Configure PiJuice
+### Optionally, make the Pi an access point
+Use a out-of-the-box such as [RaspAP](https://github.com/billz/raspap-webgui)(didn't work for me) or manually:
+```
+wget -O rpi-wifi.sh https://raw.githubusercontent.com/lukicdarkoo/rpi-wifi/master/configure 
+chmod 755 rpi-wifi.sh
+./rpi-wifi.sh  -a tmv-$HOSTNAME-ap imagines -c "NetComm 0405" 12345678
+```
+See [more info](http://brettbeeson.com.au/pizerow-ap-wifi-client/) on setting it 
+
+### Optionally, configure PiJuice
 Refer to the docs, but briefly:
 - `sudo systemctl enable pijuice`
 - `echo dtoverlay=i2c-rtc,ds1339 | sudo -a /boot/config.txt` to enable real time clock
 - `pijuice_cli` to get settings
 
-### Optional, configure autossh
+### Optionally, configure autossh
 - `sudo vi /etc/systemd/system/autossh.service`
 
 ### Start Camera
