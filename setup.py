@@ -24,7 +24,7 @@ setuptools.setup(
     entry_points={
         'console_scripts': [
             "tmv-camera=tmv.camera:camera_console",
-            "tmv-buttons = tmv.camera:buttons_console",
+            "tmv-buttons = tmv.interface:buttons_console",
             "tmv-video-compile=tmv.video:video_compile_console",
             "tmv-video-join=tmv.video:video_join_console",
             "tmv-video-info=tmv.videotools:video_info_console",
@@ -50,7 +50,8 @@ setuptools.setup(
     # 'sshconf'
     install_requires=['astral', 'toml', 'python-dateutil', 'pytimeparse',
                       'Pillow', 'watchdog', 'boto3', 'freezegun', 'nptime', 
-                      'Flask', 'flask-socketio','ascii_graph', 'datetimerange', 'gpiozero'],
+                      'Flask', 'flask-socketio','ascii_graph', 'datetimerange', 
+                      'gpiozero', 'RPi.GPIO','debugpy'],
 
     python_requires='>=3.6',
 

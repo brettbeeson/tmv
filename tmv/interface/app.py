@@ -248,7 +248,7 @@ def req_camera_ip():
 @report_errors
 def restart_hw():
     emit('message', 'Restarting in 60s')
-    system("sudo shutdown -r 60")
+    system("sudo shutdown -r 1")
     sleep(50)
     emit('message', 'Restarting')
 
@@ -257,7 +257,7 @@ def restart_hw():
 @report_errors
 def shutdown_hw():
     emit('message', 'Shutdown in 60s')
-    system("sudo shutdown 60")
+    system("sudo shutdown 1")
     sleep(55)
     emit('message', 'Shutting down')
 
@@ -353,7 +353,7 @@ def interface_console(cl_args=sys.argv[1:]):
         interface.config(args.config_file)
         interface.illuminate()
         start_threads()
-        socketio.run(app, host="0.0.0.0", port=args.port)
+        socketio.run(app, host="0.0.0.0", port=args.port, debug=True)
         while True:
             sleep(1)
 
