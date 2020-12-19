@@ -4,8 +4,9 @@ sudo apt install -y python3-pip git pijuice-base python3-picamera
 sudo apt install -y libjpeg-dev libopenjp2-7 libtiff5
 # psutils dependancies - could remove?
 sudo apt-get install gcc python3-dev
-#  enable saving of iptables
-sudo apt install iptables-persistent
+#  enable saving of iptables (install without user)
+echo iptables-persistent iptables-persistent/autosave_v4 boolean true | sudo debconf-set-selections
+echo iptables-persistent iptables-persistent/autosave_v6 boolean true | sudo debconf-set-selections
 
 echo Installing TMV
 git clone https://github.com/brettbeeson/tmv

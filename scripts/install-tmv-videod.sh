@@ -8,3 +8,6 @@ sudo chown bbeeson /etc/tmv
 systemctl start tmv-videod
 systemctl enable tmv-videod
 echo Edit /etc/tmv/videod.toml
+
+echo Installing Ngix - todo
+# sudo apt install

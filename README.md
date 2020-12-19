@@ -97,6 +97,7 @@ sudo apt install -y nginx
 rm /etc/nginx/sites-enabled/default
 sudo cp scripts/tmv.ngnix tmv/etc/nginx/sites-enabled/
 sudo systemctl start nginx
+# install h5ai (todo)
 ```
 Browse to [localhost](http://localhost) to view files via the nice h5ai javascript interface. Browse to [localhost:9000](http://localhost:9000) to see minio interface.
 

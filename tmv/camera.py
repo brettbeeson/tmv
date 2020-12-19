@@ -36,14 +36,13 @@ try:
     # optional, for controling power with a PiJuice
     from tmv.tmvpijuice import TMVPiJuice
 except (ImportError, NameError) as exc:
-    LOGGER.debug(exc)
+    LOGGER.warning(exc)
 
 try:
     from picamera import PiCamera
-    #import RPi.GPIO as GPIO
     import gpiozero
 except ImportError as exc:
-    LOGGER.debug(exc)
+    LOGGER.warning(exc)
 
 def ModeButtonFactory(config_dict):
     path=config_dict.get('file', MODE_FILE)
@@ -1022,7 +1021,7 @@ class Camera(Tomlable):
                 self._pijuice.wakeup_enable(wakeup)
                 self._pijuice.power_off()
             else:
-                raise PiJuiceError("Trying to sleep but no pijuice available")
+                raise PiJuiceError("Trying to sleep but no pijuice available. Set pijuice=true in config perhaps?")
         elif self.camera_inactive_action == CameraInactiveAction.WAIT:
             # "Light" sleep : monitor buttones is case wakeup is called
 
@@ -1237,12 +1236,7 @@ def camera_console(cl_args=argv[1:]):
     cam = Camera(sw_cam = args.fake)      
 
     try:
-        
-     #   if not Path(args.config_file).is_file():
-     #       shutil.copy(resource_filename(__name__, 'resources/camera.toml'), args.config_file)
-     #       LOGGER.info("Writing default config file to {}.".format(args.config_file))
         ensure_config_exists(args.config_file)
-        #cam.default_buttons_config(config_dir=Path(args.config_file).parent)
         cam.config(args.config_file)
         LOGGER.setLevel(args.log_level)  # cl overrides config
         cam.run(args.runs)

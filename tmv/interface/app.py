@@ -97,7 +97,7 @@ def broadcast_buttons_thread():
     speed_was = None
     while not shutdown:
         sleep(1)
-        if interface:
+        if interface and interface.mode_button:
             if interface.mode_button.ready():
                 mode_is = interface.mode_button.value
                 if mode_was is None or mode_is != mode_was:
@@ -156,9 +156,8 @@ def req_journal():
 @report_errors
 def req_files():
     fls = []
-    for f in Path(interface.file_root).glob("*"):
-        if f.is_file():
-            fls.append(str(f))
+    for f in Path(interface.file_root).glob("**/*.jpg"):
+        fls.append(str(f))
     fls.sort()
     emit("n-files", len(fls))
     emit("files", fls)
@@ -344,7 +343,7 @@ def interface_console(cl_args=sys.argv[1:]):
     logging.getLogger("tmv.buttons").setLevel(args.log_level)
     logging.basicConfig(format=LOG_FORMAT)
     log = logging.getLogger('werkzeug')
-    log.setLevel(logging.WARNING)
+    log.setLevel(logging.WARNING) # turn off excessive logs
 
     try:
         ensure_config_exists(args.config_file)
@@ -353,7 +352,7 @@ def interface_console(cl_args=sys.argv[1:]):
         interface.config(args.config_file)
         interface.illuminate()
         start_threads()
-        socketio.run(app, host="0.0.0.0", port=args.port, debug=True)
+        socketio.run(app, host="0.0.0.0", port=args.port, debug=False)
         while True:
             sleep(1)
 

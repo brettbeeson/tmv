@@ -29,6 +29,12 @@ add_header X-XSS-Protection "1; mode=block";
 	location / {
 		index  index.html  index.php  /_h5ai/public/index.php;
 	}
+	# Except private
+    location /_h5ai/private {
+                deny all;
+                return 405;
+    }
+
 
 	# Proxy to Minio
 	location /minio/ {
