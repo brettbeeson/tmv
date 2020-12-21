@@ -15,27 +15,15 @@ Testing on a PiZeroW. This is only one of many options on how to setup.
 
 #### Now SSH to Pi Zero W and...
 ```
-# install TMV and dependancies
 sudo apt install -y python3-pip git
-# Pillow dependancies
-#sudo apt install -y libjpeg-dev libopenjp2-7 libtiff5
 git clone https://github.com/brettbeeson/tmv
 cd tmv
-sudo python3 setup.py install      # local production 
-#sudo python3 setup.py develop      # dev
-#sudo python3 -m pip install timemv # production from pypi - unlikely to be current
-
-sudo scripts/install-tmv-camera.sh # install systemd services                
-sudo scripts/install-autossh.sh    # optional
-#sudo scripts/install-pijuice.sh   # optional
+sudo scripts/install-tmv.sh
 
 ```
 ### Configure Camera
 The camera writes images to the local storage
 - edit `/etc/tmv/camera.toml` to set file_root, etc.
-- Your can turn off the camera's LED via `echo 'disable_camera_led=1' | sudo -a /boot/config.txt`
-- (It will then only flash during taking a photo)
-
 
 ### Optionally, configure Camera Uploads
 The uploader runs on the camera and sends images to an s3 bucket when possible or locally caches.
@@ -47,20 +35,18 @@ Use a out-of-the-box such as [RaspAP](https://github.com/billz/raspap-webgui)(di
 - `install-ap.sh` and edit suggested file
 See [more info](http://brettbeeson.com.au/pizerow-ap-wifi-client/) on setting it up.
 
-### Optionally, configure PiJuice
+### Optionally, configure a PiJuice
 You can use a [PiJuice](https://github.com/PiSupply/PiJuice) to power it. 
 - Install and enable the pijuice (refer to the docs)
 (- You may need to `echo dtoverlay=i2c-rtc,ds1339 | sudo -a /boot/config.txt` to enable real time clock)
 - `~/tmv/scripts/install-pijuice.sh` to install API and RTC sync via a service
 
 ### Optionally, configure autossh
-#- Optionally, use autossh to 'phone home'. 
 - `scripts/install-autossh.sh`
 - `sudo vi /etc/systemd/system/autossh.service` to configure
 
 ### Optionally, install timezone awareness:
-- Optionally, install `sudo pip install -U tzupdate` to update your timezone if you travel
-
+- `sudo pip install -U tzupdate` to update your timezone if you travel
 
 ### Start Camera
 - browse to [your-pi-ip](http://tmv.local) to see the Camera App and RaspAP. THis allows you to control most everything you need to take photos.
