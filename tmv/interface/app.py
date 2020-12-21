@@ -343,16 +343,17 @@ def interface_console(cl_args=sys.argv[1:]):
     logging.getLogger("tmv.buttons").setLevel(args.log_level)
     logging.basicConfig(format=LOG_FORMAT)
     log = logging.getLogger('werkzeug')
-    log.setLevel(logging.WARNING) # turn off excessive logs
+    log.setLevel(args.log_level) # turn off excessive logs (>=WARNING is ok)
 
     try:
         ensure_config_exists(args.config_file)
         global interface  # pylint: disable=global-statement
         LOGGER.info(f"config file: {Path(args.config_file).absolute()}")
         interface.config(args.config_file)
-        interface.illuminate()
+        interface.mode_button.illuminate()
+        interface.speed_button.illuminate()
         start_threads()
-        socketio.run(app, host="0.0.0.0", port=args.port, debug=False)
+        socketio.run(app, host="0.0.0.0", port=args.port, debug=(args.log_level==logging.DEBUG))
         while True:
             sleep(1)
 
@@ -388,7 +389,8 @@ def buttons_console(cl_args=sys.argv[1:]):
 
         c = Interface()
         c.config(args.config_file)
-        c.illuminate()
+        c.mode_button.illuminate()
+        c.speed_button.illuminate()
 
         if args.verbose:
             print(c.mode_button)

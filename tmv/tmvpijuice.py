@@ -1,25 +1,25 @@
+# pylint: disable=logging-fstring-interpolation, logging-not-lazy
 from time import sleep
-import argparse
 from enum import Enum
 import logging
 from os import system
-from datetime import datetime as dt, timedelta, time
-
+from datetime import  time
 from dateutil.tz import tzutc
 try:
     from pijuice import PiJuice
-except Exception as e:
-    print (e)
+except (ImportError, NameError) as exc:
+    print (exc)
+
 from tmv.exceptions import PiJuiceError
 
 
-LOGGER = logging.getLogger("tmv.pijuiceutil")
+LOGGER = logging.getLogger("tmv.tmvpijuice")
 
 
 class Blink(Enum):
     """ What blink type? """
-    UPLOAD = 'UPLOAD' #  1 blink, green is good, red is bad
-    WIFI = 'WIFI'     #  steady
+    UPLOAD = 'UPLOAD'  # 1 blink, green is good, red is bad
+    WIFI = 'WIFI'  # steady
 
 
 def pj_check(pyjuice_response, raise_errors):
@@ -44,11 +44,12 @@ def pj_call(method):
     else:
         raise PiJuiceError("pijuice failed without an error code.")
 
+
 try:
     class TMVPiJuice(PiJuice):
         """ Extend PiJuice functionality for TMV Camera use """
 
-        def __init__(self, led='D2', lum=64, raise_errors = False):
+        def __init__(self, led='D2', lum=64, raise_errors=False):
             self.led = led
             self.lum = lum
             self.raise_errors = raise_errors
@@ -80,11 +81,11 @@ try:
             utc_time = local_datetime_today.astimezone(tzutc()).time()
             # dick needs a dict
             wake_time_dict = {'second': utc_time.second,
-                            'minute': utc_time.minute,
-                            'hour': utc_time.hour,
-                            'day': "EVERY_DAY"}
-            pj_check(self.rtcAlarm.SetWakeupEnabled(True),self.raise_errors)
-            pj_check(self.rtcAlarm.SetAlarm(wake_time_dict),self.raise_errors)
+                              'minute': utc_time.minute,
+                              'hour': utc_time.hour,
+                              'day': "EVERY_DAY"}
+            pj_check(self.rtcAlarm.SetWakeupEnabled(True), self.raise_errors)
+            pj_check(self.rtcAlarm.SetAlarm(wake_time_dict), self.raise_errors)
             LOGGER.info("Set wake at UTC: {} local:{}".format(
                 utc_time, wakeup_time))
             LOGGER.info("Check alarm_wakeup_enabled: {} alarm get_time: {}".format(
@@ -93,60 +94,7 @@ try:
             return utc_time
 
         def wakeup_disable(self):
-            self.pj_check(self.rtcAlarm.SetWakeupEnabled(False),self.raise_errors)
+            self.pj_check(self.rtcAlarm.SetWakeupEnabled(False), self.raise_errors)
 
-        def blink(self, blink_type: Blink, status: bool):
-            #GAP_AFTER_END = timedelta(seconds=1)
-            #if (dt.now() < self.last_blink_end + GAP_AFTER_END):
-            #   # print("Come back later!")
-            #  return False
-
-            if blink_type == Blink.UPLOAD and status:
-                rgb1 = [0, self.lum, 0]
-                period1 = 250
-                rgb2 = [0, 0, 0]
-                period2 = 0
-                count = 1
-            elif blink_type == Blink.UPLOAD and not status:
-                rgb1 = [self.lum, 0, 0]
-                period1 = 250
-                rgb2 = [0, 0, 0]
-                period2 = 0
-                count = 1
-            elif blink_type == Blink.WIFI and status:
-                rgb1 = [0, 1, 0]
-                period1 = 500
-                rgb2 = [0, 2, 0]
-                period2 = 500
-                count = 5
-            elif blink_type == Blink.WIFI and not status:
-                rgb1 = [1, 0, 0]
-                period1 = 500
-                rgb2 = [2, 0, 0]
-                period2 = 500
-                count = 5
-            else:
-                raise RuntimeError("Internal error")
-
-            # Will take period1 + period2 to finish, but returns immediately
-            # So, mulitple fast calls would drop blinks / get confused
-            # Hence we ignore future calls until 1s after this blink is finished
-            self.status.SetLedBlink(self.led, count, rgb1, period1, rgb2, period2)
-            self.last_blink_end = dt.now() + timedelta(
-                milliseconds=count * (period1 + period2))
-            return True
 except NameError as e:
     print(e)
-
-
-def blink_console():
-    argparser = argparse.ArgumentParser("Blink the user LED on a pijuice")
-    argparser.add_argument("blinktype", choices=['photo', 'upload', 'wifi'])
-    argparser.add_argument("status", choices=['true', 'false'])
-    argparser.add_argument("-n", type=int, default=1, help="Repeat n times")
-    args = argparser.parse_args()
-    pj = TMVPiJuice()
-    for _ in range(0, args.n):
-        pj.blink(Blink(args.blinktype.upper()), args.status.lower() == 'true')
-        if args.n > 1:
-            sleep(1)

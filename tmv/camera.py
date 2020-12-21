@@ -863,7 +863,7 @@ class Camera(Tomlable):
             if pil_image.size[0] * pil_image.size[1] == 0:
                 raise RuntimeError("Image has zero width or height")
             pil_image.verify()
-        except Exception as exc:
+        except Exception as exc:  # pylist: disable=broad-except
             LOGGER.warning(f"{image_filename} failed verify and is not saved: {exc}")
             return
         if os.path.dirname(image_filename) != '':
@@ -983,7 +983,7 @@ class Camera(Tomlable):
                 y = (height - text_box_size[1] * 2)
                 draw.text(xy=(x, y), text=text,
                           fill=text_colour, font=font)
-        except Exception as exc:
+        except Exception as exc: # pylint: disable=broad-except
             LOGGER.warning(f"Exception adding overlays: {exc}")
             LOGGER.debug(f"Exception adding overlays: {exc}", exc_info=exc)
 
@@ -1095,11 +1095,6 @@ class Interface(Tomlable):
     @latest_image.setter
     def latest_image(self, value):
         self._latest_image = value
-
-    def illuminate(self):
-        self.mode_button.value
-        self.mode_button.illuminate()
-        self.speed_button.illuminate()
 
     def configd(self, config_dict):
         c = config_dict  # shortcut
@@ -1239,6 +1234,7 @@ def camera_console(cl_args=argv[1:]):
         ensure_config_exists(args.config_file)
         cam.config(args.config_file)
         LOGGER.setLevel(args.log_level)  # cl overrides config
+        logging.getLogger("tmv.tmvpijuice").setLevel(args.log_level)
         cam.run(args.runs)
 
     except SignalException:
