@@ -2,7 +2,7 @@
 
 import logging
 from pprint import pformat
-from sys import argv
+from sys import argv, stderr
 import socket  # gethostname, monkeypatchable
 import uuid  # getnode, monkeypatchable
 import argparse

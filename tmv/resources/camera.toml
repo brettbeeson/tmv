@@ -10,7 +10,7 @@
 # Where to save images
 #
 #file_root = "."
-file_root = "/tmp/tmv"
+file_root = "~/tmv-data"
 
 #
 # Hardlink a copy of the latest image - useful for tmv-web to display last image

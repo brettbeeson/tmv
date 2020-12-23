@@ -6,7 +6,7 @@
       "type": "python",
       "request": "attach",
       "connect": {
-        "host": "lunchbox",
+        "host": "cubey",
         "port": 5678
       },
       "pathMappings": [

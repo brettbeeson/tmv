@@ -2,7 +2,7 @@
 # pylint: disable=line-too-long, logging-fstring-interpolation, dangerous-default-value, logging-not-lazy
 
 
-import sys
+from sys import stderr, argv
 from os import system
 from pathlib import Path
 from base64 import b64encode
@@ -89,7 +89,7 @@ def broadcast_image_thread():
                         # socketio.emit('message', f"New image sent: {interface.latest_image}")
         except FileNotFoundError as exc:
             socketio.emit('warning', f"{interface.latest_image}: {repr(exc)}")
-            print(exc, file=sys.stderr)
+            print(exc, file=stderr)
 
 
 def broadcast_buttons_thread():
@@ -137,11 +137,14 @@ def services_status():
 @socketio.on('restart-camera')
 @report_errors
 def restart_service():
-    ctlr = Unit("tmv-camera.service")
-    emit("message", "Restarting camera.")
-    ctlr.restart()
+    c = Unit("tmv-camera.service")
+    u = Unit("tmv-upload.service")
+    emit("message", "Restarting camera and uploader.")
+    c.restart()
+    u.restart()
     sleep(3)
-    emit("message", f"Camera status: {ctlr.status()}")
+    emit("message", f"Camera status: {c.status()}")
+    emit("message", f"Upload status: {u.status()}")
 
 
 @socketio.on('req-journal')
@@ -331,7 +334,7 @@ def start_threads():
     socketio.threads.append(socketio.start_background_task(broadcast_image_thread))
 
 
-def interface_console(cl_args=sys.argv[1:]):
+def interface_console(cl_args=argv[1:]):
     parser = argparse.ArgumentParser("Interface (screen, web, web-socket server) to TMV interface.")
     parser.add_argument('--log-level', '-ll', default='WARNING', type=lambda s: LOG_LEVELS(s).name, nargs='?', choices=LOG_LEVELS.choices())
     parser.add_argument('--port', '-p', default=5000, type=int)
@@ -358,12 +361,12 @@ def interface_console(cl_args=sys.argv[1:]):
             sleep(1)
 
     except (FileNotFoundError, TomlDecodeError) as exc:
-        print(exc, file=sys.stderr)
+        print(exc, file=stderr)
         return 1
     except KeyboardInterrupt as exc:
         return 0
     except Exception as exc:  # pylint: disable=broad-except
-        print(exc, file=sys.stderr)
+        print(exc, file=stderr)
         return 1
     finally:
         LOGGER.info("Stopping server and threads")
@@ -371,7 +374,7 @@ def interface_console(cl_args=sys.argv[1:]):
         shutdown = True
 
 
-def buttons_console(cl_args=sys.argv[1:]):
+def buttons_console(cl_args=argv[1:]):
     try:
         parser = argparse.ArgumentParser(
             "Check and control TMV buttons.")
@@ -414,18 +417,19 @@ def buttons_console(cl_args=sys.argv[1:]):
 
         if args.restart:
             if args.verbose:
-                print("Restarting camera")
+                print("Restarting camera and upload")
             ctlr = Unit("tmv-camera.service")
             ctlr.restart()
+            
         exit(0)
 
     except PermissionError as exc:
-        print(f"{exc}: check your file access permissions. Try root.", file=sys.stderr)
+        print(f"{exc}: check your file access permissions. Try root.", file=stderr)
         if args.verbose:
             raise  # to get stack trace
         exit(10)
     except CalledProcessError as exc:
-        print(f"{exc}: check your execute systemd permissions. Try root.", file=sys.stderr)
+        print(f"{exc}: check your execute systemd permissions. Try root.", file=stderr)
         if args.verbose:
             raise  # to get stack trace
         exit(20)
@@ -439,4 +443,4 @@ def buttons_console(cl_args=sys.argv[1:]):
 
 if __name__ == '__main__':
     breakpoint()
-    interface_console(sys.argv[1:])
+    interface_console(argv[1:])
