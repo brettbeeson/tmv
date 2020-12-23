@@ -9,8 +9,7 @@ TMV provides a "camera to video" timelapse system. The system is comprised of:
 ## Installation 
 ### Camera
 Testing on a PiZeroW. This is only one of many options on how to setup.
-- [Write fresh Raspbian Lite](http://brettbeeson.com.au/raspberry-pi-setup-zerow/) to SD and boot headless.
-- Use raspi-config to setup passwd, hostname, timezone, _camera_, WiFi country. Reboot.
+- Setup a fresh install [as described](https://brettbeeson.com.au/raspberry-pi-setup-zerow/).
 - Consider a `sudo apt upgrade && sudo apt dist-upgrade && sudo reboot`
 
 #### Now SSH to Pi Zero W and...
