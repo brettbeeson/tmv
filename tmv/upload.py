@@ -384,7 +384,8 @@ def upload_console(cl_args=argv[1:]):
         try:
             signal(SIGINT, sig_handler)
             signal(SIGTERM, sig_handler)
-        except Exception:
+        except Exception as e:
+            print (e,file=stderr)
             pass  # cannot do if in a thread (for testing)
 
         parser = argparse.ArgumentParser("S3 Upload",

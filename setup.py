@@ -45,13 +45,14 @@ setuptools.setup(
     # can't get extras to work: just install 'em
     #extras_require=extras
 
-    # todo: change from boto to minio. boto is massive
-    # 'psutil'
-    # 'sshconf'
+    # todo: change from boto to minio. boto is slow to install
+    # todo colorzero? required for gpiozero
     install_requires=['astral', 'toml', 'python-dateutil', 'pytimeparse',
-                      'Pillow', 'watchdog', 'boto3', 'freezegun', 'nptime', 
-                      'Flask', 'flask-socketio','ascii_graph', 'datetimerange', 
-                      'gpiozero', 'RPi.GPIO','debugpy'],
+                      'Pillow', 'watchdog', 'boto3', 'freezegun',
+                      'flask', 'flask-socketio', 'python-socketio',
+                      'ascii_graph', 'datetimerange',
+                      'gpiozero', 'RPi.GPIO','colorzero'
+                      'debugpy'],
 
     python_requires='>=3.6',
 
