@@ -72,6 +72,7 @@ cd tmv
 sudo python3 -m pip install .
 mkdir tmv-data
 sudo scripts/install-tmv-videod.sh                 
+sudo systemctl start tmv-camera tmv-upload tmv-interface
 
 ```
 
