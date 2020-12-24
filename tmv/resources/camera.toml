@@ -9,8 +9,11 @@
 #
 # Where to save images
 #
+file_root = "/home/pi/tmv-data"
+# Other options...
 #file_root = "."
-file_root = "~/tmv-data"
+#file_root = "/var/tmv"
+
 
 #
 # Hardlink a copy of the latest image - useful for tmv-web to display last image
@@ -197,6 +200,18 @@ destination = "s3://BUCKET-NAME-TO-SET/HOSTNAME/daily-photos"
 # Upload check every n seconds.
 # (Also uploads if a change is detected)
 # interval = 60
+
+#
+# Choose from DEBUG, INFO, WARNING, ERROR, CRITAL
+#
+#log_level = 'WARNING'
+
+[interface]
+
+#
+# Web server and socketio server
+#
+#port = 5000
 
 #
 # Choose from DEBUG, INFO, WARNING, ERROR, CRITAL

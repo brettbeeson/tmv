@@ -37,6 +37,12 @@ class StatefulButton(StatesCircle, Tomlable):
   #  def __init__(self, path, states):
   #      super().__init__(path, states)
 
+    def __str__(self):
+        return f"StatefulButton: {vars(self)}"
+
+    def __repr__(self):
+        return f"StatefulButton: {vars(self)}"
+
     def ready(self):
         return self.path is not None
 
@@ -56,6 +62,7 @@ class StatefulHWButton(StatefulButton):
     Args:
         StatefulButton ([type]): [description]
     """
+
     def __init__(self, path, states, led_pin, button_pin):
         super().__init__(path, states)
         self.button = None
@@ -69,9 +76,15 @@ class StatefulHWButton(StatefulButton):
             self.button = Button(button_pin)
             self.button.when_pressed = self.push
             self.led = LED(led_pin)
-            
+
         except Exception as e:
             print(f"Exception but continuing:{e}", file=stderr)
+
+    def __str__(self):
+        return f"StatefulHWButton: {vars(self)}"
+
+    def __repr__(self):
+        return f"StatefulHWButton: {vars(self)}"
 
     def illuminate(self):
         """ Don't change, just illuminate """
@@ -90,7 +103,7 @@ class StatefulHWButton(StatefulButton):
             next(self)
         self.set_LED()
         self.last_pressed = dt.now()
-        #return self.current
+        # return self.current
 
     def set_LED(self):
         LOGGER.debug(f"set_LED: {self.led}")
@@ -123,12 +136,12 @@ class StatefulHWButton(StatefulButton):
         self.button.when_pressed = self.push
         self.led = LED['led']
         LOGGER.debug(f"button configd: {self.path}, button: {self.button}, led: {self.led}")
-        #self.value() # update from new file
+        # self.value() # update from new file
         self.set_LED()
 
 
 def button_test(i):
-    global MODE_LED 
+    global MODE_LED # pylint: disable= global-statement
 
     print (f"Test {i}")
 

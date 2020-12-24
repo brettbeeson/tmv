@@ -337,16 +337,15 @@ def start_threads():
 def interface_console(cl_args=argv[1:]):
     parser = argparse.ArgumentParser("Interface (screen, web, web-socket server) to TMV interface.")
     parser.add_argument('--log-level', '-ll', default='WARNING', type=lambda s: LOG_LEVELS(s).name, nargs='?', choices=LOG_LEVELS.choices())
-    parser.add_argument('--port', '-p', default=5000, type=int)
     parser.add_argument('--config-file', '-cf', default=CAMERA_CONFIG_FILE)
     args = parser.parse_args(cl_args)
-
+    # us
     LOGGER.setLevel(args.log_level)
+    logging.basicConfig(format=LOG_FORMAT)
+    # them
     logging.getLogger("tmv.util").setLevel(args.log_level)
     logging.getLogger("tmv.buttons").setLevel(args.log_level)
-    logging.basicConfig(format=LOG_FORMAT)
-    log = logging.getLogger('werkzeug')
-    log.setLevel(args.log_level) # turn off excessive logs (>=WARNING is ok)
+    logging.getLogger('werkzeug').setLevel(logging.WARNING) # turn off excessive logs (>=WARNING is ok)
 
     try:
         ensure_config_exists(args.config_file)
@@ -355,8 +354,14 @@ def interface_console(cl_args=argv[1:]):
         interface.config(args.config_file)
         interface.mode_button.illuminate()
         interface.speed_button.illuminate()
+        
+        # reset to cli values, which override config file
+        LOGGER.setLevel(args.log_level)
+        logging.getLogger("tmv.util").setLevel(args.log_level)
+        logging.getLogger("tmv.buttons").setLevel(args.log_level)
+        # let's roll!
         start_threads()
-        socketio.run(app, host="0.0.0.0", port=args.port, debug=(args.log_level==logging.DEBUG))
+        socketio.run(app, host="0.0.0.0", port=interface.port, debug=(args.log_level==logging.DEBUG))
         while True:
             sleep(1)
 

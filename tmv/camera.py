@@ -669,6 +669,8 @@ class Camera(Tomlable):
 
         if 'interval' in c:
             # interval specified as seconds: convert to timedelta
+            # interval specified as [seconds]: convert to [timedelta] (3)
+
             self.interval = timedelta(seconds=c['interval'])
             if self.interval.total_seconds() < 10.0:
                 LOGGER.warning("Intervals < 10s are not tested")
@@ -1086,6 +1088,7 @@ class Interface(Tomlable):
         self.speed_button.lit_for = timedelta(seconds=30)
         self.file_root = "."
         self._latest_image = "latest-image.jpg"  
+        self.port = 5000
 
     @property
     def latest_image(self):
@@ -1098,7 +1101,7 @@ class Interface(Tomlable):
 
     def configd(self, config_dict):
         c = config_dict  # shortcut
-        #LOGGER.debug(f"Interface config_dict:{config_dict}")
+        # read the [camera] to match real camera with this "interface" camera
         if 'camera' in config_dict:
             c = config_dict['camera']  # can accept config in root or [camera]
         if 'mode_button' in c:
@@ -1114,7 +1117,16 @@ class Interface(Tomlable):
 
         self.setattr_from_dict('file_root', c)
         self.setattr_from_dict('latest_image', c)
-        
+
+        # read the [interface] for specific-to-interface
+        c = config_dict
+        if 'interface' in config_dict:
+            c = config_dict['interface']  # can accept config in root or [interface]
+        if 'log_level' in c:
+            LOGGER.setLevel(c['log_level'])
+            logging.getLogger("tmv.util").setLevel(c['log_level'])
+            logging.getLogger("tmv.buttons").setLevel(c['log_level'])
+        self.setattr_from_dict('port', c)
 
 
 def sun_calc_lightlevel(observer, instant) -> LightLevel:

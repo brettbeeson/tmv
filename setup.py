@@ -51,7 +51,7 @@ setuptools.setup(
                       'Pillow', 'watchdog', 'boto3', 'freezegun',
                       'flask', 'flask-socketio', 'python-socketio',
                       'ascii_graph', 'datetimerange',
-                      'gpiozero', 'RPi.GPIO','colorzero'
+                      'gpiozero', 'RPi.GPIO','colorzero',
                       'debugpy'],
 
     python_requires='>=3.6',
