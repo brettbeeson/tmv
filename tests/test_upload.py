@@ -54,7 +54,6 @@ def test_s3():
                         recursive=False, file_filter="*.jpg") == 1  # 3.jpg
     # dir1/dir2/nfiles
     assert s3ft.rm_dest("", recursive=True) == 1
-
     # recursively delete tmp/tests/upload/test_files_2/
     s3ft.rm_dest("", recursive=True)
     assert s3ft._sync(TEST_FILES_2, True, "*") == 4  # 3 jpgs + nfiles
@@ -260,9 +259,7 @@ def test_upload_console(caplog):
                     "--config-file={}".format("camera.toml"),  # the *.png here
                     "--dry-run"]
 
-
-    assert         upload_console(console_args)==0
-        
+    assert upload_console(console_args) == 0
     assert "*.jpg" in (caplog.records[1]).message
     Path("camera.toml").write_text(c)
     console_args = ["--log-level=DEBUG",
@@ -270,7 +267,6 @@ def test_upload_console(caplog):
                     "--dry-run"]
 
     assert upload_console(console_args) == 0
-
 
 
 def test_id():

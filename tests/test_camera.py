@@ -36,6 +36,7 @@ cwd_buttons = """
         file = './camera-speed'
 """
 
+
 @pytest.fixture()
 def setup_test():
     os.chdir(mkdtemp())
@@ -45,6 +46,7 @@ def setup_test():
         Path("camera.toml").unlink()
     except FileNotFoundError:
         pass
+
 
 def test_latest_image(setup_test):
     cf = """
@@ -59,11 +61,9 @@ def test_latest_image(setup_test):
     assert (cwd / "moose.jpg").absolute() == c.latest_image.absolute()
 
 
-
-
 def test_write_config(setup_test):
     with pytest.raises(SystemExit) as exc:
-        camera_console(["--fake","--runs", "1","-c","camera.toml"])
+        camera_console(["--fake", "--runs", "1", "-c", "camera.toml"])
         assert exc.value.code == 0
         assert Path("camera.toml").is_file()
 
@@ -285,16 +285,14 @@ def test_LightLevel():
 
 def test_Sensor_lookups():
     c = Camera(sw_cam=True)
-    
-    
+
     c.active_timer = tmv.camera.ActiveTimes.factory(
         on='dim', off='dark', camera=c)
     c.light_sensor._current_level = LightLevel.LIGHT
     assert c.active_timer.camera_active()
 
     c = Camera(sw_cam=True)
-    
-        
+
     ss = tmv.camera.ActiveTimes.factory(on='dim', off='dark', camera=c)
     c.light_sensor._current_level = LightLevel.DARK
     # Active, as sensor will operate
@@ -343,8 +341,7 @@ def test_location():
     """
     # no location: fail
     c = Camera(sw_cam=True)
-    
-    
+
     with pytest.raises(tmv.camera.ConfigError):
         c.configs(cf)
 
@@ -374,8 +371,7 @@ def test_location():
 
 def test_image_verify(setup_test, caplog):
     c = Camera(sw_cam=True)
-    
-    
+
     stream = BytesIO()
     # "Rewind" the stream to the beginning so we can read its content
     stream.seek(0)
@@ -389,7 +385,7 @@ def test_image_verify(setup_test, caplog):
     assert Path(fn).is_file()
 
     c = Camera(sw_cam=True)
-        
+
     image = Image.Image()
     fn = Path("test_image_dud.jpg")
     caplog.clear()
@@ -413,18 +409,16 @@ def test_fake(monkeypatch, setup_test):
         FDT = fdt
         monkeypatch.setattr(time, 'sleep', sleepless)
         c = Camera(sw_cam=True)
-        
-    
+
         c.config(str(local_config))
         c.file_root = "./test_fake/"
         c.file_by_date = False
         c.interval = timedelta(minutes=10)
-         
 
         run_until(c, fdt, today_at(13))
         assert len(c.recent_images) == 6 + 1  # fencepost
         images = glob(os.path.join(c.file_root, "2000-01-01T*"))
-        assert len(images) == 6 + 1  # fencepost   
+        assert len(images) == 6 + 1  # fencepost
 
         # Cannot test switch OFF as main loop waits for "not OFF"
 
@@ -432,17 +426,18 @@ def test_fake(monkeypatch, setup_test):
         assert c.mode_button.value == ON
         c.mode_button.value = AUTO
         run_until(c, fdt, today_at(14))
-        assert c.active_timer.active() #  active 
+        assert c.active_timer.active()  # active
         images = glob(os.path.join(c.file_root, "2000-01-01T*"))
         assert len(images) == 6 + 1 + 6  # one hour more of 6 photos per hour
 
         # run 14:00 - 15:00 with switch ON
-        c.active_timer = Timed(datetime.time(6,0,0),datetime.time(7,0,0))
+        c.active_timer = Timed(datetime.time(6, 0, 0), datetime.time(7, 0, 0))
         c.mode_button.value = ON
         run_until(c, fdt, today_at(15))
-        assert not c.active_timer.active() # not active - but overridden by switch
+        assert not c.active_timer.active()  # not active - but overridden by switch
         images = glob(os.path.join(c.file_root, "2000-01-01T*"))
-        assert len(images) == 6 + 1 + 6 + 6 # one hour more of 6 photos per hour
+        # one hour more of 6 photos per hour
+        assert len(images) == 6 + 1 + 6 + 6
         assert Path("./test_fake/latest-image.jpg").is_file()
 
 
@@ -461,7 +456,7 @@ def test_calc_exposure_speed(monkeypatch, setup_test):
         FDT = fdt
         monkeypatch.setattr(time, 'sleep', sleepless)
         c = Camera(sw_cam=True)
-        
+
         c.configs(cf)
         run_until(c, fdt, today_at(23, 59, 59))
         # how to check?
@@ -488,7 +483,7 @@ def test_config(monkeypatch, setup_test):
         global FDT
         FDT = fdt
         c = Camera(sw_cam=True)
-        
+
         c.file_root = "./test_config/"
         cf = """
         [location]
@@ -549,7 +544,7 @@ def test_low_light_sense(monkeypatch, setup_test):
         FDT = fdt
         monkeypatch.setattr(time, 'sleep', sleepless)
         c = Camera(sw_cam=True)
-        
+
         c.configs(cf)
         c.file_by_date = False
         c.file_root = "./test_low_light_sense/"
@@ -574,13 +569,13 @@ def test_low_light_sense(monkeypatch, setup_test):
 
 
 def test_low_light_sense2(monkeypatch, setup_test):
-   
+
     with freeze_time(parse("2000-01-01 00:00:00")) as fdt:
         global FDT
         FDT = fdt
         monkeypatch.setattr(time, 'sleep', sleepless)
         c = Camera(sw_cam=True)
-        
+
         c.file_root = "./test_low_light_sense2/"
         c.interval = timedelta(hours=1)
         c.light_sensor.light = 0.6
@@ -629,8 +624,6 @@ def test_SunCalc(monkeypatch, setup_test):
         FDT = fdt
         monkeypatch.setattr(time, 'sleep', sleepless)
         c = Camera(sw_cam=True)
-        
-    
 
         c.save_images = False
         c.configs("""        
@@ -668,8 +661,7 @@ def test_Sensor(monkeypatch, setup_test):
         FDT = fdt
         monkeypatch.setattr(time, 'sleep', sleepless)
         c = Camera(sw_cam=True)
-        
-    
+
         c.save_images = True
         c.light_sensor.freq = timedelta(minutes=20)
         c.light_sensor.max_age = timedelta(hours=1)
@@ -700,6 +692,7 @@ def test_Sensor(monkeypatch, setup_test):
         reset_camera.run(1)
         assert reset_camera.active_timer.light_sensor.level == LightLevel.LIGHT
 
+
 def test_camera_inactive_action(monkeypatch, setup_test):
     with freeze_time(parse("2000-01-01 12:00:00")) as fdt:
         global FDT
@@ -707,7 +700,7 @@ def test_camera_inactive_action(monkeypatch, setup_test):
         monkeypatch.setattr(time, 'sleep', sleepless)
         c = Camera(sw_cam=True)
         c.mode_button.value = AUTO
-    
+
         c.file_root = "./test_camera_inactive_action/"
         c.save_images = False
         c.configs("""
@@ -746,7 +739,7 @@ def test_camera_inactive_action_2(monkeypatch, setup_test):
         FDT = fdt
         monkeypatch.setattr(time, 'sleep', sleepless)
         c = Camera(sw_cam=True)
-        
+
         c.save_images = False
         c.configs("""
         [camera]
