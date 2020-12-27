@@ -9,9 +9,7 @@ TMV provides a "camera to video" timelapse system. The system is comprised of:
 ## Installation 
 ### Camera
 Testing on a PiZeroW. This is only one of many options on how to setup.
-- [Write fresh Raspbian Lite](http://brettbeeson.com.au/raspberry-pi-setup-zerow/) to SD and boot headless.
-- Use raspi-config to setup passwd, hostname, timezone, _camera_, WiFi country. Reboot.
-- Consider a `sudo apt upgrade && sudo apt dist-upgrade && sudo reboot`
+- Setup a the pizero [as described](https://brettbeeson.com.au/raspberry-pi-setup-zerow/) including wifi, camera and ssh.
 
 #### Now SSH to Pi Zero W and...
 ```
@@ -72,6 +70,7 @@ cd tmv
 sudo python3 -m pip install .
 mkdir tmv-data
 sudo scripts/install-tmv-videod.sh                 
+sudo systemctl start tmv-camera tmv-upload tmv-interface
 
 ```
 
