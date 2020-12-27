@@ -39,7 +39,6 @@ LOG_LEVEL_STRINGS = ['CRITICAL', 'ERROR', 'WARNING', 'INFO', 'DEBUG']
 
 LOGGER = logging.getLogger("tmv.util")
 
-
 LOG_FORMAT = '%(levelname)-8s %(filename)-8s: %(message)s'
 LOG_FORMAT_DETAILED = '%(levelname)-8s pid %(process)s in %(filename)s,%(lineno)d (%(funcName)s): %(message)s'
 # Log time:
@@ -92,15 +91,6 @@ class Tomlable:
         except KeyError:            # doesn't exist in new attrs
             if default_value:
                 setattr(self, attr_name, default_value)
-
-
-class SoftHard(Enum):
-    SOFTWARE = 'SOFTWARE',
-    HARDWARE = 'HARDWARE'
-
-
-SOFTWARE = SoftHard.SOFTWARE
-HARDWARE = SoftHard.HARDWARE
 
 
 def log_level_string_to_int(log_level_string):
@@ -468,7 +458,7 @@ def neighborhood(iterable):
 
 def ensure_config_exists(config_file):
     """
-    Make config_file if it doesn't exist. 
+    Make config_file if it doesn't exist.
     """
     try:
         cf = Path(config_file)

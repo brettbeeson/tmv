@@ -111,6 +111,7 @@ def test_rename(setup_module):
     mm.rename_images()
 
 
+
 def txestDayMaker():
     mm = VideoMakerDay()
     mm.cache = False
@@ -267,7 +268,7 @@ def test_console_concat(setup_module):
 
 def test_console_diagonal(setup_module, caplog):
     """
-    Use cal_cross to do numeric and visual tests 
+    Use cal_cross to do numeric and visual tests
     """
     for f in Path("/tmp/tmv/").rglob("diagonal*"):
         os.remove(f)

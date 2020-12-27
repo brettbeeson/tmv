@@ -1,5 +1,5 @@
 # pylint: disable=broad-except,logging-fstring-interpolation,logging-not-lazy, dangerous-default-value
-""" 
+"""
 File-underlied 2- and 3-value buttones with hardware buttons and LEDs
 """
 from sys import stderr
@@ -27,7 +27,7 @@ LOGGER = logging.getLogger("tmv.button")
 
 
 class StatefulButton(StatesCircle, Tomlable):
-    """ 
+    """
     mode is controlled by file and/or pushbutton, with optional LED indicator
     - if unlit, the first push will just illuminate (not change state)
     - pushes when illuminated change state
@@ -141,7 +141,7 @@ class StatefulHWButton(StatefulButton):
 
 
 def button_test(i):
-    global MODE_LED # pylint: disable= global-statement
+    global MODE_LED  # pylint: disable= global-statement
 
     print (f"Test {i}")
 
@@ -186,6 +186,6 @@ def button_test(i):
 
 if __name__ == "__main__":
     # breakpoint()
-    LOGGER.setLevel(logging.DEBUG)
+    logging.getLogger("tmv").setLevel(logging.DEBUG)
     logging.basicConfig(format=LOG_FORMAT, level=logging.DEBUG)
     button_test(int(sys.argv[1]))

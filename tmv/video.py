@@ -250,7 +250,7 @@ class VideoMaker:
                 n += 1
         return n
 
-    def rename_images(self):
+    def rename_images(self):        
         n = 0
         for m in self.videos:
             for tlf in m.images:

@@ -66,6 +66,8 @@ $(document).ready(function () {
   
 
   $("#wifi-scan").on("click", () => ws.emit("req-wpa-scan"));
+
+  $("#wifi-info").on("click", () => ws.emit("req-network-info"));
   
   $("#wifi-cancel").on("click",  () => ws.emit("req-wpa-supplicant"));
   
@@ -164,6 +166,14 @@ $(document).ready(function () {
        wifita.scrollTop(wifita[0].scrollHeight - wifita.height());
     });
     
+    ws.on("wpa-supplicant", msg => wifieditor.setValue(msg));
+
+    ws.on("network-info", function (msg) {
+      append_to_textarea($("#wifi-textarea"),"NETWORK INFO",msg);
+    });
+    
+    
+
     ws.on("mode", function (msg) {
       // Unfocus current button as we are getting the real value from server
       let ae = document.activeElement;

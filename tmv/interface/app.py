@@ -25,7 +25,7 @@ from tmv.buttons import OnOffAuto, Speed
 from tmv.systemd import Unit
 from tmv.util import run_and_capture, unlink_safe, LOG_LEVELS, LOG_FORMAT, ensure_config_exists
 from tmv.exceptions import ButtonError
-from tmv.interface.wifi import scan, reconfigure
+from tmv.interface.wifi import scan, reconfigure, info
 
 LOGGER = logging.getLogger("tmv.interface")
 
@@ -101,15 +101,15 @@ def broadcast_buttons_thread():
             if interface.mode_button.ready():
                 mode_is = interface.mode_button.value
                 if mode_was is None or mode_is != mode_was:
-                    socketio.emit('message', f"Mode changed to {mode_is}")
-                    #socketio.emit('mode', str(mode_is))
+                    LOGGER.debug(f"Mode changed to {mode_is}")
                     req_mode()
                     mode_was = mode_is
 
+        if interface and interface.speed_button:
             if interface.speed_button.ready():
                 speed_is = interface.speed_button.value
                 if speed_was is None or speed_is != speed_was:
-                    socketio.emit('message', f"speed changed to {speed_is}")
+                    LOGGER.debug(f"speed changed to {speed_is}")
                     req_speed()
                     speed_was = speed_is
 
@@ -127,11 +127,10 @@ def services_status():
     ul = Unit("tmv-upload.service")
     services = {
         str(cl): cl.status(),
-        str(cam): cl.status(),
-        str(ul): cl.status(),
+        str(cam): cam.status(),
+        str(ul): ul.status(),
     }
     emit("services-status", services)
-    emit("message", "Warning: services status is not reliable")
 
 
 @socketio.on('restart-camera')
@@ -274,15 +273,14 @@ def cancel_shutdown():
 @socketio.on('camera-config')
 @report_errors
 def camera_config(configs):
-    if interface:
-        loads(configs)  # check syntax
-        cf = interface.config_path
-        unlink_safe(cf.with_suffix(".bak"))
-        copy(cf, cf.with_suffix(".bak"))
-        Path(cf).write_text(configs)
-        # re-read this ourselves, too, to get new file_root, etc
-        interface.config(cf)
-        emit("message", "Saved config.")
+    loads(configs)  # check syntax
+    cf = interface.config_path
+    unlink_safe(cf.with_suffix(".bak"))
+    copy(cf, cf.with_suffix(".bak"))
+    Path(cf).write_text(configs)
+    # re-read this ourselves, too, to get new file_root, etc
+    interface.config(cf)
+    emit("message", "Saved config.")
 
 
 @socketio.on('req-wpa-supplicant')
@@ -313,6 +311,12 @@ def req_wpa_scan():
     LOGGER.warning(s)
     emit('wpa-scan', s)
 
+@socketio.on('req-network-info')
+@report_errors
+def req_network_info():
+    network_info = info()
+    emit('network-info', network_info)
+
 
 @socketio.on('connect')
 @report_errors
@@ -336,16 +340,13 @@ def start_threads():
 
 def interface_console(cl_args=argv[1:]):
     parser = argparse.ArgumentParser("Interface (screen, web, web-socket server) to TMV interface.")
-    parser.add_argument('--log-level', '-ll', default='WARNING', type=lambda s: LOG_LEVELS(s).name, nargs='?', choices=LOG_LEVELS.choices())
+    parser.add_argument('--log-level', '-ll',  default='WARNING', type=lambda s: LOG_LEVELS(s).name, nargs='?', choices=LOG_LEVELS.choices())
     parser.add_argument('--config-file', '-cf', default=CAMERA_CONFIG_FILE)
     args = parser.parse_args(cl_args)
-    # us
-    LOGGER.setLevel(args.log_level)
+
     logging.basicConfig(format=LOG_FORMAT)
-    # them
-    logging.getLogger("tmv.util").setLevel(args.log_level)
-    logging.getLogger("tmv.buttons").setLevel(args.log_level)
-    logging.getLogger('werkzeug').setLevel(logging.WARNING) # turn off excessive logs (>=WARNING is ok)
+    logging.getLogger("tmv").setLevel(args.log_level)
+    logging.getLogger('werkzeug').setLevel(logging.WARNING)  # turn off excessive logs (>=WARNING is ok)
 
     try:
         ensure_config_exists(args.config_file)
@@ -354,14 +355,14 @@ def interface_console(cl_args=argv[1:]):
         interface.config(args.config_file)
         interface.mode_button.illuminate()
         interface.speed_button.illuminate()
-        
+
         # reset to cli values, which override config file
-        LOGGER.setLevel(args.log_level)
-        logging.getLogger("tmv.util").setLevel(args.log_level)
-        logging.getLogger("tmv.buttons").setLevel(args.log_level)
+        if args.log_level != 'WARNING': # str comparison
+            logging.getLogger("tmv").setLevel(args.log_level)
+
         # let's roll!
         start_threads()
-        socketio.run(app, host="0.0.0.0", port=interface.port, debug=(args.log_level==logging.DEBUG))
+        socketio.run(app, host="0.0.0.0", port=interface.port, debug=(args.log_level == logging.DEBUG))
         while True:
             sleep(1)
 
@@ -372,6 +373,7 @@ def interface_console(cl_args=argv[1:]):
         return 0
     except Exception as exc:  # pylint: disable=broad-except
         print(exc, file=stderr)
+        LOGGER.debug("Exiting", exc_info=exc)
         return 1
     finally:
         LOGGER.info("Stopping server and threads")
@@ -425,7 +427,7 @@ def buttons_console(cl_args=argv[1:]):
                 print("Restarting camera and upload")
             ctlr = Unit("tmv-camera.service")
             ctlr.restart()
-            
+
         exit(0)
 
     except PermissionError as exc:

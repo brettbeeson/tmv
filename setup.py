@@ -32,7 +32,7 @@ setuptools.setup(
             "tmv-video-decompile=tmv.videotools:video_decompile_console",
             "tmv-image-tools=tmv.images:image_tools_console",
             "tmv-influx-stats=tmv.util:influx_stats_console",
-            "tmv-upload=tmv.upload:upload_console",   
+            "tmv-upload=tmv.upload:upload_console",
             "tmv-tunnel = tmv.tunnel:tunnel_console",
             "tmv-interface = tmv.interface.app:interface_console"
         ],
@@ -43,19 +43,19 @@ setuptools.setup(
         "Operating System :: OS Independent",
     ],
     # can't get extras to work: just install 'em
-    #extras_require=extras
+    # extras_require=extras
 
-    # todo: change from boto to minio. boto is slow to install
     # todo colorzero? required for gpiozero
+    
     install_requires=['astral', 'toml', 'python-dateutil', 'pytimeparse',
                       'Pillow', 'watchdog', 'boto3', 'freezegun',
                       'flask', 'flask-socketio', 'python-socketio',
                       'ascii_graph', 'datetimerange',
-                      'gpiozero', 'RPi.GPIO','colorzero',
+                      'gpiozero', 'RPi.GPIO',
                       'debugpy'],
 
     python_requires='>=3.6',
 
-    
+
 
 )
