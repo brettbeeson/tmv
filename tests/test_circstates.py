@@ -1,4 +1,6 @@
 # pylint: disable=protected-access
+import os
+from tempfile import mkdtemp
 from pathlib import Path
 from tmv.buttons import OnOffAuto
 from tmv.circstates import State, StatesCircle
@@ -36,9 +38,31 @@ def test_circstates():
     assert Path("state").read_text() == "auto"
 
     # Recover if text file corrupted
-    Path("state").write_text("askldjfa;skldfjas\n\n\ndf")
+    Path("state").write_text("Qskldjfa;skldfjas\n\n\ndf")
     assert stateful.value == OnOffAuto.AUTO
     stateful.value = OnOffAuto.AUTO
     assert Path("state").read_text() == "auto"
     assert next(stateful) == "on"
     assert Path("state").read_text() == "on"
+
+    # test initial values in new directory
+    #
+    os.chdir(mkdtemp())
+    stateful = StatesCircle("state", states)
+    assert stateful.value == OnOffAuto.ON  # default default
+    stateful.value = OnOffAuto.ON  # write to file
+
+    stateful = None
+    stateful = StatesCircle("state", states, fallback=OnOffAuto.OFF)
+    assert stateful.value == OnOffAuto.ON  # still "ON" as stored in file
+    os.chdir(mkdtemp())
+
+    stateful = None
+    stateful = StatesCircle("state", states, fallback=OnOffAuto.OFF)
+    assert stateful.value == OnOffAuto.OFF  # "OFF" as no file so uses initial
+    assert next(stateful) == "auto"
+
+    Path("state").write_text("off")
+    assert stateful.value == OnOffAuto.OFF
+    Path("state").write_text("on")
+    assert stateful.value == OnOffAuto.ON

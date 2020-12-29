@@ -1,6 +1,7 @@
 # pytest tricks stuff pylint
 # pylint: disable=import-error, protected-access, unused-argument, redefined-outer-name. unused-argument, global-statement
 import logging
+import subprocess
 import os.path
 import os
 import re
@@ -18,12 +19,12 @@ import pytest
 from freezegun import freeze_time
 import dateutil
 
+import tmv
 import tmv.util
 from tmv.util import today_at, tomorrow_at
 from tmv.camera import ActiveTimes, Camera, CameraInactiveAction, FakePiCamera, LightLevel, Timed, calc_pixel_average, camera_console
-import tmv
 from tmv.exceptions import PowerOff
-from tmv.buttons import ON, AUTO
+from tmv.buttons import ON, OFF, AUTO, SLOW, MEDIUM, FAST  # pylint: disable=unused-import
 
 TEST_DATA = Path(__file__).parent / "testdata"
 FDT = None
@@ -61,7 +62,27 @@ def test_latest_image(setup_test):
     assert (cwd / "moose.jpg").absolute() == c.latest_image.absolute()
 
 
+def test_speeds(setup_test):
+    """ Test interval change with speed button"""
+
+    c = Camera(sw_cam=True)
+    assert c.interval == timedelta(seconds=60)
+    cf = """
+    [camera]
+    interval = 100
+    """
+
+    c.configs(cf)
+    assert c.interval == timedelta(seconds=100)
+    c.speed_button.value = SLOW
+    assert c.interval == timedelta(seconds=1000)
+    c.speed_button.value = FAST
+    assert c.interval == timedelta(seconds=10)
+
+
 def test_write_config(setup_test):
+    #monkeypatch.setattr(time, 'sleep', sleepless)
+
     with pytest.raises(SystemExit) as exc:
         camera_console(["--fake", "--runs", "1", "-c", "camera.toml"])
         assert exc.value.code == 0
@@ -279,8 +300,6 @@ def test_LightLevel():
     assert dim > dark
     assert dark < light
     assert dark < dim
-    assert not light > light
-    assert not light < dark
 
 
 def test_Sensor_lookups():
@@ -413,7 +432,7 @@ def test_fake(monkeypatch, setup_test):
         c.config(str(local_config))
         c.file_root = "./test_fake/"
         c.file_by_date = False
-        c.interval = timedelta(minutes=10)
+        c._interval = timedelta(minutes=10)
 
         run_until(c, fdt, today_at(13))
         assert len(c.recent_images) == 6 + 1  # fencepost
@@ -422,8 +441,7 @@ def test_fake(monkeypatch, setup_test):
 
         # Cannot test switch OFF as main loop waits for "not OFF"
 
-        # run 13:00 - 14:00 with switch ON
-        assert c.mode_button.value == ON
+        # run 13:00 - 14:00 with switch AUTO
         c.mode_button.value = AUTO
         run_until(c, fdt, today_at(14))
         assert c.active_timer.active()  # active
@@ -548,7 +566,7 @@ def test_low_light_sense(monkeypatch, setup_test):
         c.configs(cf)
         c.file_by_date = False
         c.file_root = "./test_low_light_sense/"
-        c.interval = timedelta(hours=1)
+        c._interval = timedelta(hours=1)
         c.light_sensor.light = 0.6
         c.light_sensor.dark = 0.1
         c.light_sensor.freq = timedelta(minutes=10)
@@ -577,7 +595,7 @@ def test_low_light_sense2(monkeypatch, setup_test):
         c = Camera(sw_cam=True)
 
         c.file_root = "./test_low_light_sense2/"
-        c.interval = timedelta(hours=1)
+        c._interval = timedelta(hours=1)
         c.light_sensor.light = 0.6
         c.light_sensor.dark = 0.1
         c.file_by_date = False
@@ -605,7 +623,7 @@ def test_Timed_capture(monkeypatch, setup_test):
         c.file_by_date = False
         c._camera = FakePiCamera()
         c.file_root = "./test_Timed_capture/"
-        c.interval = timedelta(minutes=60)
+        c._interval = timedelta(minutes=60)
         c.active_timer = Timed(datetime.time(12), datetime.time(18))
         run_until(c, fdt, today_at(23))
         images = glob(os.path.join(c.file_root, "2000-01-01T*"))
@@ -626,7 +644,7 @@ def test_SunCalc(monkeypatch, setup_test):
         c = Camera(sw_cam=True)
 
         c.save_images = False
-        c.configs("""        
+        c.configs("""
         [camera]
         city = 'Brisbane'
         interval = 600
@@ -760,6 +778,28 @@ def test_camera_inactive_action_2(monkeypatch, setup_test):
         assert c.light_sensor.level == LightLevel.LIGHT
         assert c.active_timer.active()
         assert c.active_timer.camera_active()
+
+
+def test_overlays(monkeypatch, setup_test):
+    cf = """
+       [camera]
+            overlays = [ "spinny", "image_name","simple_settings", "bottom_band"]
+
+        """
+
+    with freeze_time(parse("2000-01-01 14:00:00")) as fdt:
+        global FDT
+        FDT = fdt
+        monkeypatch.setattr(time, 'sleep', sleepless)
+        c = Camera(sw_cam=True)
+        c._camera.width = 1200
+        c._camera.height = 900
+        c.configs(cf)
+        c.file_root = "./test_overlays/"
+        c.file_by_date = False
+        c.run(1)
+        print(os.getcwd())
+        subprocess.run(["gnome-open", c.latest_image], check=True)
 
 
 def run_times(camera, fdt, n):

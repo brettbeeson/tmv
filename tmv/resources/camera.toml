@@ -9,9 +9,9 @@
 #
 # Where to save images
 #
-file_root = "/home/pi/tmv-data"
+file_root = "."
 # Other options...
-#file_root = "."
+#file_root = "/home/pi/tmv-data"
 #file_root = "/var/tmv"
 
 
@@ -26,12 +26,8 @@ latest_image = "latest-image.jpg"
 #interval = 60.0
 
 #
-# Should be store under file_root/(eg)2020-12-31/
-#
-#file_by_date = true
-
-#
 # The minimum time, in seconds, we'll power down/sleep/etc if camera inactive
+# Otherwise, 
 #
 #inactive_threshold = 1800.0 # 30 minutes
 
@@ -65,7 +61,7 @@ city = 'Brisbane'
 # [ "spinny", "image_name", "settings",]
 #
 # overlays = []
-overlays = [ "spinny", "image_name","simple_settings"]
+overlays = [ "spinny", "image_name","simple_settings","bottom_band"]
 
 #
 # Use the light sensor to estimate shutter speed
@@ -80,11 +76,6 @@ calc_shutter_speed = true
 #
 #log_level = 'WARNING'
 log_level = 'INFO'
-
-#
-# Show the LED when camera is taking a photo
-#
-#led = false
 
 #
 #   LIGHT|DIM|DARK: settings passed to picam to override the defaults. See PiCamera API docs.
@@ -172,7 +163,7 @@ resolution = '1280x720'
 #   button = 27
 #   led = 10  
 
-#[camera.statusled]
+#[camera.activity]
 # led = 9
 
 ###############################################################################

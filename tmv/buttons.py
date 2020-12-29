@@ -5,11 +5,11 @@ File-underlied 2- and 3-value buttones with hardware buttons and LEDs
 from sys import stderr
 import sys
 import logging
-#from  debugpy import breakpoint
+from time import sleep
 from pathlib import Path
 from datetime import timedelta
 from _datetime import datetime as dt
-from time import sleep
+
 import toml
 # to enable monkeypatching, don't import "from tmv.util", but instead:
 from tmv.util import Tomlable, LOG_FORMAT
@@ -33,9 +33,6 @@ class StatefulButton(StatesCircle, Tomlable):
     - pushes when illuminated change state
     - it will return to unlit after a time
     """
-
-  #  def __init__(self, path, states):
-  #      super().__init__(path, states)
 
     def __str__(self):
         return f"StatefulButton: {vars(self)}"
@@ -63,8 +60,8 @@ class StatefulHWButton(StatefulButton):
         StatefulButton ([type]): [description]
     """
 
-    def __init__(self, path, states, led_pin, button_pin):
-        super().__init__(path, states)
+    def __init__(self, path, states, led_pin, button_pin, fallback=None):
+        super().__init__(path, states, fallback)
         self.button = None
         self.led = None
         self.lit_for = None

@@ -46,7 +46,7 @@ setuptools.setup(
     # extras_require=extras
 
     # todo colorzero? required for gpiozero
-    
+
     install_requires=['astral', 'toml', 'python-dateutil', 'pytimeparse',
                       'Pillow', 'watchdog', 'boto3', 'freezegun',
                       'flask', 'flask-socketio', 'python-socketio',

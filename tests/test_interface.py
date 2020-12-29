@@ -80,7 +80,7 @@ def test_control_console(setup_module, capsys):
         buttons_console(["-c", str(local_config)])
         assert excinfo.value.code == 0
     out = capsys.readouterr().out.strip()
-    assert out == "on\nslow"
+    assert out == "auto\nmedium"
 
     # set
     cl = ["-c", str(local_config), "on", "slow"]

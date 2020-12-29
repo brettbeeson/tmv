@@ -151,6 +151,7 @@ $(document).ready(function () {
       ws.emit("req-mode");
       ws.emit("req-speed");
       ws.emit("req-camera-name");
+      ws.emit("req-camera-interval");
     });
 
     ws.on("camera-config", msg =>editor.setValue(msg));
@@ -172,6 +173,9 @@ $(document).ready(function () {
       append_to_textarea($("#wifi-textarea"),"NETWORK INFO",msg);
     });
     
+    ws.on("camera-interval", function (msg) {
+      $("#camera-interval").text("Interval: " + msg + "s")
+    });
     
 
     ws.on("mode", function (msg) {
@@ -179,6 +183,7 @@ $(document).ready(function () {
       let ae = document.activeElement;
       ae.blur();
       toggle_active($("#camera-mode input"), tc(msg));     
+      ws.emit("req-camera-interval");
     });
 
     ws.on("speed", function (msg) {
@@ -186,6 +191,7 @@ $(document).ready(function () {
       let ae = document.activeElement;
       ae.blur();
       toggle_active($("#camera-speed input"), tc(msg));     
+      ws.emit("req-camera-interval");
     });
 
     ws.on("message", msg =>  toastr.info(msg));
@@ -196,7 +202,11 @@ $(document).ready(function () {
       let dt = strftime("%Y-%m-%d %H:%M:%S",msg)
       $("#latest-image-time").text(dt);
       $("#latest-image-ago").timeago("update",msg);
-      $("#latest-image-ago").text("(" + $("#latest-image-ago").text() + ")");
+      $("#latest-image-ago").text($("#latest-image-ago").text());
+      $('#new-image-indicator').css("visibility", "visible");
+      setTimeout(function () {
+       $('#new-image-indicator').css("visibility", "hidden");
+      }, 2000);
       
     });
 
@@ -249,6 +259,7 @@ $(document).ready(function () {
       }
       imgtag.attr("src", src);
       ws.emit("req-latest-image-time") // ask the date and hanlders will displayu it
+      
     });
 
     ws.on("close", () => toastr.warning("Closed connection"));

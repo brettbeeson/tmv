@@ -215,6 +215,12 @@ def req_speed():
     socketio.emit('speed', str(interface.speed_button.value))
 
 
+@socketio.on('req-camera-interval')
+@report_errors
+def req_camera_info():
+    socketio.emit('camera-interval', f"{interface.interval.total_seconds():.0f}")
+
+
 @socketio.on('raise-error')
 @report_errors
 def raise_error():
@@ -311,6 +317,7 @@ def req_wpa_scan():
     LOGGER.warning(s)
     emit('wpa-scan', s)
 
+
 @socketio.on('req-network-info')
 @report_errors
 def req_network_info():
@@ -340,7 +347,7 @@ def start_threads():
 
 def interface_console(cl_args=argv[1:]):
     parser = argparse.ArgumentParser("Interface (screen, web, web-socket server) to TMV interface.")
-    parser.add_argument('--log-level', '-ll',  default='WARNING', type=lambda s: LOG_LEVELS(s).name, nargs='?', choices=LOG_LEVELS.choices())
+    parser.add_argument('--log-level', '-ll', default='WARNING', type=lambda s: LOG_LEVELS(s).name, nargs='?', choices=LOG_LEVELS.choices())
     parser.add_argument('--config-file', '-cf', default=CAMERA_CONFIG_FILE)
     args = parser.parse_args(cl_args)
 
@@ -357,7 +364,7 @@ def interface_console(cl_args=argv[1:]):
         interface.speed_button.illuminate()
 
         # reset to cli values, which override config file
-        if args.log_level != 'WARNING': # str comparison
+        if args.log_level != 'WARNING':  # str comparison
             logging.getLogger("tmv").setLevel(args.log_level)
 
         # let's roll!

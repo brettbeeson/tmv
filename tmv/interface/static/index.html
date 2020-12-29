@@ -39,8 +39,9 @@
             <button class="btn btn-secondary" type="pill" disabled>
                 <span id="connection-spinner" class="slow-spin spinner-grow
                     spinner-grow-sm" role="status" aria-hidden="true"></span>
-                <span id="connection-status">Connecting...</span>
+                <span id="connection-status">Connecting</span>
             </button>
+           
             <ul class="navbar-nav ml-auto">
                 <button class="navbar-toggler" type="button"
                     data-toggle="collapse" data-target="#navbarCollapse"
@@ -112,9 +113,10 @@
 
 
             <div class="form-group mb-2">
-                <div id="camera-name"></div>
+                <span id="camera-name">                </span>
+            <span id="new-image-indicator" class="ml-5 spinner-border spinner-border-sm text-primary hidden" role="status"></span>
             </div>
-
+            
             <div class="form-group mb-2">
                 <label for="camera-speed" class="ml-auto">Speed</label>
                 <div id="camera-speed" class="btn-group btn-group-toggle"
@@ -156,6 +158,9 @@
                                 <figcaption class="figure-caption">
                                     <time id="latest-image-ago" class="timeago "></time>
                                 </figcaption>
+                            </div>
+                            <div class="row mt-1 justify-content-center">
+                                <p class="figure-caption" id="camera-interval"></p>
                             </div>
                         </div>
 

@@ -3,7 +3,7 @@ from time import sleep
 import logging
 from os import system
 
-from _datetime import time, datetime as dt # class
+from _datetime import time, datetime as dt  # class
 from dateutil.tz import tzutc
 from pijuice import PiJuice  # pylint: disable=import-error
 
@@ -46,10 +46,9 @@ class TMVPiJuice(PiJuice):
 
     def power_off(self):
         LOGGER.warning("Shutting down now and powering off PiJuice in 60s")
-        sleep(60)
-        pj_check(self.power.SetPowerOff(60), self.raise_errors)
+        pj_check(self.power.SetPowerOff(60), self.raise_errors)  # 60s for shutdown
         system("sudo shutdown now")
-        sleep(70)
+        sleep(60)
         raise PiJuiceError("Should have powered off by now!")
 
     def wakeup_enable(self, wakeup):

@@ -59,9 +59,9 @@ from nptime import nptime
 from dateutil.parser import parse
 
 #from tmv.videotools import valid
-from tmv.util import LOG_FORMAT, add_stem_suffix, dt2str,neighborhood 
+from tmv.util import LOG_FORMAT, add_stem_suffix, dt2str, neighborhood
 from tmv.util import LOG_LEVELS, cpe2str, run_and_capture, str2dt, strptimedelta, subprocess_stdout, unlink_safe
-from tmv.config import HH_MM, FONT_FILE
+from tmv.config import HH_MM
 from tmv.videotools import valid
 from tmv.exceptions import SignalException, VideoMakerError, ImageError
 
@@ -142,7 +142,7 @@ class VideoMaker:
 
     def __str__(self):
         return f"{type(self).__name__}: videos:{self.videos}  speedup:{self.speedup}" + \
-               f"fps_requested:{self.fps_requested} sliceage:{self.sliceage,} _file_list:{len(self._file_list)}"
+            f"fps_requested:{self.fps_requested} sliceage:{self.sliceage,} _file_list:{len(self._file_list)}"
 
     @property
     def file_list(self):
@@ -164,7 +164,7 @@ class VideoMaker:
         n_errors = 0
         LOGGER.debug(f"Reading dates of {len(self._file_list)} files...")
         LOGGER.debug(f"start: {self.start} end: {self.end} start_time:{self.start_time} end_time:{self.end_time}")
-        
+
         if not self._file_list:
             raise VideoMakerError("No image files found in command-line")
 
@@ -250,7 +250,7 @@ class VideoMaker:
                 n += 1
         return n
 
-    def rename_images(self):        
+    def rename_images(self):
         n = 0
         for m in self.videos:
             for tlf in m.images:
@@ -276,7 +276,7 @@ class VideoMakerHour(VideoMaker):
 
     def __str__(self):
         return f"{type(self).__name__}: videos:{len(self.videos)}  SpeedUp:{self.speedup}" + \
-               f"file_list:{len(self._file_list)} range={self.start_time} to {self.end_time}"
+            f"file_list:{len(self._file_list)} range={self.start_time} to {self.end_time}"
 
     def ls(self):
         s = ""
@@ -335,7 +335,7 @@ class VideoMakerDay(VideoMaker):
                 day, len(grouped_by_day_images[day])))
             self.videos.append(Video(grouped_by_day_images[day]))
 
-    
+
 class VideoMakerDiagonal(VideoMaker):
     """ Diagonal slice through a chart of X-axis days and Y-axis hours
         e.g. over a year and 01:00 to 12:00, video has Jan @ 1:00, Feb @ 2:00 ... Dec @ 12:00
@@ -349,7 +349,7 @@ class VideoMakerDiagonal(VideoMaker):
         if len(self.images) == 0:
             return
             #raise VideoMakerError("No images meet the criteria specified")
-        
+
         start_time = nptime.from_time(min([s.taken.time() for s in self.images]))
         end_time = nptime.from_time(max([s.taken.time() for s in self.images]))
         day_length = end_time - start_time
