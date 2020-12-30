@@ -30,8 +30,8 @@ The uploader runs on the camera and sends images to an s3 bucket when possible o
 
 ### Optionally, make the Pi an access point
 Use a out-of-the-box such as [RaspAP](https://github.com/billz/raspap-webgui)(didn't work for me on PiZero) or manually:
-- `install-ap.sh` and edit suggested file
-See [more info](http://brettbeeson.com.au/pizerow-ap-wifi-client/) on setting it up.
+- `install-ap.sh` 
+- See [more info](http://brettbeeson.com.au/pizerow-ap-wifi-client/) on setting it up.
 
 ### Optionally, configure a PiJuice
 You can use a [PiJuice](https://github.com/PiSupply/PiJuice) to power it. 
