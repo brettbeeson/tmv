@@ -29,6 +29,8 @@ $(document).ready(function () {
   wifieditor.setFontSize(20);
   //wifieditor.session.setMode("ace/mode/wpa?");
   
+  $("#pj-status").on("click",  () =>  ws.emit("req-pj-status"));
+
   toastr.options.positionClass = "toast-bottom-center";
 
   if ("WebSocket" in window) {
@@ -154,6 +156,14 @@ $(document).ready(function () {
       ws.emit("req-camera-interval");
     });
 
+    ws.on("pj-status", json => {
+      append_to_textarea($("#log-textarea"),"PIJUICE INFO",JSON.stringify(json, undefined, 4));
+      
+      $("#pj-battery-status").text(json.battery)
+      $("#pj-battery-level").text("Battery: " + json.chargeLevel + "%")
+      
+    });
+  
     ws.on("camera-config", msg =>editor.setValue(msg));
 
     ws.on("wpa-supplicant", msg => wifieditor.setValue(msg));
@@ -336,7 +346,7 @@ function copyToClipboard(element) {
 
 
 function append_to_textarea(textarea, title, msg) {
-  textarea.val(textarea.val() + "*** " + title + " ***\n");
+  textarea.val(textarea.val() + "vvv " + title + " vvv\n");
   textarea.val(textarea.val() + msg);
   textarea.val(textarea.val() + "\n^^^ " + title + " ^^^\n");
   // autoscroll

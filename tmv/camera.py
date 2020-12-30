@@ -1112,6 +1112,7 @@ class Interface(Tomlable):
         self.speed_button = StatefulHWButton(SPEED_FILE, SPEED_BUTTON_STATES, SPEED_LED, SPEED_BUTTON)
         self.speed_button.lit_for = timedelta(seconds=30)
         self.file_root = "."
+        self.has_pijuice = False
         self._latest_image = "latest-image.jpg"
         self.port = 5000
 
@@ -1143,6 +1144,7 @@ class Interface(Tomlable):
             gc.collect()
             self.speed_button = SpeedHWButtonFactory(c['speed_button'])
             self.speed_button.lit_for = timedelta(seconds=30)
+            self.has_pijuice =  c.get('pijuice', False)
         if 'interval' in c:
             # interval specified as seconds: convert to timedelta
             self._interval = timedelta(seconds=c['interval'])

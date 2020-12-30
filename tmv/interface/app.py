@@ -24,8 +24,13 @@ from tmv.camera import Interface
 from tmv.buttons import OnOffAuto, Speed
 from tmv.systemd import Unit
 from tmv.util import run_and_capture, unlink_safe, LOG_LEVELS, LOG_FORMAT, ensure_config_exists
-from tmv.exceptions import ButtonError
+from tmv.exceptions import ButtonError, PiJuiceError
 from tmv.interface.wifi import scan, reconfigure, info
+
+try:
+    from tmv.tmvpijuice import TMVPiJuice, pj_call
+except (ImportError, NameError) as e:
+    print(e, file=stderr)
 
 LOGGER = logging.getLogger("tmv.interface")
 
@@ -67,6 +72,12 @@ def manage_screen_interface_thread():
 
     while not shutdown:
         sleep(1)
+
+
+def broadcast_pijuice_status_thread():
+    while not shutdown:
+        sleep(60)
+        req_pj_status()
 
 
 def broadcast_image_thread():
@@ -114,9 +125,17 @@ def broadcast_buttons_thread():
                     speed_was = speed_is
 
 
+# index page
 @app.route("/")
 def index():
     return send_from_directory("static", "index.html")
+
+# all other paths - this is REQUIRED on some environments, others not!
+
+
+@app.route('/<path:path>')
+def send_static(path):
+    return send_from_directory('static', path)
 
 
 @socketio.on('req-services-status')
@@ -334,8 +353,30 @@ def connect():
         req_mode()
         req_speed()
         req_wpa_supplicant()
+        if interface.has_pijuice:
+            req_pj_status()
     except FileNotFoundError:
         pass
+
+
+@socketio.on('req-pj-status')
+@report_errors
+def req_pj_status():
+    """Get pijuice information and return as json"""
+    try:
+        tmv_pj = TMVPiJuice()
+        s = pj_call(tmv_pj.status.GetStatus)
+        s['chargeLevel'] = pj_call(tmv_pj.status.GetChargeLevel)
+        s['batteryVoltage'] = pj_call(tmv_pj.status.GetBatteryVoltage)
+        s['batteryCurrent'] = pj_call(tmv_pj.status.GetBatteryCurrent)
+        s['ioVoltage'] = pj_call(tmv_pj.status.GetIoVoltage)
+        s['ioCurrent'] = pj_call(tmv_pj.status.GetIoCurrent)
+        s['wakeupOnCharge'] = pj_call(tmv_pj.power.GetWakeUpOnCharge)
+        LOGGER.info(s)
+        emit('pj-status', s)
+    except (NameError, PiJuiceError) as e:
+        LOGGER.warning(e)
+        LOGGER.debug(e, exc_info=e)
 
 
 def start_threads():
@@ -343,6 +384,8 @@ def start_threads():
     socketio.threads.append(socketio.start_background_task(manage_screen_interface_thread))
     socketio.threads.append(socketio.start_background_task(broadcast_buttons_thread))
     socketio.threads.append(socketio.start_background_task(broadcast_image_thread))
+    if interface.has_pijuice:
+        socketio.threads.append(socketio.start_background_task(broadcast_pijuice_status_thread))
 
 
 def interface_console(cl_args=argv[1:]):

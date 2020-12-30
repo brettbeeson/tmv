@@ -97,8 +97,8 @@ class StatesCircle:
         while self._current != state:
             next(self)
             i += 1
-            if i >= len(self._states):
-                raise KeyError(f"'{state}'' is not a key within {self._states})")
+            if i > len(self._states):
+                raise KeyError(f"'{state}' is not a key within {self._states})")
         return state
 
     @value.setter

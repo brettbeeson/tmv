@@ -46,11 +46,13 @@ setuptools.setup(
     # extras_require=extras
 
     # todo colorzero? required for gpiozero
+    # boto3 is installed seperately as it hangs here
+    # , 'datetimerange',
 
     install_requires=['astral', 'toml', 'python-dateutil', 'pytimeparse',
-                      'Pillow', 'watchdog', 'boto3', 'freezegun',
+                      'Pillow', 'watchdog',  'freezegun',
                       'flask', 'flask-socketio', 'python-socketio',
-                      'ascii_graph', 'datetimerange',
+                      'ascii_graph'
                       'gpiozero', 'RPi.GPIO',
                       'debugpy'],
 
