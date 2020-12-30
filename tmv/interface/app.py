@@ -69,9 +69,10 @@ def manage_screen_interface_thread():
     """
      Display key parameters and image on the screen and react to screen button presses
     """
-
+    #screen = TMVScreen(interface)
     while not shutdown:
         sleep(1)
+        #screen.update()
 
 
 def broadcast_pijuice_status_thread():
