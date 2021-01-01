@@ -30,8 +30,8 @@ The uploader runs on the camera and sends images to an s3 bucket when possible o
 
 ### Optionally, make the Pi an access point
 Use a out-of-the-box such as [RaspAP](https://github.com/billz/raspap-webgui)(didn't work for me on PiZero) or manually:
-- `install-ap.sh` and edit suggested file
-See [more info](http://brettbeeson.com.au/pizerow-ap-wifi-client/) on setting it up.
+- `install-ap.sh` 
+- See [more info](http://brettbeeson.com.au/pizerow-ap-wifi-client/) on setting it up.
 
 ### Optionally, configure a PiJuice
 You can use a [PiJuice](https://github.com/PiSupply/PiJuice) to power it. 
@@ -46,11 +46,15 @@ You can use a [PiJuice](https://github.com/PiSupply/PiJuice) to power it.
 ### Optionally, install timezone awareness:
 - `sudo pip install -U tzupdate` to update your timezone if you travel
 
-### Start Camera
-- browse to [your-pi-ip](http://tmv.local) to see the Camera App and RaspAP. THis allows you to control most everything you need to take photos.
-- Alteratnively, ssh to the pi and run manually:
-- `sudo tmv-control auto on` to set camera to auto, and uploads to on
+### View Camera
+- browse to [your-pi-ip](http://raspberrypi.local) to see the Camera App and RaspAP. THis allows you to control most everything you need to take photos.
+
+### Optionally, view logs and start manualdetails (ssh to pi first)
 - `journalctl -f -u 'tmv*'` to check logs in operation
+- `cd ~/tmv` and
+-- `python3 tmv/camera.py` to start camera
+-- `python3 tmv/upload.py` to start uploader
+-- `python3 tmv/interface/interface.py` to start web app, screen, LEDs, etc
 
 ## Server
 Tested on Ubuntu 18, but likely to work on most linux. It converts photos to videos and optionally stores them.
@@ -103,7 +107,6 @@ address=/#/192.168.10.1
 -- an iptables alterative (route anything on ap0 to localhost) to the lighttpd redirect might be better. Since need DNS queries to point to localhost via dnsmasq in this case (I figure).
 
 ### Improvements
-- Add DIM/DARK/LIGHT as an Overlay
-- Check for 0 length files
+- 
 
 Inspired by [Claude's Pi-Timolo](https://github.com/pageauc/pi-timolo/). Thanks Claude!
