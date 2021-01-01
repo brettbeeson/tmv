@@ -6,7 +6,7 @@
       "type": "python",
       "request": "attach",
       "connect": {
-        "host": "turtle1",
+        "host": "highqual.local",
         "port": 5678
       },
       "pathMappings": [

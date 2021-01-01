@@ -11,13 +11,11 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
     name="timemv",
-    version="0.0.2",
+    version="1.1.0",
     author="Brett Beeson",
     author_email="brettbeeson@fastmail.com",
     include_package_data=True,
-    description="Time Made Visible - a timelapse system",
-    long_description="A complete, modular timelapse system for low power computers backed by a server",
-    # long_description_content_type="text/markdown",
+    description="Time Made Visible - a modular timelapse system for low power computers.",
     url="https://github.com/brettbeeson/tmv",
     packages=setuptools.find_packages(),
     # "tmv-video-server=tmv.camera:main",
@@ -45,14 +43,13 @@ setuptools.setup(
     # can't get extras to work: just install 'em
     # extras_require=extras
 
-    # todo colorzero? required for gpiozero
-    # boto3 is installed seperately as it hangs here
-    # , 'datetimerange',
-
+    
+    # flask, boto3 is installed seperately as it hangs / doesn't install
+    
     install_requires=['astral', 'toml', 'python-dateutil', 'pytimeparse',
                       'Pillow', 'watchdog',  'freezegun',
-                      'flask', 'flask-socketio', 'python-socketio',
-                      'ascii_graph'
+                       'flask-socketio', 'python-socketio',
+                      'ascii_graph',
                       'gpiozero', 'RPi.GPIO',
                       'debugpy'],
 

@@ -166,6 +166,8 @@ resolution = '1280x720'
 #[camera.activity]
 # led = 9
 
+
+
 ###############################################################################
 # Where to upload the images, using tmv-upload
 ###############################################################################
@@ -208,3 +210,18 @@ destination = "s3://BUCKET-NAME-TO-SET/HOSTNAME/daily-photos"
 # Choose from DEBUG, INFO, WARNING, ERROR, CRITAL
 #
 #log_level = 'WARNING'
+
+################################################################################
+# Snippet: using a screen
+###############################################################################
+#[camera.mode_button]
+#   file = 'camera-mode'
+#   button = 6
+#[camera.speed_button]
+#   file = '/etc/tmv/camera-speed'
+#   button = 5
+#[camera.activity
+#   led = 0
+#[ interface ]
+# screen = true
+  

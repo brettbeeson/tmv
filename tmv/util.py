@@ -3,6 +3,7 @@
 
 from re import search, sub
 from pathlib import Path
+from collections import Counter
 import time  # not "from" to allow monkeypatch
 from shutil import copyfile
 import datetime
@@ -407,7 +408,7 @@ def service_details(service):
         dead
     """
     # stderr ignored; return can be non-zero
-    p = run(["systemctl", "status", service], encoding='UTF-8', stdout=subprocess.PIPE, check=False)
+    p = run(["systemctl", "status", service], encoding='UTF-8', capture_output=True, check=False)
     output = p.stdout
     service_regx = r"Loaded:.*\/(.*service);"
     status_regx = r"Active:(.*) since (.*);(.*)"
@@ -490,3 +491,35 @@ def file_by_day_console():
     if not os.path.exists(args.dest):
         os.mkdir(args.dest)
     file_by_day(file_list, args.dest, args.move)
+
+
+def wifi_ssid():
+    """ Use iwgetid to get ssid in typical form: 'wlan0     ESSID:"NetComm 0405"\n'"""
+    try:
+        p = subprocess.run(['sudo', 'iwgetid'], check=True, encoding="UTF-8",capture_output=True)
+        if p.stdout:
+            return p.stdout.split('"')[1]
+        else:
+            return None
+    except (CalledProcessError, TypeError) as e:
+        LOGGER.warning(e)
+        return None
+
+
+def ap_clients(interface='ap0') -> []:
+    """ Return a list of mac addresses. Only on pi-ish. """
+    try:
+        p = run(["iw", "dev", interface, "station", "dump"], encoding="UTF-8",check=True, capture_output=True)
+        stations = list(Counter([line for line in p.stdout if "Station" in line]).elements())
+        LOGGER.debug(stations)
+        return stations
+    except CalledProcessError as e:
+        LOGGER.warning(e)
+        return []
+
+
+def strike(text):
+    result = ''
+    for c in text:
+        result = result + c + '\u0336'
+    return result

@@ -10,9 +10,12 @@ sudo pip3 install pillow
 #sudo pip3 install pillow --upgrade --force-reinstall pillow # plan b
 
 echo Seperate botocore install as it is faster than in setup.py
-sudo pip3 install botocore
-echo Instead of setup.py where 2.21.0 (not 2.25.1) is installed
-sudo pip3 install requests
+sudo pip3 install  boto3 # botocore
+echo Instead of setup.py where 2.21.0 - not 2.25.1 - is installed
+sudo pip3 install --upgrade requests
+# setup.py doesn't install for unknown reason
+sudo pip3 install flask
+
 
 echo Installing TMV
 sudo python3 setup.py develop   # dev

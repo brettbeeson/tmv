@@ -325,7 +325,7 @@ class S3Uploader(FileSystemEventHandler, Tomlable):
                     self.upload()
                 except S3UploadFailedError as exc:  # pylint: disable=broad-except
                     LOGGER.debug("Failed to upload.", exc_info=exc)
-                    LOGGER.warning("Failed to upload: f{exc}")
+                    LOGGER.warning(f"Failed to upload: {exc}")
             else:
                 LOGGER.debug("No internet. Not uploading")
 

@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
-# pylint: disable=line-too-long, logging-fstring-interpolation, dangerous-default-value, logging-not-lazy
-
-
+# pylint: disable=line-too-long, logging-fstring-interpolation, dangerous-default-value, logging-not-lazy, global-statement
+# todo check  2 Interfaces aren't being created!
 from sys import stderr, argv
 from os import system
 from pathlib import Path
@@ -9,7 +8,7 @@ from base64 import b64encode
 from time import sleep
 from shutil import copy
 import argparse
-from datetime import datetime as dt             # dt = class
+from datetime import datetime as dt, timedelta             # dt = class
 from subprocess import CalledProcessError
 import logging
 from socket import gethostname, gethostbyname
@@ -26,6 +25,7 @@ from tmv.systemd import Unit
 from tmv.util import run_and_capture, unlink_safe, LOG_LEVELS, LOG_FORMAT, ensure_config_exists
 from tmv.exceptions import ButtonError, PiJuiceError
 from tmv.interface.wifi import scan, reconfigure, info
+from tmv.interface.screen import TMVScreen
 
 try:
     from tmv.tmvpijuice import TMVPiJuice, pj_call
@@ -40,6 +40,7 @@ app.config["EXPLAIN_TEMPLATE_LOADING"] = True
 interface = Interface()
 socketio = SocketIO(app)
 shutdown = False
+next_screen_refresh = dt.max
 
 
 def report_errors(func):
@@ -69,10 +70,18 @@ def manage_screen_interface_thread():
     """
      Display key parameters and image on the screen and react to screen button presses
     """
-    #screen = TMVScreen(interface)
+    global next_screen_refresh
+
+    refresh_period = timedelta(seconds=60)
+    screen = TMVScreen(interface)
+
     while not shutdown:
-        sleep(1)
-        #screen.update()
+        if dt.now() > next_screen_refresh:
+            screen.update_display()
+            next_screen_refresh = dt.now() + refresh_period
+            LOGGER.debug(f"next refresh is {next_screen_refresh.isoformat()}")
+        else:
+            sleep(1)
 
 
 def broadcast_pijuice_status_thread():
@@ -85,11 +94,11 @@ def broadcast_image_thread():
     """
     Poll / watch for new image and send to all clients
     """
+    global next_screen_refresh
     image_mtime_was = None
     image_mtime_is = None
     while not shutdown:
         sleep(1)
-        # breakpoint()
         try:
             if interface:
                 im = Path(interface.latest_image)
@@ -98,13 +107,14 @@ def broadcast_image_thread():
                     if image_mtime_was is None or image_mtime_is > image_mtime_was:
                         send_image(broadcast=True)
                         image_mtime_was = image_mtime_is
-                        # socketio.emit('message', f"New image sent: {interface.latest_image}")
+                        #next_screen_refresh = dt.now() + timedelta(seconds=60)
         except FileNotFoundError as exc:
             socketio.emit('warning', f"{interface.latest_image}: {repr(exc)}")
-            print(exc, file=stderr)
+            LOGGER.warning(exc)
 
 
 def broadcast_buttons_thread():
+    global next_screen_refresh
     mode_was = None
     speed_was = None
     while not shutdown:
@@ -116,6 +126,7 @@ def broadcast_buttons_thread():
                     LOGGER.debug(f"Mode changed to {mode_is}")
                     req_mode()
                     mode_was = mode_is
+                    next_screen_refresh = dt.now() + timedelta(seconds=1)
 
         if interface and interface.speed_button:
             if interface.speed_button.ready():
@@ -124,6 +135,7 @@ def broadcast_buttons_thread():
                     LOGGER.debug(f"speed changed to {speed_is}")
                     req_speed()
                     speed_was = speed_is
+                    next_screen_refresh = dt.now() + timedelta(seconds=1)
 
 
 # index page
@@ -158,12 +170,14 @@ def services_status():
 def restart_service():
     c = Unit("tmv-camera.service")
     u = Unit("tmv-upload.service")
-    emit("message", "Restarting camera and uploader.")
+    i = Unit("tmv-interface.service")
+    emit("message", "Restarting all services.")
     c.restart()
     u.restart()
     sleep(3)
     emit("message", f"Camera status: {c.status()}")
     emit("message", f"Upload status: {u.status()}")
+    i.restart()
 
 
 @socketio.on('req-journal')
@@ -199,8 +213,7 @@ def req_latest_image_time():
 @socketio.on('req-n-files')
 @report_errors
 def req_n_files():
-    i = len(Path(interface.file_root).glob("*"))
-    emit("n-files", i)
+    emit("n-files", interface.n_images())
 
 
 @socketio.on('mode')
@@ -477,6 +490,8 @@ def buttons_console(cl_args=argv[1:]):
             if args.verbose:
                 print("Restarting camera and upload")
             ctlr = Unit("tmv-camera.service")
+            ctlr.restart()
+            ctlr = Unit("tmv-upload.service")
             ctlr.restart()
 
         exit(0)

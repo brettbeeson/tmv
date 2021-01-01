@@ -30,6 +30,7 @@ from tmv.util import Tomlable, setattrs_from_dict, sleep_until, ensure_config_ex
 from tmv.exceptions import ConfigError, PiJuiceError, SignalException, PowerOff
 from tmv.buttons import ON, OFF, AUTO, StatefulButton, StatefulHWButton
 from tmv.config import *  # pylint: disable=wildcard-import, unused-wildcard-import
+from tmv.interface.screen import TMVScreen
 
 LOGGER = logging.getLogger("tmv.camera")
 
@@ -40,28 +41,24 @@ except ImportError as exc:
     LOGGER.warning(exc)
 
 
-def ModeButtonFactory(config_dict):
+def ModeButtonFactory(config_dict, software_only):
     path = config_dict.get('file', MODE_FILE)
-    return StatefulButton(path, MODE_BUTTON_STATES, fallback=AUTO)
+    button = config_dict.get('button', None)
+    led = config_dict.get('led', None)
+    if button and not software_only:
+        return StatefulHWButton(path, MODE_BUTTON_STATES, led, button, fallback=AUTO)
+    else:
+        return StatefulButton(path, MODE_BUTTON_STATES, fallback=AUTO)
 
 
-def ModeHWButtonFactory(config_dict):
-    path = config_dict.get('file', MODE_FILE)
-    button = config_dict.get('button', MODE_BUTTON)
-    led = config_dict.get('led', MODE_LED)
-    return StatefulHWButton(path, MODE_BUTTON_STATES, led, button, fallback=AUTO)
-
-
-def SpeedButtonFactory(config_dict):
+def SpeedButtonFactory(config_dict, software_only):
     path = config_dict.get('file', SPEED_FILE)
-    return StatefulButton(path, SPEED_BUTTON_STATES, fallback=MEDIUM)
-
-
-def SpeedHWButtonFactory(config_dict):
-    path = config_dict.get('file', SPEED_FILE)
-    button = config_dict.get('button', SPEED_BUTTON)
-    led = config_dict.get('led', SPEED_LED)
-    return StatefulHWButton(path, SPEED_BUTTON_STATES, led, button, fallback=MEDIUM)
+    button = config_dict.get('button', None)
+    led = config_dict.get('led', None)
+    if button and not software_only:
+        return StatefulHWButton(path, SPEED_BUTTON_STATES, led_pin=led, button_pin=button, fallback=MEDIUM)
+    else:
+        return StatefulButton(path, SPEED_BUTTON_STATES, fallback=MEDIUM)
 
 
 class LightLevel(Enum):
@@ -571,11 +568,6 @@ class Camera(Tomlable):
         self.mode_button = StatefulButton(MODE_FILE, MODE_BUTTON_STATES, AUTO)
         self.led = None
 
-        try:
-            self.led = gpiozero.LED(ACTIVITY_LED)
-        except NameError as e:
-            LOGGER.warning(f"Continuing after exception configuring activity LED: {e}")
-
         self._pijuice = None
         self.calc_shutter_speed = False
         self.location = None
@@ -641,19 +633,14 @@ class Camera(Tomlable):
         if 'log_level' in c:
             LOGGER.setLevel(c['log_level'])
         if 'mode_button' in c:
-            self.mode_button = ModeButtonFactory(c['mode_button'])
+            self.mode_button = ModeButtonFactory(c['mode_button'], software_only=True)
             LOGGER.debug(f"config'd ModeButton: {self.mode_button}")
         if 'speed_button' in c:
-            self.speed_button = SpeedButtonFactory(c['speed_button'])
+            self.speed_button = SpeedButtonFactory(c['speed_button'], software_only=True)
             LOGGER.debug(f"config'd SpeedButton: {self.speed_button}")
         if 'activity' in c:
-            self.led = None
-            gc.collect()  # ensure gpiozero releases pin
             if c['activity']['led']:
                 self.led = gpiozero.LED(int(c['activity']['led']))
-            else:
-                LOGGER.info("Deactiviting activity led")
-
         if c.get('pijuice', False):
             try:
                 # optional, for controling power with a PiJuice
@@ -836,7 +823,14 @@ class Camera(Tomlable):
             return 999
         pa2 = 0.5
         es2 = pa2 * es1 / pa1
-        LOGGER.debug(f"pa1={pa1:.2f} es1={es1:0.2f} pa2={pa2:.2f} es2={es2:.2f}")
+        es2 = max(es2, 5)  # max shutter open time
+
+        es_min = (1 / 100) * 1000000  # 10,000us
+        es_max = 5 * 1000000
+        es2 = min(es_max, es2)
+        es2 = max(es_min, es2)
+        es2 = int(es2)
+        LOGGER.debug(f"pa1={pa1:.2f} es1={es1} pa2={pa2:.2f} es2={es2}")
         return int(es2)
 
     def shutter_speed_from_sensor(self):
@@ -857,8 +851,8 @@ class Camera(Tomlable):
                      PA
 
         """
-        sl_min = 1 / 100  # 10,000us
-        sl_max = 5
+        sl_min = (1 / 100) * 1000000  # 10,000us
+        sl_max = 5 * 1000000
         # sensor is insensitive
         # default definition of 'dark' is 0.05
         pa_min = 0.02
@@ -869,8 +863,8 @@ class Camera(Tomlable):
         sl = m * pa + c
         sl = min(sl_max, sl)
         sl = max(sl_min, sl)
+        sl = int(sl)
         LOGGER.debug(f"pa={pa:.3f} M_sl={sl:0.3f} m={m:.2f} c={c:.2f}")
-        sl = int(sl * 1000 * 1000)
 
         return sl
 
@@ -900,8 +894,7 @@ class Camera(Tomlable):
             self.led.off()
 
         pa = image_pixel_average(pil_image)
-        LOGGER.info("CAPTURED mark: {} pa:{:.3f} es:{:0.3f} took:{:.3f}".format(mark, pa, self._camera.exposure_speed / 1000000, (dt.now() - start).total_seconds()))
-
+        LOGGER.info("CAPTURED mark: {} pa:{:.3f} es:{:0.3f}s took:{:.3f}s".format(mark, pa, self._camera.exposure_speed / 1000000, (dt.now() - start).total_seconds()))
         image_filename = self.dt2filename(mark)
         self.recent_images.append((dt.now(), image_filename, self._camera.exposure_speed, pa),)
         del self.recent_images[0:-10]  # trim to last 10 items
@@ -1107,19 +1100,28 @@ class Interface(Tomlable):
     def __init__(self):
         super().__init__()
         self._interval = timedelta(seconds=60)
-        self.mode_button = StatefulHWButton(MODE_FILE, MODE_BUTTON_STATES, MODE_LED, MODE_BUTTON)
+        self.mode_button = StatefulButton(MODE_FILE, MODE_BUTTON_STATES)
         self.mode_button.lit_for = timedelta(seconds=30)
-        self.speed_button = StatefulHWButton(SPEED_FILE, SPEED_BUTTON_STATES, SPEED_LED, SPEED_BUTTON)
+        self.speed_button = StatefulButton(SPEED_FILE, SPEED_BUTTON_STATES)
         self.speed_button.lit_for = timedelta(seconds=30)
         self.file_root = "."
         self.has_pijuice = False
         self._latest_image = "latest-image.jpg"
         self.port = 5000
+        self.screen = False
 
     @property
     def latest_image(self):
         """ return with file_root as the ... file root! """
         return Path(self.file_root) / self._latest_image
+
+    @property
+    def latest_image_time(self):
+        """ the filesystem modified time, not the filename-marked time  """
+        return dt.fromtimestamp(self.latest_image.stat().st_mtime)
+
+    def n_images(self):
+        return len(list(Path(self.file_root).glob("*")))
 
     @latest_image.setter
     def latest_image(self, value):
@@ -1135,16 +1137,12 @@ class Interface(Tomlable):
         if 'camera' in config_dict:
             c = config_dict['camera']  # can accept config in root or [camera]
         if 'mode_button' in c:
-            self.mode_button = None  # release gpio pins
-            gc.collect()
-            self.mode_button = ModeHWButtonFactory(c['mode_button'])
+            self.mode_button = ModeButtonFactory(c['mode_button'], software_only=False)
             self.mode_button.lit_for = timedelta(seconds=30)
         if 'speed_button' in c:
-            self.speed_button = None  # release gpio pins
-            gc.collect()
-            self.speed_button = SpeedHWButtonFactory(c['speed_button'])
+            self.speed_button = SpeedButtonFactory(c['speed_button'], software_only=False)
             self.speed_button.lit_for = timedelta(seconds=30)
-            self.has_pijuice =  c.get('pijuice', False)
+            self.has_pijuice = c.get('pijuice', False)
         if 'interval' in c:
             # interval specified as seconds: convert to timedelta
             self._interval = timedelta(seconds=c['interval'])
@@ -1162,6 +1160,13 @@ class Interface(Tomlable):
 
         if 'log_level' in c:
             logging.getLogger("tmv").setLevel(c['log_level'])
+
+        self.setattr_from_dict('screen', c)
+        if self.screen:
+            LOGGER.info("Interface will use a screen. Ensure you  LEDs from speed and mode buttons and check button pins.")
+            self.mode_button.lit_for = None
+            self.speed_button.lit_for = None
+        LOGGER.debug(f"screen: {self.screen}")
 
         self.setattr_from_dict('port', c)
 

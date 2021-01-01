@@ -43,6 +43,9 @@ class StatefulButton(StatesCircle, Tomlable):
     def ready(self):
         return self.path is not None
 
+    def illuminate(self):
+        pass
+    
     def configd(self, config_dict):
         if 'button' in config_dict:
             c = config_dict['button']
@@ -57,10 +60,10 @@ class StatefulHWButton(StatefulButton):
     """Cycling mode button with an LED and button
 
     Args:
-        StatefulButton ([type]): [description]
+        StatefulHWButton ([type]): [description]
     """
 
-    def __init__(self, path, states, led_pin, button_pin, fallback=None):
+    def __init__(self, path, states, led_pin=None, button_pin=None, fallback=None):
         super().__init__(path, states, fallback)
         self.button = None
         self.led = None
@@ -70,9 +73,11 @@ class StatefulHWButton(StatefulButton):
         self.led = None
         try:
             # only works on raspi
-            self.button = Button(button_pin)
-            self.button.when_pressed = self.push
-            self.led = LED(led_pin)
+            if button_pin:
+                self.button = Button(button_pin)
+                self.button.when_pressed = self.push
+            if led_pin:
+                self.led = LED(led_pin)
 
         except Exception as e:
             print(f"Exception but continuing:{e}", file=stderr)
@@ -92,7 +97,8 @@ class StatefulHWButton(StatefulButton):
         """
         Resets the dormancy counter.
         """
-        # LOGGER.debug(f"{vars(self)}: pushed")
+        LOGGER.debug("button pushed!")
+
         moment = dt.now()
 
         if self.lit_for is None or moment < self.last_pressed + self.lit_for:
@@ -100,15 +106,12 @@ class StatefulHWButton(StatefulButton):
             next(self)
         self.set_LED()
         self.last_pressed = dt.now()
-        # return self.current
 
     def set_LED(self):
         LOGGER.debug(f"set_LED: {self.led}")
-        current = self.value
         if self.led is None:
-            # testing. could monkeypatch instead
             return
-
+        current = self.value
         try:
             led_on_time = current.on_time
             led_off_time = current.off_time
