@@ -113,7 +113,9 @@ These readings were done from the PiJuice (pj.status.GetIoCurrent) using the cam
 - inactive: 465mA (camera is still constructed)
 - fast speed photos: 1160 mA
 - medium: 800 mA (solid reading)
+
 ... and now with all TMV services off ...
+
 - Base level (idle): 220 mA
 - just camera init in python: 720mA  (so camera on = consumption)
 - just tmv+uploader, no camera: 305mA (tmv-interface @ 2% cpu)
