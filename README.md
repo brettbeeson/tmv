@@ -110,17 +110,17 @@ address=/#/192.168.10.1
 These readings were done from the PiJuice (pj.status.GetIoCurrent) using the camera running at 30s intervals (3s fast, 300s slow).
 
 #### With PiCamera always constructed (old code)
--- inactive: 465mA (camera is still constructed)
--- fast: 1160 mA
--- med: 800 mA (solid reading)
+- inactive: 465mA (camera is still constructed)
+- fast speed photos: 1160 mA
+- medium: 800 mA (solid reading)
 ... and now with all TMV services off ...
--- Base level (idle): 220 mA
--- just camera init in python: 720mA  (so camera on = consumption)
--- just tmv+uploader, no camera: 305mA (tmv-interface @ 2% cpu)
+- Base level (idle): 220 mA
+- just camera init in python: 720mA  (so camera on = consumption)
+- just tmv+uploader, no camera: 305mA (tmv-interface @ 2% cpu)
 *Summary: the camera should be destroyed / closed() when not in use*
 
 ### PiCamera constructed on demand and destoryed (new code)
--- med: 252 mA 
+- medium speed: 252 mA 
 *Summary: need about a 4000mAh to run for a 18h day*
 
 Inspired by [Claude's Pi-Timolo](https://github.com/pageauc/pi-timolo/). Thanks Claude!
