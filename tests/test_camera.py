@@ -83,10 +83,9 @@ def test_speeds(setup_test):
 def test_write_config(setup_test):
     #monkeypatch.setattr(time, 'sleep', sleepless)
 
-    with pytest.raises(SystemExit) as exc:
-        camera_console(["--fake", "--runs", "1", "-c", "camera.toml"])
-        assert exc.value.code == 0
-        assert Path("camera.toml").is_file()
+    v = camera_console(["--fake", "--runs", "1", "-c", "camera.toml"])
+    assert v == 0
+    assert Path("camera.toml").is_file()
 
 
 def sleepless(s):
@@ -700,7 +699,6 @@ def test_Sensor(monkeypatch, setup_test):
             file = './camera-speed'
     
         """)
-        c._camera = FakePiCamera()
         c.mode_button = AUTO
         reset_camera = deepcopy(c)  # a copy of the camera after it starts
         run_until(c, fdt, tomorrow_at(12), reset_camera)
@@ -772,7 +770,6 @@ def test_camera_inactive_action_2(monkeypatch, setup_test):
             file = './camera-speed'
     
         """)
-        c._camera = FakePiCamera()
         # with pytest.raises(PowerOff):
         run_until(c, fdt, today_at(14))
         assert c.light_sensor.level == LightLevel.LIGHT
@@ -792,8 +789,8 @@ def test_overlays(monkeypatch, setup_test):
         FDT = fdt
         monkeypatch.setattr(time, 'sleep', sleepless)
         c = Camera(sw_cam=True)
-        c._camera.width = 1200
-        c._camera.height = 900
+        #c._camera.width = 1200
+        #c._camera.height = 900
         c.configs(cf)
         c.file_root = "./test_overlays/"
         c.file_by_date = False

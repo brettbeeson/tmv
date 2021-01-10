@@ -80,6 +80,7 @@ log_level = 'INFO'
 #
 #   LIGHT|DIM|DARK: settings passed to picam to override the defaults. See PiCamera API docs.
 #
+# 
 #    The defaults are which are:
 #       awb_mode= 'auto', #    'off','auto','sunlight','cloudy','shade','tungsten','fluorescent','incandescent','flash','horizon'
 #       exposure_mode= 'auto', # 'off','auto','night','nightpreview','backlight','spotlight','sports','snow','beach','verylong','fixedfps','antishake','fireworks'
@@ -113,21 +114,23 @@ log_level = 'INFO'
 # ---- 16:9 --> 1920x1080 (partial FOV) or 1640x922 (full FOV) or 1280x720 (partial) FOV
 #
 [camera.picam.LIGHT]
-iso = 200
-exposure_mode = "auto"
+iso = 200 # prevent iso changes between frames
 resolution = '1280x720'
+awb_mode= 'sunlight' # fix awb, instead of default 'auto' which changes dynamically
 
 [camera.picam.DIM]
-iso = 200
-exposure_mode = "auto"
+iso = 200 # prevent iso changes between frames. 
+
 framerate = 1.0 # max ss=1
 resolution = '1280x720'
+awb_mode= 'sunlight' # fix awb, instead of default 'auto' which changes dynamically
 
 [camera.picam.DARK]
-iso = 1600
-exposure_mode = "night"
+iso = 1600 # prevent iso changes between frames
+exposure_mode = "night" # or, set to "off" to set TMV calculate exposure time (usually long and better)
 framerate = 0.25 # max ss=4
 resolution = '1280x720'
+awb_mode= 'shade' # fix awb, instead of default 'auto' which changes dynamically
 
 #
 #   The camera is used to sense light and determine the next photo's settings

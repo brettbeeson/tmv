@@ -81,6 +81,13 @@
                                 
                         </li>
                         <li class="nav-item">
+                            <a class="nav-link" id="pills-video-tab" d
+                                data-toggle="pill" href="#pills-video" role="tab"
+                                aria-controls="pills-video"
+                                aria-selected="false">Video</a>
+                                
+                        </li>
+                        <li class="nav-item">
                             <a class="nav-link" id="server" data-toggle="pill"
                                 href="">
                                 Server</a>
@@ -147,9 +154,8 @@
                             aria-labelledby="pills-home-tab">
                             <div class="row">
                                 <figure class="mt-3 figure">
-                                    <img class="img-responsive"
-                                        src="favicon.ico" style="width: 100%;
-                                        height: auto;" id="image" />
+                                    <!--img class="img-responsive" src="favicon.ico" style="width: 100%;height: auto;" id="image" />-->
+                                    <img src="favicon.ico" id="image" />
                                 </figure>
                             </div>
                             <div class="row mt-1 justify-content-center figure-caption">
@@ -270,6 +276,17 @@
                                     id="wifi-info">Info</button>
                                 
                                 
+                            </div>
+                        </div>
+
+                        <!----video preview -->
+                        <div class="tab-pane fade" id="pills-video" role="tabpanel" aria-labelledby="pills-video-tab">
+                            <div class="row">
+                                <h1>Video Preview</h1>
+                            
+                            </div>
+                            <div class="row">
+                                <img id='video-img' src=""></img>
                             </div>
                         </div>
                     </div>  <!--tabs-->

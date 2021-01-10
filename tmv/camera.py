@@ -2,7 +2,6 @@
 
 from signal import signal, SIGINT, SIGTERM
 import argparse
-import gc
 from io import BytesIO
 from sys import maxsize, argv
 from enum import Enum
@@ -30,7 +29,7 @@ from tmv.util import Tomlable, setattrs_from_dict, sleep_until, ensure_config_ex
 from tmv.exceptions import ConfigError, PiJuiceError, SignalException, PowerOff
 from tmv.buttons import ON, OFF, AUTO, StatefulButton, StatefulHWButton
 from tmv.config import *  # pylint: disable=wildcard-import, unused-wildcard-import
-from tmv.interface.screen import TMVScreen
+#from tmv.interface.screen import TMVScreen
 
 LOGGER = logging.getLogger("tmv.camera")
 
@@ -553,20 +552,13 @@ class Camera(Tomlable):
 
         """
         super().__init__()
-        if sw_cam:
-            self._camera = FakePiCamera()
-        else:
-            # try:
-            LOGGER.debug("Picamera() start")
-            self._camera = PiCamera()
-            LOGGER.debug("Picamera() returned")
-            # except PiCameraError:
-            #    raise  CameraError("No camera hardware available.") # from tmv
 
         # software only : read-only
         self.speed_button = StatefulButton(SPEED_FILE, SPEED_BUTTON_STATES, MEDIUM)
         self.mode_button = StatefulButton(MODE_FILE, MODE_BUTTON_STATES, AUTO)
         self.led = None
+
+        self.sw_cam = sw_cam
 
         self._pijuice = None
         self.calc_shutter_speed = False
@@ -583,6 +575,7 @@ class Camera(Tomlable):
         self.active_timer = ActiveTimes.factory(on=True, off=False, camera=self)
         self.file_by_date = True
         self.save_images = True
+        self._last_camera_settings = []
 
         self.file_root = os.path.abspath(".")
         self.overlays = ['spinny', 'image_name', 'settings']
@@ -724,6 +717,12 @@ class Camera(Tomlable):
     def __str__(self):
         return pformat(vars(self))
 
+    def get_camera(self):
+        if self.sw_cam:
+            return FakePiCamera()
+        else:
+            return PiCamera()
+
     def run(self, n=maxsize):
         """
         Main loop. May shutdown machine if required.
@@ -731,9 +730,12 @@ class Camera(Tomlable):
         if self.run_start is None:
             self.run_start = dt.now()
             # Run the light senser so we know what to do on the first loop
-            set_picam(self._camera, {** self.picam_defaults, ** self.picam_sensing})
-            self.capture_light(dt.now())
-            LOGGER.debug(f"Camera first run: level: {self.light_sensor.level} interval: {self.interval.total_seconds()}s")
+            with self.get_camera() as cam:
+                set_picam(cam, {** self.picam_defaults, ** self.picam_sensing})
+                if not self.sw_cam:
+                    time.sleep(1) # allow to settle
+                self.capture_light(cam, dt.now())
+                LOGGER.debug(f"Camera first run: level: {self.light_sensor.level} interval: {self.interval.total_seconds()}s")
 
         for _ in range(0, n):
 
@@ -775,10 +777,12 @@ class Camera(Tomlable):
 
                 if self.light_sense_outstanding:
                     # run light sensor that we missed, immediately
-                    set_picam(self._camera, {
-                        ** self.picam_defaults, ** self.picam_sensing
-                    })
-                    self.capture_light(dt.now())
+                    with self.get_camera() as cam:
+                        set_picam(cam, {** self.picam_defaults, ** self.picam_sensing})
+                        if not self.sw_cam:
+                            time.sleep(1) # allow to settle
+                        self.capture_light(cam, dt.now())
+
                     # no need to sense again this loop
                     self.light_sense_outstanding = False
                     next_sense_mark = dt.now() + timedelta(days=9999)  # dt.max() overflows
@@ -797,14 +801,18 @@ class Camera(Tomlable):
                         if settings['shutter_speed'] is None:
                             settings['shutter_speed'] = self.shutter_speed_from_sensor()
                     LOGGER.debug(settings)
-                    set_picam(self._camera, settings)
                     sleep_until(next_image_mark, dt.now())
-                    self.capture_image(next_image_mark)
+                    with self.get_camera() as cam:
+                        set_picam(cam, settings)
+                        if not self.sw_cam:
+                            time.sleep(1) # allow to settle
+                        self.capture_image(cam, next_image_mark)
                 else:
                     # run light sensor
-                    set_picam(self._camera, {** self.picam_defaults, ** self.picam_sensing})
                     sleep_until(next_sense_mark, instant)
-                    self.capture_light(next_sense_mark)
+                    with self.get_camera() as cam:
+                        set_picam(cam, {** self.picam_defaults, ** self.picam_sensing})
+                        self.capture_light(cam,next_sense_mark)
 
     def shutter_speed_from_last(self):
         """ Return estimated shutter speed in usec based on trying to achieve a pixel
@@ -884,25 +892,54 @@ class Camera(Tomlable):
         else:
             pil_image.save(image_filename)
 
-    def capture_image(self, mark):
+    def capture_image(self, cam, mark):
 
         start = dt.now()
         if self.led:
             self.led.on()
-        pil_image = self.capture()
+
+        # Capture sensor buffer to an in-memory stream
+        stream = BytesIO()
+        cam.capture(stream, format='jpeg')  # use_video_port=True results in poorer quality images
+        stream.seek(0)  # "Rewind" the stream to the beginning so we can read its content
+        pil_image = Image.open(stream)
+
         if self.led:
             self.led.off()
 
         pa = image_pixel_average(pil_image)
-        LOGGER.info("CAPTURED mark: {} pa:{:.3f} es:{:0.3f}s took:{:.3f}s".format(mark, pa, self._camera.exposure_speed / 1000000, (dt.now() - start).total_seconds()))
+        LOGGER.info("CAPTURED mark: {} pa:{:.3f} es:{:0.3f}s took:{:.3f}s".format(mark, pa, cam.exposure_speed / 1000000, (dt.now() - start).total_seconds()))
         image_filename = self.dt2filename(mark)
-        self.recent_images.append((dt.now(), image_filename, self._camera.exposure_speed, pa),)
+        self.recent_images.append((dt.now(), image_filename, cam.exposure_speed, pa),)
         del self.recent_images[0:-10]  # trim to last 10 items
 
         if self.save_images:
             self.apply_overlays(pil_image, mark)
             self.save_image(pil_image, image_filename)
             self.link_latest_image(image_filename)
+
+        self._last_camera_settings = get_picam(cam)
+
+    def capture_light(self, cam, mark):
+        image_filename = join(self.dt2dir(
+            mark), self.dt2basename(mark, image_ext=".sense.jpg"))
+        start = dt.now()
+        # Capture sensor buffer to an in-memory stream
+        stream = BytesIO()
+        cam.capture(stream, format='jpeg')  # use_video_port=True results in poorer quality images
+        stream.seek(0)  # "Rewind" the stream to the beginning so we can read its content
+        pil_image = Image.open(stream)
+        pa = image_pixel_average(pil_image)
+
+        ll = self.light_sensor._assess_level(pa)
+        self.light_sensor.add_reading(mark, pa)
+        LOGGER.debug("SENSED mark:{} pa:{:.3f} ll:{} took:{:.2f}".format(mark, pa, ll, (dt.now() - start).total_seconds()))
+
+        if self.light_sensor.save_images:
+            self.apply_overlays(pil_image, mark)
+            self.save_image(pil_image, image_filename)
+
+        self._last_camera_settings = get_picam(cam)
 
     def link_latest_image(self, image_filename):
         """ Add hardlink to the specified image at a well-known location """
@@ -914,33 +951,6 @@ class Camera(Tomlable):
             os.link(image_filename, d)
         except FileNotFoundError as ex:
             LOGGER.warning(f"Unable to link latest image: {ex}")
-
-    def capture_light(self, mark):
-        image_filename = join(self.dt2dir(
-            mark), self.dt2basename(mark, image_ext=".sense.jpg"))
-        start = dt.now()
-        pil_image = self.capture()
-        pa = image_pixel_average(pil_image)
-
-        ll = self.light_sensor._assess_level(pa)
-        self.light_sensor.add_reading(mark, pa)
-        LOGGER.debug("SENSED mark:{} pa:{:.3f} ll:{} took:{:.2f}".format(mark, pa, ll, (dt.now() - start).total_seconds()))
-
-        if self.light_sensor.save_images:
-            self.apply_overlays(pil_image, mark)
-            self.save_image(pil_image, image_filename)
-
-    def capture(self) -> Image:
-        """ Capture sensor buffer to an in-memory stream"""
-        #d = dt.now()
-        stream = BytesIO()
-        self._camera.capture(stream, format='jpeg')  # ,use_video_port=True)
-        # LOGGER.debug(f"capture: {dt.now() - d}")
-        # "Rewind" the stream to the beginning so we can read its content
-        stream.seek(0)
-        i = Image.open(stream)
-        # LOGGER.debug(f"open   : {dt.now() - d}")
-        return i
 
     def apply_overlays(self, im: Image, mark):
         """ Add dates, spinny, etc. Inplace."""
@@ -956,17 +966,17 @@ class Camera(Tomlable):
                 draw.rectangle(xy=(0, height - 30, width, height), fill=bg_colour)
             if 'settings' in self.overlays:
                 # Draw the picam's settings
-                text = pformat(get_picam(self._camera))
+                text = pformat(self._last_camera_settings)
                 text += "\n\npixel_average = {pxavg:.3f}"
                 text_size = 10
                 font = ImageFont.truetype(FONT_FILE, text_size, encoding='unic')
                 text_box_size = draw.textsize(text=text, font=font)
             if 'simple_settings' in self.overlays:
                 # Draw some of picam's settings
-                picam = get_picam(self._camera)
+                text = pformat(get_picam(self._last_camera_settings))
                 text = f"level={self.light_sensor._current_level} avg={pxavg:.3f}"
                 try:
-                    text += f" es {picam['exposure_speed']/1000000:.3f} iso={picam['iso']} exp={picam['exposure_mode']}"
+                    text += f" es {self._last_camera_settings['exposure_speed']/1000000:.3f} iso={self._last_camera_settings['iso']} exp={self._last_camera_settings['exposure_mode']}"
                 except KeyError as e:
                     LOGGER.warning(f"Unable to get picam settings for overlay: {e}")
                 text_size = 10
@@ -1066,7 +1076,10 @@ class FakePiCamera():
         self.exposure_speed = 0.1
         self.width = 400
         self.height = 300
-
+    def __enter__(self):
+        return self
+    def __exit__(self, _type, value, traceback):
+        pass
     def close(self):
         pass
 
@@ -1316,13 +1329,14 @@ def camera_console(cl_args=argv[1:]):
         LOGGER.debug(e, exc_info=e)
     finally:
         # workaround bug: https://github.com/waveform80/picamera/issues/528
-        if cam._camera is not None:
-            LOGGER.info("Closing camera. Setting framerate = 1 to avoid close bug")
-            cam._camera.framerate = 1
-            cam._camera.close()
-            time.sleep(0.5)
+        #if cam._camera is not None:
+        #    LOGGER.info("Closing camera. Setting framerate = 1 to avoid close bug")
+        #    cam._camera.framerate = 1
+        #    cam._camera.close()
+        #    time.sleep(0.5)
+        pass
 
-    exit(retval)
+    return retval
 
 
 if __name__ == "__main__":

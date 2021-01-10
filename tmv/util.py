@@ -12,6 +12,7 @@ from subprocess import CalledProcessError, PIPE, run
 import argparse
 import logging
 import os
+from sys import stderr
 import glob
 import shutil
 import socket
@@ -483,7 +484,7 @@ def file_by_day_console():
     parser.add_argument("--dest", default='.',
                         help="root folder to store filed files(!)")
 
-    args = (parser.parse_args())
+    args = parser.parse_args()
     LOGGER.setLevel(args.log_level)
     logging.basicConfig(format='%(levelname)s:%(message)s')
 
@@ -496,7 +497,7 @@ def file_by_day_console():
 def wifi_ssid():
     """ Use iwgetid to get ssid in typical form: 'wlan0     ESSID:"NetComm 0405"\n'"""
     try:
-        p = subprocess.run(['sudo', 'iwgetid'], check=True, encoding="UTF-8",capture_output=True)
+        p = subprocess.run(['sudo', 'iwgetid'], check=True, encoding="UTF-8", capture_output=True)
         if p.stdout:
             return p.stdout.split('"')[1]
         else:
@@ -509,7 +510,7 @@ def wifi_ssid():
 def ap_clients(interface='ap0') -> []:
     """ Return a list of mac addresses. Only on pi-ish. """
     try:
-        p = run(["iw", "dev", interface, "station", "dump"], encoding="UTF-8",check=True, capture_output=True)
+        p = run(["iw", "dev", interface, "station", "dump"], encoding="UTF-8", check=True, capture_output=True)
         stations = list(Counter([line for line in p.stdout if "Station" in line]).elements())
         LOGGER.debug(stations)
         return stations
@@ -523,3 +524,35 @@ def strike(text):
     for c in text:
         result = result + c + '\u0336'
     return result
+
+
+def stats_console():
+    from tmv.tmvpijuice import TMVPiJuice, pj_call  # pylint: disable=import-outside-toplevel
+    from tmv.exceptions import PiJuiceError         # pylint: disable=import-outside-toplevel
+    from statistics import mean                     # pylint: disable=import-outside-toplevel
+
+    p = TMVPiJuice()
+
+
+    parser = argparse.ArgumentParser("Interrogate TMV for battery level, etc and print as CSV")
+    parser.add_argument("--interval","-i", type=int, default=10, help="Reading interval in seconds")
+    parser.add_argument("--readings","-n", type=int, default=6, help="Readings to average")
+    args = parser.parse_args()
+    interval = timedelta(seconds=args.interval)
+
+    io_current = []
+    batt_current = []
+    charge = []
+    #print ("datetime,io_current,batt_current,charge")
+
+    for _ in range(args.readings):
+        mark = next_mark(interval, dt.now())
+        sleep_until(mark, dt.now())
+        io_current.append(pj_call(p.status.GetIoCurrent))
+        batt_current.append(pj_call(p.status.GetBatteryCurrent))
+        charge.append(pj_call(p.status.GetChargeLevel))
+
+    try:
+        print (f"{dt2str(mark)},{int(mean(io_current))},{int(mean(batt_current))},{int(mean(charge))}")
+    except PiJuiceError as e:
+        print(e, file=stderr)

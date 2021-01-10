@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 # pylint: disable=line-too-long, logging-fstring-interpolation, dangerous-default-value, logging-not-lazy, global-statement
-# todo check  2 Interfaces aren't being created!
 from sys import stderr, argv
 from os import system
 from pathlib import Path
@@ -15,7 +14,7 @@ from socket import gethostname, gethostbyname
 
 from debugpy import breakpoint
 from flask_socketio import emit, SocketIO
-from flask import Flask, send_from_directory
+from flask import Flask, send_from_directory, Response
 from toml import loads, TomlDecodeError
 
 from tmv.camera import CAMERA_CONFIG_FILE
@@ -26,6 +25,7 @@ from tmv.util import run_and_capture, unlink_safe, LOG_LEVELS, LOG_FORMAT, ensur
 from tmv.exceptions import ButtonError, PiJuiceError
 from tmv.interface.wifi import scan, reconfigure, info
 from tmv.interface.screen import TMVScreen
+from tmv.video_camera import VideoCamera
 
 try:
     from tmv.tmvpijuice import TMVPiJuice, pj_call
@@ -391,6 +391,19 @@ def req_pj_status():
     except (NameError, PiJuiceError) as e:
         LOGGER.warning(e)
         LOGGER.debug(e, exc_info=e)
+
+def gen(camera):
+    """Video streaming generator function."""
+    while True:
+        frame = camera.get_frame()
+        yield (b'--frame\r\n'
+               b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
+
+@app.route('/video')
+def video_feed():
+    """Video streaming route. Put this in the src attribute of an img tag."""
+    return Response(gen(VideoCamera(interface, socketio)),
+                    mimetype='multipart/x-mixed-replace; boundary=frame')
 
 
 def start_threads():

@@ -21,12 +21,12 @@ $(document).ready(function () {
 
   var editor = ace.edit("editor");
   editor.setTheme("ace/theme/xcode");
-  editor.setFontSize(20);
+  editor.setFontSize(16);
   editor.session.setMode("ace/mode/toml");
 
   var wifieditor = ace.edit("wifieditor");
   wifieditor.setTheme("ace/theme/xcode");
-  wifieditor.setFontSize(20);
+  wifieditor.setFontSize(16);
   //wifieditor.session.setMode("ace/mode/wpa?");
   
   $("#pj-status").on("click",  () =>  ws.emit("req-pj-status"));
@@ -46,7 +46,30 @@ $(document).ready(function () {
     let server = $("#server").attr("href");    
       window.open(server,"_blank");
   });
-   
+  
+  // manual
+  $("#video-stop").on("click",  () => $("#video-img").attr('src',""))
+  // auto
+  $("#video-start").on("click",  () => $("#video-img").attr('src',"/video"))
+    $('#pills-tab').on('show.bs.tab', function(e){
+    console.log(e.target)
+    console.log(e.target.id)
+    switch (e.target.id){
+      case "pills-video-tab":{
+           console.log("video!")
+           $("#video-img").attr('src',"/video")
+           break;
+      }
+      default:{
+        console.log("not video")
+        $("#video-img").attr('src',"")
+        break;
+      }
+    }
+  })
+
+  
+
   $("#services").on("click",  () =>     ws.emit("req-services-status"));
   
   $("#journal").on("click",  () =>     ws.emit("req-journal"));

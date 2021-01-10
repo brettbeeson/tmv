@@ -29,7 +29,7 @@ setuptools.setup(
             "tmv-videod=tmv.videod:videod_console",
             "tmv-video-decompile=tmv.videotools:video_decompile_console",
             "tmv-image-tools=tmv.images:image_tools_console",
-            "tmv-influx-stats=tmv.util:influx_stats_console",
+            "tmv-stats=tmv.util:stats_console",
             "tmv-upload=tmv.upload:upload_console",
             "tmv-tunnel = tmv.tunnel:tunnel_console",
             "tmv-interface = tmv.interface.app:interface_console"
