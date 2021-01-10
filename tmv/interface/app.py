@@ -79,7 +79,7 @@ def manage_screen_interface_thread():
         if dt.now() > next_screen_refresh:
             screen.update_display()
             next_screen_refresh = dt.now() + refresh_period
-            LOGGER.debug(f"next refresh is {next_screen_refresh.isoformat()}")
+            #LOGGER.debug(f"next refresh is {next_screen_refresh.isoformat()}")
         else:
             sleep(1)
 

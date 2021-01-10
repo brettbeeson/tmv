@@ -56,12 +56,11 @@ $(document).ready(function () {
     console.log(e.target.id)
     switch (e.target.id){
       case "pills-video-tab":{
-           console.log("video!")
            $("#video-img").attr('src',"/video")
            break;
       }
       default:{
-        console.log("not video")
+        // browser will no longer request frames. server will timeout.
         $("#video-img").attr('src',"")
         break;
       }

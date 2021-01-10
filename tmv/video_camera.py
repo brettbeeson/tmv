@@ -43,9 +43,9 @@ class VideoCameraEvent(object):
             else:
                 # if the client's event is already set, it means the client
                 # did not process a previous frame
-                # if the event stays set for more than 5 seconds, then assume
+                # if the event stays set for more than 3 seconds, then assume
                 # the client is gone and remove it
-                if now - event[1] > 5:
+                if now - event[1] > 3:
                     remove = ident
         if remove:
             del self.events[remove]
@@ -73,7 +73,8 @@ class VideoCamera(object):
             VideoCamera._interface = interface
             VideoCamera._socketio = socketio
             LOGGER.debug('Turning off camera to use video. Starting video thread.')
-            VideoCamera._socketio.emit("message", "Turning off camera to use video")
+            VideoCamera._socketio.emit("message", f"Turning off camera to use video. Wait f{interface.interval.total_seconds()}s.")
+            time.sleep(interface.interval.total_seconds())
             # save current camera mode and turn off
             # since camera is running in another process (tmv-camera) we can't simulatenously
             # do video and camera
@@ -99,19 +100,24 @@ class VideoCamera(object):
 
     @staticmethod
     def frames():
-        with picamera.PiCamera() as camera:
-            # let camera warm up
-            time.sleep(.5)
-            stream = io.BytesIO()
-            for _ in camera.capture_continuous(stream, 'jpeg',
-                                               use_video_port=True):
-                # return current frame
-                stream.seek(0)
-                yield stream.read()
+        try:
+            with picamera.PiCamera() as camera:
+                # let camera warm up
+                time.sleep(.5)
+                stream = io.BytesIO()
+                for _ in camera.capture_continuous(stream, 'jpeg',
+                                                   use_video_port=True):
+                    # return current frame
+                    stream.seek(0)
+                    yield stream.read()
 
-                # reset stream for next frame
-                stream.seek(0)
-                stream.truncate()
+                    # reset stream for next frame
+                    stream.seek(0)
+                    stream.truncate()
+        except Exception as e:
+            LOGGER.error(e)
+            VideoCamera._interface.emit("error", e)
+            
 
     @classmethod
     def _thread(cls):
