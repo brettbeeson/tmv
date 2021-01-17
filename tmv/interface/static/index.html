@@ -15,13 +15,15 @@
         <script src="js/jquery.min.js" crossorigin="anonymous"></script>
         <script src="js/popper.min.js" crossorigin="anonymous"></script>
         <script src="js/bootstrap.bundle.min.js" crossorigin="anonymous"></script>
-        <script src="js/socket.io.js" crossorigin="anonymous"></script>
+        <!-- The server socketio version must be compatible - check this on updates -->
+        <script src="js/socket.io.min.js" origin="anonymous"></script>
         <script src="js/toastr.min.js"></script>
         <script src="js/ace-builds/src-min/ace.js" type="text/javascript"></script>
         <script src="js/cropper.min.js"></script>
         <script src="js/jquery-cropper.min.js"></script>
         <script src="js/jquery.timeago.js" type="text/javascript"></script>
         <script src="js/strftime.js" type="text/javascript"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/json2html/1.4.0/json2html.min.js"></script>
 
         <script src="app.js"></script>
     </head>
@@ -38,8 +40,9 @@
             <button class="btn btn-secondary" type="pill" disabled>
                 <span id="connection-spinner" class="slow-spin spinner-grow
                     spinner-grow-sm" role="status" aria-hidden="true"></span>
-                <span id="connection-status">Connecting...</span>
+                <span id="connection-status">Connecting</span>
             </button>
+           
             <ul class="navbar-nav ml-auto">
                 <button class="navbar-toggler" type="button"
                     data-toggle="collapse" data-target="#navbarCollapse"
@@ -78,6 +81,13 @@
                                 
                         </li>
                         <li class="nav-item">
+                            <a class="nav-link" id="pills-video-tab" d
+                                data-toggle="pill" href="#pills-video" role="tab"
+                                aria-controls="pills-video"
+                                aria-selected="false">Video</a>
+                                
+                        </li>
+                        <li class="nav-item">
                             <a class="nav-link" id="server" data-toggle="pill"
                                 href="">
                                 Server</a>
@@ -111,9 +121,10 @@
 
 
             <div class="form-group mb-2">
-                <div id="camera-name"></div>
+                <span id="camera-name">                </span>
+            <span id="new-image-indicator" class="ml-5 spinner-border spinner-border-sm text-primary hidden" role="status"></span>
             </div>
-
+            
             <div class="form-group mb-2">
                 <label for="camera-speed" class="ml-auto">Speed</label>
                 <div id="camera-speed" class="btn-group btn-group-toggle"
@@ -143,19 +154,22 @@
                             aria-labelledby="pills-home-tab">
                             <div class="row">
                                 <figure class="mt-3 figure">
-                                    <img class="img-responsive"
-                                        src="favicon.ico" style="width: 100%;
-                                        height: auto;" id="image" />
+                                    <!--img class="img-responsive" src="favicon.ico" style="width: 100%;height: auto;" id="image" />-->
+                                    <img src="favicon.ico" id="image" />
                                 </figure>
                             </div>
-                            <div class="row mt-1 justify-content-center">
-                                <figcaption class="figure-caption" id="latest-image-time"></figcaption>
+                            <div class="row mt-1 justify-content-center figure-caption">
+                                    <span  id="latest-image-time"></span> &nbsp;|&nbsp;
+                                    <span id="latest-image-ago" class="timeago"></span>
                             </div>
-                            <div class="row mt-1 justify-content-center">
-                                <figcaption class="figure-caption">
-                                    <time id="latest-image-ago" class="timeago "></time>
-                                </figcaption>
+                            <div class="row mt-1 justify-content-center figure-caption">
+                                    <span  id="camera-interval"></span>
                             </div>
+                            <div class="row mt-1 justify-content-center figure-caption">
+                                    <span  id="pj-battery-level"></span>  &nbsp;&nbsp;
+                                    <span  id="pj-battery-status"></span>  
+                                    
+                            </div>                                                      
                         </div>
 
                         <div class="tab-pane fade" id="pills-settings"
@@ -229,11 +243,13 @@
                                 <button class="btn btn-primary ml-2" id="journal">Journal</button>
                                 <button class="btn btn-primary ml-2" id="files">Files</button>
                                 <button class="btn btn-primary ml-2" id="about">About</button>
+                                <button class="btn btn-primary ml-2" id="pj-status">PiJuice</button>
                                 <button class="btn btn-danger ml-auto" id="restart-hw">Restart HW</button>
                                 <button class="btn btn-danger ml-2" id="shutdown-hw">Shutdown HW</button>
                                 <button class="btn btn-secondary ml-2" id="cancel-shutdown">Cancel</button>
                             </div>
                         </div>
+                        
                         <!-- edit wifi creds-->
                         <div class="tab-pane fade" id="pills-wifi"
                             role="tabpanel" aria-labelledby="pills-wifi-tab">
@@ -256,7 +272,21 @@
                             <div class="row">
                                 <button class="btn btn-secondary ml-2"
                                     id="wifi-scan">Scan</button>
+                                    <button class="btn btn-secondary ml-2"
+                                    id="wifi-info">Info</button>
                                 
+                                
+                            </div>
+                        </div>
+
+                        <!----video preview -->
+                        <div class="tab-pane fade" id="pills-video" role="tabpanel" aria-labelledby="pills-video-tab">
+                            <div class="row">
+                                <h1>Video Preview</h1>
+                            
+                            </div>
+                            <div class="row">
+                                <img id='video-img' src=""></img>
                             </div>
                         </div>
                     </div>  <!--tabs-->

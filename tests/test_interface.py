@@ -72,27 +72,27 @@ def test_control_console(setup_module, capsys):
     """
     Run buttons console, testing output. Use local button files.
     """
-    
-    local_config = TEST_DATA / "test-interface.toml" # local buttons
-    
+
+    local_config = TEST_DATA / "test-interface.toml"  # local buttons
+
     # default - should create files
     with pytest.raises(SystemExit) as excinfo:
-        buttons_console(["-c",str(local_config)])
+        buttons_console(["-c", str(local_config)])
         assert excinfo.value.code == 0
-    out = capsys.readouterr().out.strip() 
-    assert out == "on\nslow"
-    
+    out = capsys.readouterr().out.strip()
+    assert out == "auto\nmedium"
+
     # set
-    cl = ["-c",str(local_config),"on", "slow"]
+    cl = ["-c", str(local_config), "on", "slow"]
     with pytest.raises(SystemExit) as excinfo:
         buttons_console(cl)
         assert excinfo.value.code == 0
-    
+
     # get (from file - should be the set'd values)
     with pytest.raises(SystemExit) as excinfo:
-        buttons_console(["-c",str(local_config)])
+        buttons_console(["-c", str(local_config)])
         assert excinfo.value.code == 0
-    out = capsys.readouterr().out.strip() 
+    out = capsys.readouterr().out.strip()
     assert out == "on\nslow"
 
 
@@ -106,5 +106,5 @@ def manual_test_start_server(setup_module):
         ["--config-file", "tests/testdata/test-interface.toml", "-ll", "DEBUG"],)
 
 
-#if __name__ == '__main__':
+# if __name__ == '__main__':
 #    manual_test_start_server(None)

@@ -1,14 +1,25 @@
-sudo apt install -y pijuice-base
-sudo apt install -y python3-pip git pijuice-base python3-picamera # rpi.gpio
-# Pillow dependancies
-sudo apt install -y libjpeg-dev libopenjp2-7 libtiff5
-# psutils dependancies
-sudo apt-get install gcc python3-dev
-#  enable saving of iptables
-sudo apt install iptables-persistent
-# tmv!
-git clone https://github.com/brettbeeson/tmv
-cd tmv
-#sudo python3 -m pip install timemv # production
+echo Updating system
+sudo apt update
+
+echo Installing base dependancies
+sudo apt install -y python3-pip git pijuice-base python3-picamera
+
+echo Pillow install as setup.py sometimes fails to run correctly without this
+sudo apt install libjpeg-dev libopenjp2-7 libtiff5
+sudo pip3 install pillow 
+#sudo pip3 install pillow --upgrade --force-reinstall pillow # plan b
+
+echo Seperate botocore install as it is faster than in setup.py
+sudo pip3 install  boto3 # botocore
+echo Instead of setup.py where 2.21.0 - not 2.25.1 - is installed
+sudo pip3 install --upgrade requests
+# setup.py doesn't install for unknown reason
+sudo pip3 install flask
+
+
+echo Installing TMV
 sudo python3 setup.py develop   # dev
-sudo scripts/install-tmv-camera.sh # install systemd services       
+sudo python3 setup.py develop   # twice appears required ???
+
+echo Installing TMV services
+sudo scripts/install-tmv-camera.sh 

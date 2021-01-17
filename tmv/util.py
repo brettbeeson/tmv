@@ -3,6 +3,7 @@
 
 from re import search, sub
 from pathlib import Path
+from collections import Counter
 import time  # not "from" to allow monkeypatch
 from shutil import copyfile
 import datetime
@@ -11,6 +12,7 @@ from subprocess import CalledProcessError, PIPE, run
 import argparse
 import logging
 import os
+from sys import stderr
 import glob
 import shutil
 import socket
@@ -20,8 +22,6 @@ from enum import Enum
 from pkg_resources import resource_filename
 import toml
 import pytimeparse
-import humanize
-
 
 
 class LOG_LEVELS(Enum):
@@ -40,7 +40,6 @@ class LOG_LEVELS(Enum):
 LOG_LEVEL_STRINGS = ['CRITICAL', 'ERROR', 'WARNING', 'INFO', 'DEBUG']
 
 LOGGER = logging.getLogger("tmv.util")
-
 
 LOG_FORMAT = '%(levelname)-8s %(filename)-8s: %(message)s'
 LOG_FORMAT_DETAILED = '%(levelname)-8s pid %(process)s in %(filename)s,%(lineno)d (%(funcName)s): %(message)s'
@@ -94,15 +93,6 @@ class Tomlable:
         except KeyError:            # doesn't exist in new attrs
             if default_value:
                 setattr(self, attr_name, default_value)
-
-
-class SoftHard(Enum):
-    SOFTWARE = 'SOFTWARE',
-    HARDWARE = 'HARDWARE'
-
-
-SOFTWARE = SoftHard.SOFTWARE
-HARDWARE = SoftHard.HARDWARE
 
 
 def log_level_string_to_int(log_level_string):
@@ -317,7 +307,7 @@ def check_internet(host="8.8.8.8", port=53, timeout=5):
         LOGGER.debug(exc)
         return False
 
-    
+
 def run_and_capture(cl: list, log_filename=None, timeout=None):
     """
     Only for python <=3.6. Use "capture" keyword for >3.6
@@ -419,7 +409,7 @@ def service_details(service):
         dead
     """
     # stderr ignored; return can be non-zero
-    p = run(["systemctl", "status", service], encoding='UTF-8', stdout=subprocess.PIPE, check=False)
+    p = run(["systemctl", "status", service], encoding='UTF-8', capture_output=True, check=False)
     output = p.stdout
     service_regx = r"Loaded:.*\/(.*service);"
     status_regx = r"Active:(.*) since (.*);(.*)"
@@ -470,7 +460,7 @@ def neighborhood(iterable):
 
 def ensure_config_exists(config_file):
     """
-    Make config_file if it doesn't exist. 
+    Make config_file if it doesn't exist.
     """
     try:
         cf = Path(config_file)
@@ -494,7 +484,7 @@ def file_by_day_console():
     parser.add_argument("--dest", default='.',
                         help="root folder to store filed files(!)")
 
-    args = (parser.parse_args())
+    args = parser.parse_args()
     LOGGER.setLevel(args.log_level)
     logging.basicConfig(format='%(levelname)s:%(message)s')
 
@@ -502,3 +492,67 @@ def file_by_day_console():
     if not os.path.exists(args.dest):
         os.mkdir(args.dest)
     file_by_day(file_list, args.dest, args.move)
+
+
+def wifi_ssid():
+    """ Use iwgetid to get ssid in typical form: 'wlan0     ESSID:"NetComm 0405"\n'"""
+    try:
+        p = subprocess.run(['sudo', 'iwgetid'], check=True, encoding="UTF-8", capture_output=True)
+        if p.stdout:
+            return p.stdout.split('"')[1]
+        else:
+            return None
+    except (CalledProcessError, TypeError) as e:
+        LOGGER.warning(e)
+        return None
+
+
+def ap_clients(interface='ap0') -> []:
+    """ Return a list of mac addresses. Only on pi-ish. """
+    try:
+        p = run(["iw", "dev", interface, "station", "dump"], encoding="UTF-8", check=True, capture_output=True)
+        stations = list(Counter([line for line in p.stdout if "Station" in line]).elements())
+        LOGGER.debug(stations)
+        return stations
+    except CalledProcessError as e:
+        LOGGER.warning(e)
+        return []
+
+
+def strike(text):
+    result = ''
+    for c in text:
+        result = result + c + '\u0336'
+    return result
+
+
+def stats_console():
+    from tmv.tmvpijuice import TMVPiJuice, pj_call  # pylint: disable=import-outside-toplevel
+    from tmv.exceptions import PiJuiceError         # pylint: disable=import-outside-toplevel
+    from statistics import mean                     # pylint: disable=import-outside-toplevel
+
+    p = TMVPiJuice()
+
+
+    parser = argparse.ArgumentParser("Interrogate TMV for battery level, etc and print as CSV")
+    parser.add_argument("--interval","-i", type=int, default=10, help="Reading interval in seconds")
+    parser.add_argument("--readings","-n", type=int, default=6, help="Readings to average")
+    args = parser.parse_args()
+    interval = timedelta(seconds=args.interval)
+
+    io_current = []
+    batt_current = []
+    charge = []
+    #print ("datetime,io_current,batt_current,charge")
+
+    for _ in range(args.readings):
+        mark = next_mark(interval, dt.now())
+        sleep_until(mark, dt.now())
+        io_current.append(pj_call(p.status.GetIoCurrent))
+        batt_current.append(pj_call(p.status.GetBatteryCurrent))
+        charge.append(pj_call(p.status.GetChargeLevel))
+
+    try:
+        print (f"{dt2str(mark)},{int(mean(io_current))},{int(mean(batt_current))},{int(mean(charge))}")
+    except PiJuiceError as e:
+        print(e, file=stderr)

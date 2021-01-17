@@ -1,4 +1,5 @@
-from  subprocess import run
+from subprocess import run
+
 
 def scan(interface='wlan0'):
     """ Run a wifi scan and return text with information
@@ -14,13 +15,21 @@ def scan(interface='wlan0'):
     """
     cl = ['wpa_cli', '-i', interface, 'scan']
     run(cl, encoding="UTF-8", check=True, capture_output=True)
-    
+
     cl = ['wpa_cli', '-i', interface, 'scan_results']
-    scan_results = run(cl, encoding="UTF-8",  check=True, capture_output=True)
+    scan_results = run(cl, encoding="UTF-8", check=True, capture_output=True)
     return scan_results.stdout
+
 
 def reconfigure(interface='wlan0'):
     cl = ['wpa_cli', '-i', interface, 'reconfigure']
     r = run(cl, encoding="UTF-8", check=True, capture_output=True)
-    print (r.stdout)
+    return r.stdout
+
+
+def info(interface=None) -> str:
+    cl = ['ip', 'address', 'show']
+    if interface is not None:
+        cl.extend(['dev', interface])
+    r = run(cl, encoding="UTF-8", check=True, capture_output=True)
     return r.stdout

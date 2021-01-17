@@ -1,11 +1,9 @@
-# pylint: disable=import-error,protected-access
+# pylint: disable=import-error,protected-access, redefined-outer-name, unused-argument
 from os import chdir, getcwd
-from tempfile import TemporaryDirectory, mkdtemp
+from tempfile import mkdtemp
 import logging
 import pytest
-from pathlib import Path
 from tmv.config import *  # pylint: disable=unused-wildcard-import, wildcard-import
-from tmv.camera import Camera, FakePiCamera
 from tmv.util import LOG_FORMAT
 from tmv.buttons import StatefulButton
 
@@ -16,6 +14,7 @@ cwd_buttons = """
         file = './camera-speed'
 """
 
+
 @pytest.fixture(scope="module")
 def setup_module():
     chdir(mkdtemp())
@@ -25,7 +24,7 @@ def setup_module():
 
 
 def test_buttons(setup_module):
-    s = StatefulButton("./buttonfile",MODE_BUTTON_STATES)
+    s = StatefulButton("./buttonfile", MODE_BUTTON_STATES)
     assert s.value == ON
     s.value = AUTO
     assert s.value == AUTO

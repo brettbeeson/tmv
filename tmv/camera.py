@@ -1,14 +1,14 @@
-# pylint: disable=protected-access, line-too-long, logging-fstring-interpolation, dangerous-default-value, logging-not-lazy
+# pylint: disable=protected-access, line-too-long, logging-fstring-interpolation, dangerous-default-value, logging-not-lazy, too-many-lines
 
 from signal import signal, SIGINT, SIGTERM
 import argparse
-import gc
 from io import BytesIO
-from sys import stderr, maxsize, argv
+from sys import maxsize, argv
 from enum import Enum
-import datetime
-from datetime import datetime as dt, timedelta             # dt = class
-import time
+import datetime  # for datetime.time
+from datetime import datetime as dt, timedelta             # dt = class, time=class
+# to enable monkeypatching, don't import "from x.y", but instead "import y" and use "x.y"
+import time  # for time.sleep
 import os
 from os.path import join
 import logging
@@ -29,41 +29,36 @@ from tmv.util import Tomlable, setattrs_from_dict, sleep_until, ensure_config_ex
 from tmv.exceptions import ConfigError, PiJuiceError, SignalException, PowerOff
 from tmv.buttons import ON, OFF, AUTO, StatefulButton, StatefulHWButton
 from tmv.config import *  # pylint: disable=wildcard-import, unused-wildcard-import
+#from tmv.interface.screen import TMVScreen
 
-LOGGER = logging.getLogger("tmv.camera")  # __name__
-
-try:
-    # optional, for controling power with a PiJuice
-    from tmv.tmvpijuice import TMVPiJuice
-except (ImportError, NameError) as exc:
-    LOGGER.debug(exc)
+LOGGER = logging.getLogger("tmv.camera")
 
 try:
     from picamera import PiCamera
-    #import RPi.GPIO as GPIO
     import gpiozero
 except ImportError as exc:
-    LOGGER.debug(exc)
+    LOGGER.warning(exc)
 
-def ModeButtonFactory(config_dict):
-    path=config_dict.get('file', MODE_FILE)
-    return StatefulButton(path, MODE_BUTTON_STATES)   
 
-def ModeHWButtonFactory(config_dict):
-    path=config_dict.get('file', MODE_FILE)
-    button=config_dict.get('button', MODE_BUTTON)
-    led=config_dict.get('led', MODE_LED)
-    return StatefulHWButton(path, MODE_BUTTON_STATES,led,button)
+def ModeButtonFactory(config_dict, software_only):
+    path = config_dict.get('file', MODE_FILE)
+    button = config_dict.get('button', None)
+    led = config_dict.get('led', None)
+    if button and not software_only:
+        return StatefulHWButton(path, MODE_BUTTON_STATES, led, button, fallback=AUTO)
+    else:
+        return StatefulButton(path, MODE_BUTTON_STATES, fallback=AUTO)
 
-def SpeedButtonFactory(config_dict):
-    path=config_dict.get('file', SPEED_FILE)
-    return StatefulButton(path, SPEED_BUTTON_STATES)   
 
-def SpeedHWButtonFactory(config_dict):
-    path=config_dict.get('file', SPEED_FILE)
-    button=config_dict.get('button', SPEED_BUTTON)
-    led=config_dict.get('led', SPEED_LED)
-    return StatefulHWButton(path, SPEED_BUTTON_STATES,led,button)
+def SpeedButtonFactory(config_dict, software_only):
+    path = config_dict.get('file', SPEED_FILE)
+    button = config_dict.get('button', None)
+    led = config_dict.get('led', None)
+    if button and not software_only:
+        return StatefulHWButton(path, SPEED_BUTTON_STATES, led_pin=led, button_pin=button, fallback=MEDIUM)
+    else:
+        return StatefulButton(path, SPEED_BUTTON_STATES, fallback=MEDIUM)
+
 
 class LightLevel(Enum):
     """ Measured by a sensor, or an image. Unit ~ = lux or pixel_average"""
@@ -152,7 +147,7 @@ class YoungColl(MutableSequence):
         self.list[i] = v
         self.list = sorted(self.list)
 
-    def insert(self, i, v):
+    def insert(self, i, v):  # pylint: disable=arguments-differ
         self.list.insert(i, v)
         self.list = sorted(self.list)
 
@@ -517,10 +512,12 @@ class SunCalc(Timed):
         self.update_calcs()
         return super().active()
 
+
 class Camera(Tomlable):
     """ A timelapse camera with a real/synth/dummy camera"""
 
-    
+    # Factor between intervals wrt speeds
+    SPEED_MULTIPLIER = 10
 
     # Defaults as per docs. Note:
     # - awb_gains: get/set, unknown default
@@ -547,7 +544,7 @@ class Camera(Tomlable):
         'zoom': (0.0, 0.0, 1.0, 1.0)
     }
 
-    def __init__(self, sw_cam = False):
+    def __init__(self, sw_cam=False):
         """Create the camera hardware setup.
 
         Raises:
@@ -555,26 +552,13 @@ class Camera(Tomlable):
 
         """
         super().__init__()
-        if sw_cam:
-            self._camera = FakePiCamera()
-        else:
-            # try:
-            LOGGER.debug("Picamera() start")
-            self._camera = PiCamera()
-            LOGGER.debug("Picamera() returned")
-            # except PiCameraError:
-            #    raise  CameraError("No camera hardware available.") # from tmv
 
-       
         # software only : read-only
-        self.speed_button = StatefulButton(SPEED_FILE,SPEED_BUTTON_STATES)
-        self.mode_button = StatefulButton(MODE_FILE,MODE_BUTTON_STATES)
+        self.speed_button = StatefulButton(SPEED_FILE, SPEED_BUTTON_STATES, MEDIUM)
+        self.mode_button = StatefulButton(MODE_FILE, MODE_BUTTON_STATES, AUTO)
         self.led = None
 
-        try:
-            self.led = gpiozero.LED(ACTIVITY_LED)
-        except NameError as e:
-            print(f"Continuing after exception configuring activity LED: {e}", file=stderr)
+        self.sw_cam = sw_cam
 
         self._pijuice = None
         self.calc_shutter_speed = False
@@ -587,10 +571,11 @@ class Camera(Tomlable):
         self.light_sense_outstanding = False
         # just wait if less than this duration
         self.inactive_min = timedelta(minutes=30)
-        self.interval = timedelta(seconds=60)
+        self._interval = timedelta(seconds=60)
         self.active_timer = ActiveTimes.factory(on=True, off=False, camera=self)
         self.file_by_date = True
         self.save_images = True
+        self._last_camera_settings = []
 
         self.file_root = os.path.abspath(".")
         self.overlays = ['spinny', 'image_name', 'settings']
@@ -620,7 +605,6 @@ class Camera(Tomlable):
             "shutter_speed": 10000
         }
 
-
     @property
     def latest_image(self):
         """ return with file_root as the ... file root! """
@@ -630,6 +614,11 @@ class Camera(Tomlable):
     def latest_image(self, value):
         self._latest_image = value
 
+    @property
+    def interval(self):
+        """ return the interval, adjusted via speed_button"""
+        return interval_speeded(self._interval, self.speed_button.value, self.SPEED_MULTIPLIER)
+
     def configd(self, config_dict):
         c = config_dict  # shortcut
         if 'camera' in config_dict:
@@ -637,21 +626,24 @@ class Camera(Tomlable):
         if 'log_level' in c:
             LOGGER.setLevel(c['log_level'])
         if 'mode_button' in c:
-            self.mode_button = ModeButtonFactory(c['mode_button'])
-            LOGGER.debug(f"config'd button: {self.mode_button}")
+            self.mode_button = ModeButtonFactory(c['mode_button'], software_only=True)
+            LOGGER.debug(f"config'd ModeButton: {self.mode_button}")
         if 'speed_button' in c:
-            self.speed_button = SpeedButtonFactory(c['speed_button'])
-            LOGGER.debug(f"config'd button: {self.speed_button}")
-
+            self.speed_button = SpeedButtonFactory(c['speed_button'], software_only=True)
+            LOGGER.debug(f"config'd SpeedButton: {self.speed_button}")
+        if 'activity' in c:
+            if c['activity']['led']:
+                self.led = gpiozero.LED(int(c['activity']['led']))
         if c.get('pijuice', False):
             try:
+                # optional, for controling power with a PiJuice
+                from tmv.tmvpijuice import TMVPiJuice  # pylint: disable=import-outside-toplevel
                 self._pijuice = TMVPiJuice()
-            except (ImportError, NameError) as exc:
+            except (ModuleNotFoundError, ImportError, NameError) as exc:
                 self._pijuice = None
-                LOGGER.warning("Failed to init pijuice. Continuting.",exc_info=exc)
+                LOGGER.warning("Failed to init pijuice:  {exc}. Continuing.")
+                LOGGER.debug("Failed to init pijuice. Continuting.", exc_info=exc)
 
-        # self.setattr_from_dict(manual.abspath(
-        # os.path.expanduser(self.file_root)
         self.setattr_from_dict('file_root', c)
         self.setattr_from_dict('overlays', c)
         self.setattr_from_dict('calc_shutter_speed', c)
@@ -670,9 +662,7 @@ class Camera(Tomlable):
 
         if 'interval' in c:
             # interval specified as seconds: convert to timedelta
-            self.interval = timedelta(seconds=c['interval'])
-            if self.interval.total_seconds() < 10.0:
-                LOGGER.warning("Intervals < 10s are not tested")
+            self._interval = timedelta(seconds=c['interval'])
 
         if 'inactive_threshold' in c:
             # inactive_threshold specified as seconds: convert to timedelta
@@ -715,12 +705,23 @@ class Camera(Tomlable):
             raise ConfigError("power_off ({}) must be longer than inactive_min ({}). "
                               .format(self.light_sensor.power_off, self.inactive_min))
 
-        # todo: finish
-        #known_keys = ['log_level', ]
-        #unknown = (k for k in c if k not in known_keys)
+        known_keys = ['log_level', 'sensor', 'picam', 'on', 'off', 'inactive_threshold',
+                      'camera_inactive_action', 'interval', 'city', 'pijuice', 'speed_button',
+                      'file_root', 'latest_image', 'overlays', 'calc_shutter_speed', 'mode_button',
+                      'activity']
+
+        unknowns = list(k for k in c if k not in known_keys)
+        if unknowns:
+            raise ConfigError(f'Unknown settings for [camera]: {unknowns}')
 
     def __str__(self):
         return pformat(vars(self))
+
+    def get_camera(self):
+        if self.sw_cam:
+            return FakePiCamera()
+        else:
+            return PiCamera()
 
     def run(self, n=maxsize):
         """
@@ -729,9 +730,12 @@ class Camera(Tomlable):
         if self.run_start is None:
             self.run_start = dt.now()
             # Run the light senser so we know what to do on the first loop
-            set_picam(self._camera, {** self.picam_defaults, ** self.picam_sensing})
-            self.capture_light(dt.now())
-            LOGGER.debug("Firstrun: level: {}".format(self.light_sensor.level))
+            with self.get_camera() as cam:
+                set_picam(cam, {** self.picam_defaults, ** self.picam_sensing})
+                if not self.sw_cam:
+                    time.sleep(1) # allow to settle
+                self.capture_light(cam, dt.now())
+                LOGGER.debug(f"Camera first run: level: {self.light_sensor.level} interval: {self.interval.total_seconds()}s")
 
         for _ in range(0, n):
 
@@ -757,6 +761,10 @@ class Camera(Tomlable):
                 # we want to turn off for an hour and then re-check.
                 # Hence we check if we're really active after sleeping and consider if we
                 # should just run the light_sensor
+                else:
+                    # inactive but too short a period to sleep/power down: just wait
+                    pass
+                    # time.time.sleep(1)
 
             if self.mode_button.value == ON or self.active_timer.active():
 
@@ -765,14 +773,16 @@ class Camera(Tomlable):
                 instant = dt.now()
                 next_image_mark = next_mark(self.interval, instant)
                 next_sense_mark = next_mark(self.light_sensor.freq, instant)
-                # logger.debug("instant: {} next_image_mark: {} next_sense_mark: {}".format(                        instant, next_image_mark, next_sense_mark))
+                LOGGER.debug("interval: {} instant: {} next_image_mark: {} next_sense_mark: {}".format(self.interval, instant, next_image_mark, next_sense_mark))
 
                 if self.light_sense_outstanding:
                     # run light sensor that we missed, immediately
-                    set_picam(self._camera, {
-                        ** self.picam_defaults, ** self.picam_sensing
-                    })
-                    self.capture_light(dt.now())
+                    with self.get_camera() as cam:
+                        set_picam(cam, {** self.picam_defaults, ** self.picam_sensing})
+                        if not self.sw_cam:
+                            time.sleep(1) # allow to settle
+                        self.capture_light(cam, dt.now())
+
                     # no need to sense again this loop
                     self.light_sense_outstanding = False
                     next_sense_mark = dt.now() + timedelta(days=9999)  # dt.max() overflows
@@ -791,36 +801,44 @@ class Camera(Tomlable):
                         if settings['shutter_speed'] is None:
                             settings['shutter_speed'] = self.shutter_speed_from_sensor()
                     LOGGER.debug(settings)
-                    set_picam(self._camera, settings)
                     sleep_until(next_image_mark, dt.now())
-                    
-
-                    self.capture_image(next_image_mark)
+                    with self.get_camera() as cam:
+                        set_picam(cam, settings)
+                        if not self.sw_cam:
+                            time.sleep(1) # allow to settle
+                        self.capture_image(cam, next_image_mark)
                 else:
                     # run light sensor
-                    set_picam(self._camera, {** self.picam_defaults, ** self.picam_sensing})
                     sleep_until(next_sense_mark, instant)
-                    self.capture_light(next_sense_mark)
+                    with self.get_camera() as cam:
+                        set_picam(cam, {** self.picam_defaults, ** self.picam_sensing})
+                        self.capture_light(cam,next_sense_mark)
 
     def shutter_speed_from_last(self):
         """ Return estimated shutter speed in usec based on trying to achieve a pixel
             average of 0.5 on the last image, using linear interpolation """
         if len(self.recent_images) == 0:
-            # LOGGER.debug("No recent images")
-            LOGGER.debug("No recent images")
+            LOGGER.debug("No recent images to calc shutter speed")
             return None
         last_image = self.recent_images[-1]
         pa1 = last_image[3]
         es1 = last_image[2]
         if es1 is None:
-            LOGGER.debug("No shutter speed")
+            LOGGER.debug("No shutter speed stored")
             return None
         if pa1 == 0:
             LOGGER.debug("Pixel average is zero")
             return 999
         pa2 = 0.5
         es2 = pa2 * es1 / pa1
-        LOGGER.debug(f"pa1={pa1:.2f} es1={es1:0.2f} pa2={pa2:.2f} es2={es2:.2f}")
+        es2 = max(es2, 5)  # max shutter open time
+
+        es_min = (1 / 100) * 1000000  # 10,000us
+        es_max = 5 * 1000000
+        es2 = min(es_max, es2)
+        es2 = max(es_min, es2)
+        es2 = int(es2)
+        LOGGER.debug(f"pa1={pa1:.2f} es1={es1} pa2={pa2:.2f} es2={es2}")
         return int(es2)
 
     def shutter_speed_from_sensor(self):
@@ -841,8 +859,8 @@ class Camera(Tomlable):
                      PA
 
         """
-        sl_min = 1 / 100  # 10,000us
-        sl_max = 5
+        sl_min = (1 / 100) * 1000000  # 10,000us
+        sl_max = 5 * 1000000
         # sensor is insensitive
         # default definition of 'dark' is 0.05
         pa_min = 0.02
@@ -853,8 +871,8 @@ class Camera(Tomlable):
         sl = m * pa + c
         sl = min(sl_max, sl)
         sl = max(sl_min, sl)
+        sl = int(sl)
         LOGGER.debug(f"pa={pa:.3f} M_sl={sl:0.3f} m={m:.2f} c={c:.2f}")
-        sl = int(sl * 1000 * 1000)
 
         return sl
 
@@ -863,8 +881,8 @@ class Camera(Tomlable):
         try:
             if pil_image.size[0] * pil_image.size[1] == 0:
                 raise RuntimeError("Image has zero width or height")
-            pil_image.verify()
-        except Exception as exc:
+            pil_image.verify()  # raises "suitable exception"
+        except Exception as exc:  # pylint: disable=broad-except
             LOGGER.warning(f"{image_filename} failed verify and is not saved: {exc}")
             return
         if os.path.dirname(image_filename) != '':
@@ -874,26 +892,54 @@ class Camera(Tomlable):
         else:
             pil_image.save(image_filename)
 
-    def capture_image(self, mark):
+    def capture_image(self, cam, mark):
 
         start = dt.now()
         if self.led:
             self.led.on()
-        pil_image = self.capture()
+
+        # Capture sensor buffer to an in-memory stream
+        stream = BytesIO()
+        cam.capture(stream, format='jpeg')  # use_video_port=True results in poorer quality images
+        stream.seek(0)  # "Rewind" the stream to the beginning so we can read its content
+        pil_image = Image.open(stream)
+
         if self.led:
             self.led.off()
 
         pa = image_pixel_average(pil_image)
-        LOGGER.info("CAPTURED mark: {} pa:{:.3f} took:{:.2f}".format(mark, pa, (dt.now() - start).total_seconds()))
-
+        LOGGER.info("CAPTURED mark: {} pa:{:.3f} es:{:0.3f}s took:{:.3f}s".format(mark, pa, cam.exposure_speed / 1000000, (dt.now() - start).total_seconds()))
         image_filename = self.dt2filename(mark)
-        self.recent_images.append((dt.now(), image_filename, self._camera.exposure_speed, pa),)
+        self.recent_images.append((dt.now(), image_filename, cam.exposure_speed, pa),)
         del self.recent_images[0:-10]  # trim to last 10 items
 
         if self.save_images:
             self.apply_overlays(pil_image, mark)
             self.save_image(pil_image, image_filename)
             self.link_latest_image(image_filename)
+
+        self._last_camera_settings = get_picam(cam)
+
+    def capture_light(self, cam, mark):
+        image_filename = join(self.dt2dir(
+            mark), self.dt2basename(mark, image_ext=".sense.jpg"))
+        start = dt.now()
+        # Capture sensor buffer to an in-memory stream
+        stream = BytesIO()
+        cam.capture(stream, format='jpeg')  # use_video_port=True results in poorer quality images
+        stream.seek(0)  # "Rewind" the stream to the beginning so we can read its content
+        pil_image = Image.open(stream)
+        pa = image_pixel_average(pil_image)
+
+        ll = self.light_sensor._assess_level(pa)
+        self.light_sensor.add_reading(mark, pa)
+        LOGGER.debug("SENSED mark:{} pa:{:.3f} ll:{} took:{:.2f}".format(mark, pa, ll, (dt.now() - start).total_seconds()))
+
+        if self.light_sensor.save_images:
+            self.apply_overlays(pil_image, mark)
+            self.save_image(pil_image, image_filename)
+
+        self._last_camera_settings = get_picam(cam)
 
     def link_latest_image(self, image_filename):
         """ Add hardlink to the specified image at a well-known location """
@@ -906,53 +952,33 @@ class Camera(Tomlable):
         except FileNotFoundError as ex:
             LOGGER.warning(f"Unable to link latest image: {ex}")
 
-    def capture_light(self, mark):
-        image_filename = join(self.dt2dir(
-            mark), self.dt2basename(mark, image_ext=".sense.jpg"))
-        start = dt.now()
-        pil_image = self.capture()
-        pa = image_pixel_average(pil_image)
-
-        ll = self.light_sensor._assess_level(pa)
-        self.light_sensor.add_reading(mark, pa)
-        LOGGER.debug("SENSED mark:{} pa:{:.3f} ll:{} took:{:.2f}".format(mark, pa, ll, (dt.now() - start).total_seconds()))
-
-        if self.light_sensor.save_images:
-            self.apply_overlays(pil_image, mark)
-            self.save_image(pil_image, image_filename)
-
-    def capture(self) -> Image:
-        """ Capture sensor buffer to an in-memory stream"""
-        stream = BytesIO()
-        self._camera.capture(stream, format='jpeg')
-        # "Rewind" the stream to the beginning so we can read its content
-        stream.seek(0)
-        return Image.open(stream)
-
     def apply_overlays(self, im: Image, mark):
         """ Add dates, spinny, etc. Inplace."""
         pxavg = image_pixel_average(im)
-        #bg_colour = (128, 128, 128, 128)
-        if pxavg > 0.5:
-            text_colour = (0, 0, 0)
-        else:
-            text_colour = (255, 255, 255)
+        bg_colour = (128, 128, 128, 128)
+        text_colour = (255, 255, 255)
         width, height = im.size
         draw = ImageDraw.Draw(im)
+        band_height = 30
 
         try:
+            if 'bottom_band' in self.overlays:
+                draw.rectangle(xy=(0, height - 30, width, height), fill=bg_colour)
             if 'settings' in self.overlays:
                 # Draw the picam's settings
-                text = pformat(get_picam(self._camera))
+                text = pformat(self._last_camera_settings)
                 text += "\n\npixel_average = {pxavg:.3f}"
                 text_size = 10
                 font = ImageFont.truetype(FONT_FILE, text_size, encoding='unic')
                 text_box_size = draw.textsize(text=text, font=font)
             if 'simple_settings' in self.overlays:
                 # Draw some of picam's settings
-                picam = get_picam(self._camera)
+                text = pformat(get_picam(self._last_camera_settings))
                 text = f"level={self.light_sensor._current_level} avg={pxavg:.3f}"
-                text += f" es {picam['exposure_speed']/1000000:.3f} iso={picam['iso']} exp={picam['exposure_mode']}"
+                try:
+                    text += f" es {self._last_camera_settings['exposure_speed']/1000000:.3f} iso={self._last_camera_settings['iso']} exp={self._last_camera_settings['exposure_mode']}"
+                except KeyError as e:
+                    LOGGER.warning(f"Unable to get picam settings for overlay: {e}")
                 text_size = 10
                 font = ImageFont.truetype(FONT_FILE, text_size, encoding='unic')
                 tw, th = draw.textsize(text=text, font=font)
@@ -960,17 +986,14 @@ class Camera(Tomlable):
                 x = width - tw
                 # one line above bottom
                 y = height - th * 2
-                #draw.rectangle(xy=(x, y, x + tw, y + th), fill=bg_colour)
                 draw.text(xy=(x, y), text=text, fill=text_colour, font=font)
             if 'spinny' in self.overlays:
                 # Draw a small circle with a minute hand, for continuity checking. Plus it looks cool.
-
-                dia = 30
-                # 1px off corner x    y              x
-                bounding_box = [(1, height - dia), (dia, height - 1)]
+                # 1px off corner x1    y1              x2      y2
+                bounding_box = [(1, height - band_height), (band_height, height - 1)]
                 # minute hand
                 draw.pieslice(bounding_box, mark.minute / 60 * 360 - 90,
-                              mark.minute / 60 * 360 - 90, fill=None, outline=text_colour)
+                              mark.minute / 60 * 360 - 90, fill=None, outline=text_colour, width=2)
                 draw.arc(bounding_box, 0, 360, fill=text_colour)
             if 'image_name' in self.overlays:
                 text = os.path.basename(self.dt2basename(mark))
@@ -982,9 +1005,9 @@ class Camera(Tomlable):
                 x = int((width / 2) - (text_box_size[0] / 2))
                 # place one line above bottom
                 y = (height - text_box_size[1] * 2)
-                draw.text(xy=(x, y), text=text,
-                          fill=text_colour, font=font)
-        except Exception as exc:
+                draw.text(xy=(x, y), text=text, fill=text_colour, font=font)
+
+        except Exception as exc:  # pylint: disable=broad-except
             LOGGER.warning(f"Exception adding overlays: {exc}")
             LOGGER.debug(f"Exception adding overlays: {exc}", exc_info=exc)
 
@@ -1019,10 +1042,12 @@ class Camera(Tomlable):
             # Turn off power and wakeup later
             if self._pijuice is not None:
                 # pass wakeup as a (local) time
+                LOGGER.warning("Powering off in 60s")
+                time.sleep(60)
                 self._pijuice.wakeup_enable(wakeup)
                 self._pijuice.power_off()
             else:
-                raise PiJuiceError("Trying to sleep but no pijuice available")
+                raise PiJuiceError("Trying to sleep but no pijuice available. Set pijuice=true in config perhaps?")
         elif self.camera_inactive_action == CameraInactiveAction.WAIT:
             # "Light" sleep : monitor buttones is case wakeup is called
 
@@ -1049,7 +1074,12 @@ class FakePiCamera():
         self.lum = 0
         self.framerate = 1
         self.exposure_speed = 0.1
-
+        self.width = 400
+        self.height = 300
+    def __enter__(self):
+        return self
+    def __exit__(self, _type, value, traceback):
+        pass
     def close(self):
         pass
 
@@ -1068,7 +1098,7 @@ class FakePiCamera():
         pdf = exp((h - _mu)**2.0 / (-2.0 * variance)) / sqrt(tau * variance)
         self.lum = int(255.0 * pdf * 5)
 
-        im = Image.new("RGB", (400, 300), (self.lum, self.lum, self.lum))
+        im = Image.new("RGB", (self.width, self.height), (self.lum, self.lum, self.lum))
         if filename is None:
             im.save(stream, format, quality=quality)
             return im
@@ -1079,48 +1109,79 @@ class FakePiCamera():
 
 class Interface(Tomlable):
     """Represents the interface to the camera (not the camera itself), such as the config file, buttons and screen    """
+
     def __init__(self):
         super().__init__()
-        self.mode_button = StatefulHWButton(MODE_FILE, MODE_BUTTON_STATES, MODE_LED, MODE_BUTTON)
+        self._interval = timedelta(seconds=60)
+        self.mode_button = StatefulButton(MODE_FILE, MODE_BUTTON_STATES)
         self.mode_button.lit_for = timedelta(seconds=30)
-        self.speed_button = StatefulHWButton(SPEED_FILE, SPEED_BUTTON_STATES, SPEED_LED, SPEED_BUTTON)
+        self.speed_button = StatefulButton(SPEED_FILE, SPEED_BUTTON_STATES)
         self.speed_button.lit_for = timedelta(seconds=30)
         self.file_root = "."
-        self._latest_image = "latest-image.jpg"  
+        self.has_pijuice = False
+        self._latest_image = "latest-image.jpg"
+        self.port = 5000
+        self.screen = False
 
     @property
     def latest_image(self):
         """ return with file_root as the ... file root! """
         return Path(self.file_root) / self._latest_image
 
+    @property
+    def latest_image_time(self):
+        """ the filesystem modified time, not the filename-marked time  """
+        return dt.fromtimestamp(self.latest_image.stat().st_mtime)
+
+    def n_images(self):
+        return len(list(Path(self.file_root).glob("*")))
+
     @latest_image.setter
     def latest_image(self, value):
         self._latest_image = value
 
-    def illuminate(self):
-        self.mode_button.value
-        self.mode_button.illuminate()
-        self.speed_button.illuminate()
+    @property
+    def interval(self):
+        return interval_speeded(self._interval, self.speed_button.value, Camera.SPEED_MULTIPLIER)
 
     def configd(self, config_dict):
         c = config_dict  # shortcut
-        #LOGGER.debug(f"Interface config_dict:{config_dict}")
+        # read the [camera] to match real camera with this "interface" camera
         if 'camera' in config_dict:
             c = config_dict['camera']  # can accept config in root or [camera]
         if 'mode_button' in c:
-            self.mode_button = None # release gpio pins
-            gc.collect()
-            self.mode_button = ModeHWButtonFactory(c['mode_button'])
+            self.mode_button = ModeButtonFactory(c['mode_button'], software_only=False)
             self.mode_button.lit_for = timedelta(seconds=30)
         if 'speed_button' in c:
-            self.speed_button = None # release gpio pins
-            gc.collect()
-            self.speed_button = SpeedHWButtonFactory(c['speed_button'])
+            self.speed_button = SpeedButtonFactory(c['speed_button'], software_only=False)
             self.speed_button.lit_for = timedelta(seconds=30)
+            self.has_pijuice = c.get('pijuice', False)
+        if 'interval' in c:
+            # interval specified as seconds: convert to timedelta
+            self._interval = timedelta(seconds=c['interval'])
+            if self._interval.total_seconds() < 10.0:
+                LOGGER.warning("Intervals < 10s are not tested")
 
         self.setattr_from_dict('file_root', c)
         self.setattr_from_dict('latest_image', c)
-        
+
+        # read the [interface] for specific-to-interface settings
+        #
+        c = config_dict
+        if 'interface' in config_dict:
+            c = config_dict['interface']  # can accept config in root or [interface]
+
+        if 'log_level' in c:
+            logging.getLogger("tmv").setLevel(c['log_level'])
+
+        self.setattr_from_dict('screen', c)
+        if self.screen:
+            LOGGER.info("Interface will use a screen. Ensure you  LEDs from speed and mode buttons and check button pins.")
+            self.mode_button.lit_for = None
+            self.speed_button.lit_for = None
+        LOGGER.debug(f"screen: {self.screen}")
+
+        self.setattr_from_dict('port', c)
 
 
 def sun_calc_lightlevel(observer, instant) -> LightLevel:
@@ -1188,6 +1249,16 @@ def get_picam(c):
     return d
 
 
+def interval_speeded(interval, speed, multipler):
+    if speed.value == SLOW:
+        return interval * multipler
+    if speed.value == MEDIUM:
+        return interval
+    if speed.value == FAST:
+        return interval / multipler
+    raise RuntimeError("Logic error on speed and intervals")
+
+
 def calc_pixel_average(image_filename):
     img = Image.open(image_filename)
     img_stats = ImageStat.Stat(img)
@@ -1221,8 +1292,8 @@ def camera_console(cl_args=argv[1:]):
     signal(SIGINT, sig_handler)
     signal(SIGTERM, sig_handler)
     parser = argparse.ArgumentParser("TMV Camera.")
-    parser.add_argument('--log-level', '-ll', default='WARNING', type=lambda s: LOG_LEVELS(s).name, nargs='?', choices=LOG_LEVELS.choices())
-    parser.add_argument('--config-file','-cf', default=CAMERA_CONFIG_FILE,
+    parser.add_argument('--log-level', '-ll', type=lambda s: LOG_LEVELS(s).name, nargs='?', choices=LOG_LEVELS.choices())
+    parser.add_argument('--config-file', '-cf', default=CAMERA_CONFIG_FILE,
                         help="Config file is required. It will be created if non-existant.")
     parser.add_argument('--fake', action='store_true')
     parser.add_argument('--runs', type=int, default=maxsize)
@@ -1230,21 +1301,18 @@ def camera_console(cl_args=argv[1:]):
     args = (parser.parse_args(cl_args))
 
     logging.basicConfig(format=LOG_FORMAT)  # set all debuggers, level=args.log_level)
-    LOGGER.setLevel(args.log_level)
+    if args.log_level:
+        logging.getLogger("tmv").setLevel(args.log_level)
     ensure_config_exists(args.config_file)
 
     LOGGER.info(f"Starting camera app. config-file: {Path(args.config_file).absolute()} ")
-    cam = Camera(sw_cam = args.fake)      
+    cam = Camera(sw_cam=args.fake)
 
     try:
-        
-     #   if not Path(args.config_file).is_file():
-     #       shutil.copy(resource_filename(__name__, 'resources/camera.toml'), args.config_file)
-     #       LOGGER.info("Writing default config file to {}.".format(args.config_file))
         ensure_config_exists(args.config_file)
-        #cam.default_buttons_config(config_dir=Path(args.config_file).parent)
         cam.config(args.config_file)
-        LOGGER.setLevel(args.log_level)  # cl overrides config
+        if args.log_level:
+            logging.getLogger("tmv").setLevel(args.log_level)  # cl overrides config
         cam.run(args.runs)
 
     except SignalException:
@@ -1261,13 +1329,14 @@ def camera_console(cl_args=argv[1:]):
         LOGGER.debug(e, exc_info=e)
     finally:
         # workaround bug: https://github.com/waveform80/picamera/issues/528
-        if cam._camera is not None:
-            LOGGER.info("Closing camera. Setting framerate = 1 to avoid close bug")
-            cam._camera.framerate = 1
-            cam._camera.close()
-            time.sleep(1)
+        #if cam._camera is not None:
+        #    LOGGER.info("Closing camera. Setting framerate = 1 to avoid close bug")
+        #    cam._camera.framerate = 1
+        #    cam._camera.close()
+        #    time.sleep(0.5)
+        pass
 
-    exit(retval)
+    return retval
 
 
 if __name__ == "__main__":

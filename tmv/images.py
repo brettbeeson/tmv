@@ -2,22 +2,19 @@
 # pylint: disable=line-too-long, logging-fstring-interpolation, dangerous-default-value, logging-not-lazy
 from datetime import timedelta, datetime as dt
 import sys
+import glob
 import logging
 import argparse
 from pathlib import Path
 import os
+from dateutil.rrule import rrule, SECONDLY
 from PIL import Image, ImageColor, ImageDraw, ImageFont
 from tmv.video import SliceType, VideoMaker
-from tmv.util import LOG_FORMAT, LOG_LEVELS, dt2str, next_mark, prev_mark, str2dt, strptimedelta
-from tmv.config import  FONT_FILE, HH_MM
-LOGGER = logging.getLogger(__name__)
+from tmv.util import LOG_FORMAT, LOG_LEVELS, dt2str, next_mark, prev_mark, strptimedelta
+from tmv.config import FONT_FILE, HH_MM
 
-try:
-    # todo: use dateutil instead of extra import
-    from datetimerange import DateTimeRange  # optional, for 'crosses'
-except ImportError as exc:
-    # print(exc)
-    pass
+LOGGER = logging.getLogger("tmv.images")
+
 try:
     from ascii_graph import Pyasciigraph  # optional, for 'graph'
 except ImportError as exc:
@@ -40,11 +37,14 @@ def stamp(filename, ith):
     LOGGER.debug("Stamping: {} : {}x{}".format(filename, w, h))
     img.save(filename, )
 
-# Get the exif date and rename the file to that
 
+def rename_to_exif_datetime(filename, pattern="%Y-%m-%dT%H-%M-%S"):
+    """ Get the exif date and rename the file to a pattern based on that
 
-def rename(filename, pattern="%Y-%m-%dT%H-%M-%S"):
-    assert os.path.exists(filename)
+    Args:
+        filename (str): [description]
+        pattern (str, optional): Rename to this pattern with exif date
+    """
     dtt = exif_datetime_taken(filename)
     date_filename = os.path.join(os.path.dirname(filename),
                                  dtt.strftime(pattern) + os.path.splitext(filename)[1])
@@ -59,10 +59,13 @@ def graph_intervals(tl_videos, interval=timedelta(hours=1)):
     bins = {}
     for video in tl_videos:
         # round bin start
-        start = prev_mark(interval,video.start)
+        start = prev_mark(interval, video.start)
         end = next_mark(interval, video.end)
-        video_extents = DateTimeRange(start, end)
-        for bin_start in video_extents.range(interval):
+
+        # generate a list of marks
+        video_extents = list(rrule(SECONDLY, dtstart=start, until=end, interval=int(interval.total_seconds())))
+
+        for bin_start in video_extents:
             images_in_slice = [im for im in video.images if bin_start <= im.taken < bin_start + interval]
             bins[bin_start] = len(images_in_slice)
 
@@ -95,7 +98,6 @@ class Label(Overlay):
         draw = ImageDraw.Draw(self.im)
         text = self.label
         text_size = 10
-        LOGGER.debug(f"FONT_FILE={FONT_FILE}")
         font = ImageFont.truetype(FONT_FILE, text_size, encoding='unic')
         # Get the size of the time to write, so we can correctly place it
         text_box_size = draw.textsize(text=text, font=font)
@@ -145,8 +147,9 @@ def generate_cal_cross_images(output=Path("."), period=timedelta(days=365), step
     """ One per hour with a "x" and label"""
     start = dt(2000, 1, 1, 0, 0, 0)
     end = start + period
-    time_range = DateTimeRange(start, end)
-    for instant in time_range.range(step):
+    # generate marks at regular intervals
+    time_range = list(rrule(SECONDLY, dtstart=start, until=end, interval=int(step.total_seconds())))
+    for instant in time_range:
         f = output / Path(dt2str(instant) + ".jpg")
         im = Image.new("RGB", (320, 200))
         overlay = CalenderOverlay(im, instant)
@@ -165,13 +168,32 @@ def cal_cross_images(rootpath: Path) -> Path:
     return d
 
 
-def exif_datetime_taken(filename) -> dt:
-    """ Get datetime from EXIF"""
-    f = open(filename, 'rb')
-    # pylint: disable=undefined-variable
-    tags = exifread.process_file(f, details=False)
-    f.close()
-    return str2dt(tags["EXIF DateTimeOriginal"])
+def exif_datetime_taken(fn):
+    """returns the image date from image (if available)
+      https://orthallelous.wordpress.com/2015/04/19/extracting-date-and-time-from-images-with-python/"""
+    std_fmt = '%Y:%m:%d %H:%M:%S.%f'
+    # for subsecond prec, see doi.org/10.3189/2013JoG12J126 , sect. 2.2, 2.3
+    tags = [(36867, 37521),  # (DateTimeOriginal, SubsecTimeOriginal)
+            (36868, 37522),  # (DateTimeDigitized, SubsecTimeDigitized)
+            (306, 37520), ]  # (DateTime, SubsecTime)
+    exif = Image.open(fn)._getexif()  # pylint: disable=protected-access
+
+    for t in tags:
+        dat = exif.get(t[0])
+        subsub = exif.get(t[1], 0)
+
+        # PIL.PILLOW_VERSION >= 3.0 returns a tuple
+        dat = dat[0] if isinstance(dat,tuple) else dat
+        subsub = subsub[0] if isinstance(subsub, tuple) else subsub
+        if dat is not None:
+            break
+
+    if dat is None:
+        return None
+    full = '{}.{}'.format(dat, subsub)
+    T = dt.strptime(full, std_fmt)
+    #T = time.mktime(time.strptime(dat, '%Y:%m:%d %H:%M:%S')) + float('0.%s' % sub)
+    return T
 
 
 # pylint: disable=dangerous-default-value,
@@ -191,16 +213,19 @@ def image_tools_console(cl_args=sys.argv[1:]):
                         help="Last image to consider. Format: 2010-12-01T13:00:01")
     parser.add_argument("file_glob")
     args = (parser.parse_args(cl_args))
-    LOGGER.setLevel(args.log_level)
+    logging.getLogger("tmv").setLevel(args.log_level)
     logging.basicConfig(format=LOG_FORMAT)
 
     try:
 
         if args.command == "cal":
-            if args.output:
-                Path(args.output).mkdir(exist_ok=True)
-                os.chdir(args.output)
+            # if args.output:
+            #    Path(args.output).mkdir(exist_ok=True)
+            #    os.chdir(args.output)
             generate_cal_cross_images()
+        elif args.command == "rename":
+            for f in glob.glob(args.file_glob):
+                rename_to_exif_datetime(f)
         else:
             #mm = VideoMakerConcat()
             mm = VideoMaker.Factory(args.slice.title())
@@ -213,9 +238,9 @@ def image_tools_console(cl_args=sys.argv[1:]):
 
             mm.load_videos()
 
-            if args.command == "rename":
-                mm.rename_images()
-            elif args.command == "addexif":
+#            if args.command == "rename":
+#                mm.rename_images()
+            if args.command == "addexif":
                 raise NotImplementedError()
             elif args.command == "stamp":
                 mm.stamp_images()

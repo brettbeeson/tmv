@@ -1,7 +1,7 @@
 # pylint: disable=logging-fstring-interpolation,logging-not-lazy, dangerous-default-value
 #
 # Manipulate systemd services from python
-# 
+#
 
 import logging
 from shutil import which
@@ -64,4 +64,3 @@ class Unit:
     def restart(self, time_out=10):
         LOGGER.info(f"execute: systemctl restart {self._service}")
         tmv.util.run_and_capture(["sudo", "systemctl", "restart", self._service], timeout=time_out)
-

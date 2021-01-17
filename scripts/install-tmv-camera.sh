@@ -37,6 +37,8 @@ sudo systemctl enable tmv-upload
 sudo systemctl enable tmv-interface
 
 echo Redirecting port 80 to 5000
+# sudo apt install iptables-persistent # required user input
+echo iptables-persistent iptables-persistent/autosave_v4 boolean true | sudo debconf-set-selections
 sudo iptables -t nat -I PREROUTING -p tcp --dport 80 -j REDIRECT --to-ports 5000
 sudo iptables -t nat -I OUTPUT -p tcp -d 127.0.0.1 --dport 80 -j REDIRECT --to-ports 5000
 sudo iptables-save 

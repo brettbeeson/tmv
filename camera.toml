@@ -9,11 +9,8 @@
 #
 # Where to save images
 #
-file_root = "."
-# Other options...
-#file_root = "/home/pi/tmv-data"
-#file_root = "/var/tmv"
-
+#file_root = "."
+file_root = "/tmp/tmv"
 
 #
 # Hardlink a copy of the latest image - useful for tmv-web to display last image
@@ -26,8 +23,12 @@ latest_image = "latest-image.jpg"
 #interval = 60.0
 
 #
+# Should be store under file_root/(eg)2020-12-31/
+#
+#file_by_date = true
+
+#
 # The minimum time, in seconds, we'll power down/sleep/etc if camera inactive
-# Otherwise, 
 #
 #inactive_threshold = 1800.0 # 30 minutes
 
@@ -61,7 +62,7 @@ city = 'Brisbane'
 # [ "spinny", "image_name", "settings",]
 #
 # overlays = []
-overlays = [ "spinny", "image_name","simple_settings","bottom_band"]
+overlays = [ "spinny", "image_name","simple_settings"]
 
 #
 # Use the light sensor to estimate shutter speed
@@ -78,9 +79,13 @@ calc_shutter_speed = true
 log_level = 'INFO'
 
 #
+# Show the LED when camera is taking a photo
+#
+#led = false
+
+#
 #   LIGHT|DIM|DARK: settings passed to picam to override the defaults. See PiCamera API docs.
 #
-# 
 #    The defaults are which are:
 #       awb_mode= 'auto', #    'off','auto','sunlight','cloudy','shade','tungsten','fluorescent','incandescent','flash','horizon'
 #       exposure_mode= 'auto', # 'off','auto','night','nightpreview','backlight','spotlight','sports','snow','beach','verylong','fixedfps','antishake','fireworks'
@@ -114,23 +119,21 @@ log_level = 'INFO'
 # ---- 16:9 --> 1920x1080 (partial FOV) or 1640x922 (full FOV) or 1280x720 (partial) FOV
 #
 [camera.picam.LIGHT]
-iso = 200 # prevent iso changes between frames
+iso = 200
+exposure_mode = "auto"
 resolution = '1280x720'
-awb_mode= 'sunlight' # fix awb, instead of default 'auto' which changes dynamically
 
 [camera.picam.DIM]
-iso = 200 # prevent iso changes between frames. 
-
+iso = 200
+exposure_mode = "auto"
 framerate = 1.0 # max ss=1
 resolution = '1280x720'
-awb_mode= 'sunlight' # fix awb, instead of default 'auto' which changes dynamically
 
 [camera.picam.DARK]
-iso = 1600 # prevent iso changes between frames
-exposure_mode = "night" # or, set to "off" to set TMV calculate exposure time (usually long and better)
+iso = 1600
+exposure_mode = "night"
 framerate = 0.25 # max ss=4
 resolution = '1280x720'
-awb_mode= 'shade' # fix awb, instead of default 'auto' which changes dynamically
 
 #
 #   The camera is used to sense light and determine the next photo's settings
@@ -166,10 +169,8 @@ awb_mode= 'shade' # fix awb, instead of default 'auto' which changes dynamically
 #   button = 27
 #   led = 10  
 
-#[camera.activity]
+#[camera.statusled]
 # led = 9
-
-
 
 ###############################################################################
 # Where to upload the images, using tmv-upload
@@ -201,30 +202,3 @@ destination = "s3://BUCKET-NAME-TO-SET/HOSTNAME/daily-photos"
 # Choose from DEBUG, INFO, WARNING, ERROR, CRITAL
 #
 #log_level = 'WARNING'
-
-[interface]
-
-#
-# Web server and socketio server
-#
-#port = 5000
-
-#
-# Choose from DEBUG, INFO, WARNING, ERROR, CRITAL
-#
-#log_level = 'WARNING'
-
-################################################################################
-# Snippet: using a screen
-###############################################################################
-#[camera.mode_button]
-#   file = 'camera-mode'
-#   button = 6
-#[camera.speed_button]
-#   file = '/etc/tmv/camera-speed'
-#   button = 5
-#[camera.activity
-#   led = 0
-#[ interface ]
-# screen = true
-  

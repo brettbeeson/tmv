@@ -21,14 +21,16 @@ $(document).ready(function () {
 
   var editor = ace.edit("editor");
   editor.setTheme("ace/theme/xcode");
-  editor.setFontSize(20);
+  editor.setFontSize(16);
   editor.session.setMode("ace/mode/toml");
 
   var wifieditor = ace.edit("wifieditor");
   wifieditor.setTheme("ace/theme/xcode");
-  wifieditor.setFontSize(20);
+  wifieditor.setFontSize(16);
   //wifieditor.session.setMode("ace/mode/wpa?");
   
+  $("#pj-status").on("click",  () =>  ws.emit("req-pj-status"));
+
   toastr.options.positionClass = "toast-bottom-center";
 
   if ("WebSocket" in window) {
@@ -44,7 +46,29 @@ $(document).ready(function () {
     let server = $("#server").attr("href");    
       window.open(server,"_blank");
   });
-   
+  
+  // manual
+  $("#video-stop").on("click",  () => $("#video-img").attr('src',""))
+  // auto
+  $("#video-start").on("click",  () => $("#video-img").attr('src',"/video"))
+    $('#pills-tab').on('show.bs.tab', function(e){
+    console.log(e.target)
+    console.log(e.target.id)
+    switch (e.target.id){
+      case "pills-video-tab":{
+           $("#video-img").attr('src',"/video")
+           break;
+      }
+      default:{
+        // browser will no longer request frames. server will timeout.
+        $("#video-img").attr('src',"")
+        break;
+      }
+    }
+  })
+
+  
+
   $("#services").on("click",  () =>     ws.emit("req-services-status"));
   
   $("#journal").on("click",  () =>     ws.emit("req-journal"));
@@ -66,6 +90,8 @@ $(document).ready(function () {
   
 
   $("#wifi-scan").on("click", () => ws.emit("req-wpa-scan"));
+
+  $("#wifi-info").on("click", () => ws.emit("req-network-info"));
   
   $("#wifi-cancel").on("click",  () => ws.emit("req-wpa-supplicant"));
   
@@ -149,8 +175,17 @@ $(document).ready(function () {
       ws.emit("req-mode");
       ws.emit("req-speed");
       ws.emit("req-camera-name");
+      ws.emit("req-camera-interval");
     });
 
+    ws.on("pj-status", json => {
+      append_to_textarea($("#log-textarea"),"PIJUICE INFO",JSON.stringify(json, undefined, 4));
+      
+      $("#pj-battery-status").text(json.battery)
+      $("#pj-battery-level").text("Battery: " + json.chargeLevel + "%")
+      
+    });
+  
     ws.on("camera-config", msg =>editor.setValue(msg));
 
     ws.on("wpa-supplicant", msg => wifieditor.setValue(msg));
@@ -164,11 +199,23 @@ $(document).ready(function () {
        wifita.scrollTop(wifita[0].scrollHeight - wifita.height());
     });
     
+    ws.on("wpa-supplicant", msg => wifieditor.setValue(msg));
+
+    ws.on("network-info", function (msg) {
+      append_to_textarea($("#wifi-textarea"),"NETWORK INFO",msg);
+    });
+    
+    ws.on("camera-interval", function (msg) {
+      $("#camera-interval").text("Interval: " + msg + "s")
+    });
+    
+
     ws.on("mode", function (msg) {
       // Unfocus current button as we are getting the real value from server
       let ae = document.activeElement;
       ae.blur();
       toggle_active($("#camera-mode input"), tc(msg));     
+      ws.emit("req-camera-interval");
     });
 
     ws.on("speed", function (msg) {
@@ -176,6 +223,7 @@ $(document).ready(function () {
       let ae = document.activeElement;
       ae.blur();
       toggle_active($("#camera-speed input"), tc(msg));     
+      ws.emit("req-camera-interval");
     });
 
     ws.on("message", msg =>  toastr.info(msg));
@@ -186,7 +234,11 @@ $(document).ready(function () {
       let dt = strftime("%Y-%m-%d %H:%M:%S",msg)
       $("#latest-image-time").text(dt);
       $("#latest-image-ago").timeago("update",msg);
-      $("#latest-image-ago").text("(" + $("#latest-image-ago").text() + ")");
+      $("#latest-image-ago").text($("#latest-image-ago").text());
+      $('#new-image-indicator').css("visibility", "visible");
+      setTimeout(function () {
+       $('#new-image-indicator').css("visibility", "hidden");
+      }, 2000);
       
     });
 
@@ -239,6 +291,7 @@ $(document).ready(function () {
       }
       imgtag.attr("src", src);
       ws.emit("req-latest-image-time") // ask the date and hanlders will displayu it
+      
     });
 
     ws.on("close", () => toastr.warning("Closed connection"));
@@ -315,7 +368,7 @@ function copyToClipboard(element) {
 
 
 function append_to_textarea(textarea, title, msg) {
-  textarea.val(textarea.val() + "*** " + title + " ***\n");
+  textarea.val(textarea.val() + "vvv " + title + " vvv\n");
   textarea.val(textarea.val() + msg);
   textarea.val(textarea.val() + "\n^^^ " + title + " ^^^\n");
   // autoscroll

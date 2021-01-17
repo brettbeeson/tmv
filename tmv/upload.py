@@ -2,7 +2,7 @@
 
 import logging
 from pprint import pformat
-from sys import argv
+from sys import argv, stderr
 import socket  # gethostname, monkeypatchable
 import uuid  # getnode, monkeypatchable
 import argparse
@@ -17,6 +17,7 @@ from _datetime import datetime as dt
 
 from pkg_resources import resource_filename
 import boto3
+from boto3.exceptions import S3UploadFailedError
 from botocore.exceptions import ClientError
 from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
@@ -209,8 +210,7 @@ class S3Uploader(FileSystemEventHandler, Tomlable):
             return
 
         dest_file = self._dest_root / dest_prefix / src_file.name
-        
-        not_modified_for(src_file,timedelta(seconds=1))  # wait so we don't upload a file being modified / created
+        not_modified_for(src_file, timedelta(seconds=1))  # wait so we don't upload a file being modified / created
         self.s3.upload_file(str(src_file), Bucket=self._dest_bucket,
                             Key=str(dest_file),
                             ExtraArgs=self._ExtraArgs)
@@ -304,11 +304,12 @@ class S3Uploader(FileSystemEventHandler, Tomlable):
                 uploads += 1
         return uploads
 
-    def daemon(self):
-        LOGGER.debug("Starting daemon")
-        observer = Observer()
-        observer.schedule(self, self.file_root, recursive=True)
-        observer.start()
+    def daemon(self, use_observer=True):
+        LOGGER.info(f"Starting daemon. File system observer: {use_observer}")
+        if use_observer:
+            observer = Observer()
+            observer.schedule(self, self.file_root, recursive=True)
+            observer.start()
 
         while True:
             # sleep until next upload mark, or we detect a new file
@@ -316,14 +317,15 @@ class S3Uploader(FileSystemEventHandler, Tomlable):
             while dt.now() < next_upload and not self.upload_required:
                 sleep(1)
 
-            #LOGGER.debug(f"Uploading files, interval: {self.interval} connected: {check_internet()} upload_required:{self.upload_required}")
+            LOGGER.debug(f"Uploading files, interval: {self.interval} connected: {check_internet()} upload_required:{self.upload_required}")
 
             if check_internet():
                 try:
+                    self.upload_required = False  # On failure, don't keep trying. Wait til next interval.
                     self.upload()
-                    self.upload_required = False
-                except Exception as exc:  # pylint: disable=broad-except
-                    LOGGER.debug(f"Failed to upload: {exc}")
+                except S3UploadFailedError as exc:  # pylint: disable=broad-except
+                    LOGGER.debug("Failed to upload.", exc_info=exc)
+                    LOGGER.warning(f"Failed to upload: {exc}")
             else:
                 LOGGER.debug("No internet. Not uploading")
 
@@ -338,7 +340,7 @@ class S3Uploader(FileSystemEventHandler, Tomlable):
         if self.upload_required:
             return
         # wait to notify until file is finished creation
-        not_modified_for(event.src_path,timedelta(seconds=1))
+        not_modified_for(event.src_path, timedelta(seconds=1))
         self.upload_required = True
 
     def list_bucket_objects(self, bucket=None, prefix=None) -> [dict]:
@@ -384,8 +386,8 @@ def upload_console(cl_args=argv[1:]):
         try:
             signal(SIGINT, sig_handler)
             signal(SIGTERM, sig_handler)
-        except Exception:
-            pass  # cannot do if in a thread (for testing)
+        except Exception as e:
+            print (e, file=stderr)  # cannot do if in a thread (for testing)
 
         parser = argparse.ArgumentParser("S3 Upload",
                                          description="Upload files to s3. Overwrites existing. Can sense file system creations in daemon mode.")
@@ -401,6 +403,8 @@ def upload_console(cl_args=argv[1:]):
                             help="When src is a folder, only upload files matching this pattern. Otherwise ignored.")
         parser.add_argument('-d', '--daemon', action='store_true',
                             help="Upload everything, then monitor for file creation and upload them too. Never returns: doesn't make itself background.")
+        parser.add_argument('-no', '--no-observer', action='store_true',
+                            help="Don't monitor the file system for changes. Just upload periodically.")
         parser.add_argument('-dr', '--dry-run', action='store_true',
                             help="Setup then exit - no upload")
         parser.add_argument("--profile", default=None)
@@ -446,7 +450,7 @@ def upload_console(cl_args=argv[1:]):
         if not args.daemon:
             return 0
 
-        uploader.daemon()
+        uploader.daemon(use_observer=not args.no_observer)
 
     except SignalException:
         LOGGER.info('SIGTERM, SIGINT or CTRL-C detected. Exiting gracefully.')

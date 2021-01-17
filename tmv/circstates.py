@@ -24,20 +24,34 @@ class State():
 
     # allow str comparison
     def __ne__(self, other):
-        return str(self) != other
+        return str(self) != str(other)
 
 
 class StatesCircle:
     """[summary]
     """
 
-    def __init__(self, path, _states):
+    def __init__(self, path, _states, fallback=None):
         self.path = Path(path)
         self._states = _states
         self._circ_iter = itertools.cycle(self._states)
-        # create temp new iterator to store current so self.__next__ works as expected
-        self._current = next(iter(self._circ_iter))
-        # update from file
+        if fallback:
+            # set "initial" value as the fallback and overwrite with file, if available
+            try:
+                state = next(s for s in self._states if s.value == fallback)
+                self._current = state
+                # move the circular iterator to the right spot
+                while next(self._circ_iter) != state:
+                    pass
+
+            except StopIteration as e:
+                raise RuntimeError(f"Tried to set initial value of '{fallback}' which doesn't exist in {list(self._states)}") from e
+        else:
+            # create temp new iterator to store current so self.__next__ works as expected
+            # if we set to _states[0] then __next__ returns ????
+            self._current = next(iter(self._circ_iter))
+
+        # update from file (will return "_current" if no file exists yet)
         try:
             self._current = self.value
         except PermissionError:
@@ -65,7 +79,7 @@ class StatesCircle:
         """
 
         if self.path is None or not self.path.exists():
-            #raise FileNotFoundError("No path set for Stateful.")
+            # raise FileNotFoundError("No path set for Stateful.")
             return self._current
 
         s_str = self.path.read_text(encoding='UTF-8').strip('\n').lower()
@@ -73,7 +87,7 @@ class StatesCircle:
         try:
             state = next(s for s in self._states if str(s.value) == s_str)
         except StopIteration:
-            LOGGER.warning(f"'{s_str}'' is not a key within {self._states}. Resetting to {self._current}.")
+            LOGGER.warning(f"'{s_str}' is not a key within {self._states}. Resetting to {self._current}.")
             self.path.write_text(str(self._current))
             return self._current
 
@@ -83,8 +97,8 @@ class StatesCircle:
         while self._current != state:
             next(self)
             i += 1
-            if i >= len(self._states):
-                raise KeyError(f"{state} is not a key within {self._states})")
+            if i > len(self._states):
+                raise KeyError(f"'{state}' is not a key within {self._states})")
         return state
 
     @value.setter
@@ -92,6 +106,6 @@ class StatesCircle:
         """ Set the value and update the file  """
         if self.path:
             if not self.path.exists():
-                LOGGER.info(f"Creating {str(self.path)}")            
+                LOGGER.info(f"Creating {str(self.path)}")
             with self.path.open(mode="w") as f:
                 f.write(str(state.value))
