@@ -2,12 +2,17 @@
 import time
 import threading
 import io
+from sys import stderr
 try:
     from thread import get_ident
 except ImportError:
     from _thread import get_ident
 import logging
-import picamera  # pylint:disable=import-error
+try:
+    import picamera  # pylint:disable=import-error
+except ModuleNotFoundError as e:
+    print(f"Contiuning after {e}", file=stderr)
+
 from tmv.buttons import OFF
 
 
@@ -75,6 +80,7 @@ class VideoCamera(object):
             LOGGER.debug('Turning off camera to use video. Starting video thread.')
             VideoCamera._socketio.emit("message", f"Turning off camera to use video. Wait {interface.interval.total_seconds()}s.")
             time.sleep(interface.interval.total_seconds())
+            
             # save current camera mode and turn off
             # since camera is running in another process (tmv-camera) we can't simulatenously
             # do video and camera
@@ -87,6 +93,9 @@ class VideoCamera(object):
             # wait until frames are available
             while self.get_frame() is None:
                 time.sleep(0)
+        else:
+            LOGGER.debug('Camera thread available.')
+
 
     def get_frame(self):
         """Return the current camera frame."""
@@ -116,7 +125,10 @@ class VideoCamera(object):
                     stream.truncate()
         except Exception as e:
             LOGGER.error(e)
-            VideoCamera._interface.emit("error", e)
+            try:
+                VideoCamera._socketio.emit("error", str(e))
+            except:
+                pass
             
 
     @classmethod

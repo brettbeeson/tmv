@@ -51,6 +51,7 @@ $(document).ready(function () {
   $("#video-stop").on("click",  () => $("#video-img").attr('src',""))
   // auto
   $("#video-start").on("click",  () => $("#video-img").attr('src',"/video"))
+  
     $('#pills-tab').on('show.bs.tab', function(e){
     console.log(e.target)
     console.log(e.target.id)

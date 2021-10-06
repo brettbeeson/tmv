@@ -2,6 +2,7 @@
 
 from signal import signal, SIGINT, SIGTERM
 import argparse
+import debugpy
 from io import BytesIO
 from sys import maxsize, argv
 from enum import Enum
@@ -23,9 +24,10 @@ from PIL import Image, ImageFont, ImageDraw, ImageStat
 import astral
 from astral.geocoder import database, lookup  # Get co-ordinates from city name
 from astral.sun import sun
+from tmv.circstates import StatesCircle
 
 from tmv.util import penultimate_unique, next_mark, LOG_FORMAT, LOG_LEVELS
-from tmv.util import Tomlable, setattrs_from_dict, sleep_until, ensure_config_exists
+from tmv.util import Tomlable, setattrs_from_dict, sleep_until, ensure_config_exists, interval_speeded
 from tmv.exceptions import ConfigError, PiJuiceError, SignalException, PowerOff
 from tmv.buttons import ON, OFF, AUTO, StatefulButton, StatefulHWButton
 from tmv.config import *  # pylint: disable=wildcard-import, unused-wildcard-import
@@ -516,9 +518,7 @@ class SunCalc(Timed):
 class Camera(Tomlable):
     """ A timelapse camera with a real/synth/dummy camera"""
 
-    # Factor between intervals wrt speeds
-    SPEED_MULTIPLIER = 10
-
+    
     # Defaults as per docs. Note:
     # - awb_gains: get/set, unknown default
     # These don't work:
@@ -557,6 +557,8 @@ class Camera(Tomlable):
         self.speed_button = StatefulButton(SPEED_FILE, SPEED_BUTTON_STATES, MEDIUM)
         self.mode_button = StatefulButton(MODE_FILE, MODE_BUTTON_STATES, AUTO)
         self.led = None
+        # ON if camera shutter open
+        self.activity = StatesCircle(ACTIVITY_FILE, ACTIVITY_STATE, fallback=OFF)
 
         self.sw_cam = sw_cam
 
@@ -617,7 +619,7 @@ class Camera(Tomlable):
     @property
     def interval(self):
         """ return the interval, adjusted via speed_button"""
-        return interval_speeded(self._interval, self.speed_button.value, self.SPEED_MULTIPLIER)
+        return interval_speeded(self._interval, self.speed_button.value)
 
     def configd(self, config_dict):
         c = config_dict  # shortcut
@@ -895,6 +897,7 @@ class Camera(Tomlable):
     def capture_image(self, cam, mark):
 
         start = dt.now()
+        self.activity.value = ON
         if self.led:
             self.led.on()
 
@@ -904,6 +907,7 @@ class Camera(Tomlable):
         stream.seek(0)  # "Rewind" the stream to the beginning so we can read its content
         pil_image = Image.open(stream)
 
+        self.activity.value = OFF
         if self.led:
             self.led.off()
 
@@ -1076,6 +1080,8 @@ class FakePiCamera():
         self.exposure_speed = 0.1
         self.width = 400
         self.height = 300
+        self.activity = StatesCircle(ACTIVITY_FILE, ACTIVITY_STATE, fallback=OFF)
+
     def __enter__(self):
         return self
     def __exit__(self, _type, value, traceback):
@@ -1090,6 +1096,8 @@ class FakePiCamera():
         norm distro around noon
         (5, 0.001) , (10, 0.48),  (12, 0.79)
         """
+        self.activity.value = ON
+        time.sleep(1)
         h = dt.now().hour + dt.now().minute / 60 + dt.now().second / 3600
         _sigma = 2
         _mu = 12
@@ -1101,88 +1109,12 @@ class FakePiCamera():
         im = Image.new("RGB", (self.width, self.height), (self.lum, self.lum, self.lum))
         if filename is None:
             im.save(stream, format, quality=quality)
+            self.activity.value = OFF
             return im
         else:
             im.save(filename)
+            self.activity.value = OFF
             return im
-
-
-class Interface(Tomlable):
-    """Represents the interface to the camera (not the camera itself), such as the config file, buttons and screen    """
-
-    def __init__(self):
-        super().__init__()
-        self._interval = timedelta(seconds=60)
-        self.mode_button = StatefulButton(MODE_FILE, MODE_BUTTON_STATES)
-        self.mode_button.lit_for = timedelta(seconds=30)
-        self.speed_button = StatefulButton(SPEED_FILE, SPEED_BUTTON_STATES)
-        self.speed_button.lit_for = timedelta(seconds=30)
-        self.file_root = "."
-        self.has_pijuice = False
-        self._latest_image = "latest-image.jpg"
-        self.port = 5000
-        self.screen = False
-
-    @property
-    def latest_image(self):
-        """ return with file_root as the ... file root! """
-        return Path(self.file_root) / self._latest_image
-
-    @property
-    def latest_image_time(self):
-        """ the filesystem modified time, not the filename-marked time  """
-        return dt.fromtimestamp(self.latest_image.stat().st_mtime)
-
-    def n_images(self):
-        return len(list(Path(self.file_root).glob("*")))
-
-    @latest_image.setter
-    def latest_image(self, value):
-        self._latest_image = value
-
-    @property
-    def interval(self):
-        return interval_speeded(self._interval, self.speed_button.value, Camera.SPEED_MULTIPLIER)
-
-    def configd(self, config_dict):
-        c = config_dict  # shortcut
-        # read the [camera] to match real camera with this "interface" camera
-        if 'camera' in config_dict:
-            c = config_dict['camera']  # can accept config in root or [camera]
-        if 'mode_button' in c:
-            self.mode_button = ModeButtonFactory(c['mode_button'], software_only=False)
-            self.mode_button.lit_for = timedelta(seconds=30)
-        if 'speed_button' in c:
-            self.speed_button = SpeedButtonFactory(c['speed_button'], software_only=False)
-            self.speed_button.lit_for = timedelta(seconds=30)
-            self.has_pijuice = c.get('pijuice', False)
-        if 'interval' in c:
-            # interval specified as seconds: convert to timedelta
-            self._interval = timedelta(seconds=c['interval'])
-            if self._interval.total_seconds() < 10.0:
-                LOGGER.warning("Intervals < 10s are not tested")
-
-        self.setattr_from_dict('file_root', c)
-        self.setattr_from_dict('latest_image', c)
-
-        # read the [interface] for specific-to-interface settings
-        #
-        c = config_dict
-        if 'interface' in config_dict:
-            c = config_dict['interface']  # can accept config in root or [interface]
-
-        if 'log_level' in c:
-            logging.getLogger("tmv").setLevel(c['log_level'])
-
-        self.setattr_from_dict('screen', c)
-        if self.screen:
-            LOGGER.info("Interface will use a screen. Ensure you  LEDs from speed and mode buttons and check button pins.")
-            self.mode_button.lit_for = None
-            self.speed_button.lit_for = None
-        LOGGER.debug(f"screen: {self.screen}")
-
-        self.setattr_from_dict('port', c)
-
 
 def sun_calc_lightlevel(observer, instant) -> LightLevel:
     """Categorise a datetime based on sun's position and a location
@@ -1249,15 +1181,6 @@ def get_picam(c):
     return d
 
 
-def interval_speeded(interval, speed, multipler):
-    if speed.value == SLOW:
-        return interval * multipler
-    if speed.value == MEDIUM:
-        return interval
-    if speed.value == FAST:
-        return interval / multipler
-    raise RuntimeError("Logic error on speed and intervals")
-
 
 def calc_pixel_average(image_filename):
     img = Image.open(image_filename)
@@ -1297,6 +1220,8 @@ def camera_console(cl_args=argv[1:]):
                         help="Config file is required. It will be created if non-existant.")
     parser.add_argument('--fake', action='store_true')
     parser.add_argument('--runs', type=int, default=maxsize)
+    parser.add_argument("--debug", default=False, action='store_true')
+
 
     args = (parser.parse_args(cl_args))
 
@@ -1304,6 +1229,14 @@ def camera_console(cl_args=argv[1:]):
     if args.log_level:
         logging.getLogger("tmv").setLevel(args.log_level)
     ensure_config_exists(args.config_file)
+
+    if args.debug:
+        debug_port = 5678
+        debugpy.listen(("0.0.0.0",debug_port))
+        print(f"Waiting for debugger attach on {debug_port}")
+        debugpy.wait_for_client()
+        debugpy.breakpoint()
+
 
     LOGGER.info(f"Starting camera app. config-file: {Path(args.config_file).absolute()} ")
     cam = Camera(sw_cam=args.fake)

@@ -4,7 +4,9 @@
             {
                 "label": "copyToRemote",
                 "type": "shell",
-                "command": "./sync.sh" 
+                "command": "./sync-one.sh", 
+                "args": ["${config:sshEndpoint}"]
+                 
             },
             {
                 "label": "startOnRemote",
@@ -16,6 +18,12 @@
                 "type": "shell",
                 "command": "ssh -f ${config:sshUser}@${config:sshEndpoint} 'python3 -m debugpy --wait-for-client --listen 0.0.0.0:5678 ~/tmv/tmv/interface/app.py  > ~/tmv/tmv/interface/app.py.log 2>&1'"
             },
+            {
+                "label": "runRemoteTests",
+                "type": "shell",
+                "command": "ssh -f ${config:sshUser}@${config:sshEndpoint} 'pytest ~/tmv/tests/  > ~/tmv/tests.log 2>&1'"
+            },
+            
             {
                 "label": "wait",
                 "type": "shell",
@@ -30,6 +38,11 @@
                 "label": "copyAndStartOnRemoteInterface",
                 "dependsOrder": "sequence",
                 "dependsOn": ["copyToRemote", "startOnRemoteInterface", "wait"]
+            },
+            {
+                "label": "copyAndRunTests",
+                "dependsOrder": "sequence",
+                "dependsOn": ["copyToRemote", "runRemoteTests", "wait"]
             },
             {
                 "label": "cleanupOnRemote",

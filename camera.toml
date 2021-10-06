@@ -160,9 +160,10 @@ resolution = '1280x720'
 #save_images = false
 
 #[camera.mode_button]
+# OLED buttons 16,20,21
 #   file = '/etc/tmv/camera-mode'
-#   button = 17
-#   led = 4 # alterative: 18
+#   button = 17 
+    led = 4 # alterative: 18
 
 #[camera.speed_button]
 #   file = '/etc/tmv/camera-speed'

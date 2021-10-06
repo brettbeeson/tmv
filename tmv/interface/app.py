@@ -3,6 +3,7 @@
 from sys import stderr, argv
 from os import system
 from pathlib import Path
+import debugpy
 from base64 import b64encode
 from time import sleep
 from shutil import copy
@@ -18,13 +19,13 @@ from flask import Flask, send_from_directory, Response
 from toml import loads, TomlDecodeError
 
 from tmv.camera import CAMERA_CONFIG_FILE
-from tmv.camera import Interface
+from tmv.interface.interface import Interface
 from tmv.buttons import OnOffAuto, Speed
 from tmv.systemd import Unit
 from tmv.util import run_and_capture, unlink_safe, LOG_LEVELS, LOG_FORMAT, ensure_config_exists
 from tmv.exceptions import ButtonError, PiJuiceError
 from tmv.interface.wifi import scan, reconfigure, info
-from tmv.interface.screen import TMVScreen
+from tmv.interface.screen import EInkScreen, OLEDScreen
 from tmv.video_camera import VideoCamera
 
 try:
@@ -64,24 +65,6 @@ def send_image(broadcast, binary=True):
     else:
         image_data_b64 = b64encode(image_data_bin)
         socketio.emit('image', {'src-b64': image_data_b64.decode('utf-8')}, broadcast=broadcast)
-
-
-def manage_screen_interface_thread():
-    """
-     Display key parameters and image on the screen and react to screen button presses
-    """
-    global next_screen_refresh
-
-    refresh_period = timedelta(seconds=60)
-    screen = TMVScreen(interface)
-
-    while not shutdown:
-        if dt.now() > next_screen_refresh:
-            screen.update_display()
-            next_screen_refresh = dt.now() + refresh_period
-            #LOGGER.debug(f"next refresh is {next_screen_refresh.isoformat()}")
-        else:
-            sleep(1)
 
 
 def broadcast_pijuice_status_thread():
@@ -406,9 +389,8 @@ def video_feed():
                     mimetype='multipart/x-mixed-replace; boundary=frame')
 
 
-def start_threads():
+def start_socketio_threads():
     socketio.threads = []
-    socketio.threads.append(socketio.start_background_task(manage_screen_interface_thread))
     socketio.threads.append(socketio.start_background_task(broadcast_buttons_thread))
     socketio.threads.append(socketio.start_background_task(broadcast_image_thread))
     if interface.has_pijuice:
@@ -419,6 +401,7 @@ def interface_console(cl_args=argv[1:]):
     parser = argparse.ArgumentParser("Interface (screen, web, web-socket server) to TMV interface.")
     parser.add_argument('--log-level', '-ll', default='WARNING', type=lambda s: LOG_LEVELS(s).name, nargs='?', choices=LOG_LEVELS.choices())
     parser.add_argument('--config-file', '-cf', default=CAMERA_CONFIG_FILE)
+    parser.add_argument("--debug", default=False, action='store_true')
     args = parser.parse_args(cl_args)
 
     logging.basicConfig(format=LOG_FORMAT)
@@ -426,19 +409,28 @@ def interface_console(cl_args=argv[1:]):
     logging.getLogger('werkzeug').setLevel(logging.WARNING)  # turn off excessive logs (>=WARNING is ok)
 
     try:
+        if args.debug:
+            debug_port = 5678
+            debugpy.listen(("0.0.0.0",debug_port))
+            print(f"Waiting for debugger attach on {debug_port}")
+            debugpy.wait_for_client()
+            debugpy.breakpoint()
+        
         ensure_config_exists(args.config_file)
         global interface  # pylint: disable=global-statement
         LOGGER.info(f"config file: {Path(args.config_file).absolute()}")
         interface.config(args.config_file)
         interface.mode_button.illuminate()
         interface.speed_button.illuminate()
-
+        
         # reset to cli values, which override config file
         if args.log_level != 'WARNING':  # str comparison
             logging.getLogger("tmv").setLevel(args.log_level)
 
+
+
         # let's roll!
-        start_threads()
+        start_socketio_threads()
         socketio.run(app, host="0.0.0.0", port=interface.port, debug=(args.log_level == logging.DEBUG))
         while True:
             sleep(1)

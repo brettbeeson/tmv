@@ -43,6 +43,11 @@ MODE_BUTTON_STATES = [
     State(AUTO, on_time=.2, off_time=.2),
 ]
 
+ACTIVITY_STATE = [
+    State(ON),
+    State(OFF)
+]
+
 # pins all in BCM numbering
 SPEED_BUTTON = 27
 SPEED_LED = 10
@@ -50,10 +55,15 @@ SPEED_FILE = 'camera-speed'
 MODE_BUTTON = 17
 MODE_LED = 4
 MODE_FILE = 'camera-mode'
+ACTIVITY_FILE = 'camera-activity'
 ACTIVITY_LED = 9
 CAMERA_CONFIG_FILE = "camera.toml"
 
 
-FONT_FILE = resource_filename(__name__, 'resources/FreeSans.ttf')
+#FONT_FILE = resource_filename(__name__, 'resources/FreeSans.ttf')
+FONT_FILE = resource_filename(__name__, 'resources/mplus-1m-regular.ttf')
+
 
 HH_MM = "%H:%M"
+
+

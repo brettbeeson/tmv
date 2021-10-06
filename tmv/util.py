@@ -23,6 +23,8 @@ from pkg_resources import resource_filename
 import toml
 import pytimeparse
 
+from tmv.config import SLOW, MEDIUM, FAST
+
 
 class LOG_LEVELS(Enum):
     """ Convenience for argparse / logging modules """
@@ -556,3 +558,21 @@ def stats_console():
         print (f"{dt2str(mark)},{int(mean(io_current))},{int(mean(batt_current))},{int(mean(charge))}")
     except PiJuiceError as e:
         print(e, file=stderr)
+
+
+def interval_speeded(interval, speed):
+    # Factor between intervals wrt speeds
+    SPEED_MULTIPLIER = 10
+
+    if speed.value == SLOW:
+        return interval * SPEED_MULTIPLIER
+    if speed.value == MEDIUM:
+        return interval
+    if speed.value == FAST:
+        return interval / SPEED_MULTIPLIER
+    raise RuntimeError("Logic error on speed and intervals")
+
+def uptime():  
+    with open('/proc/uptime', 'r') as f:
+        uptime_seconds = float(f.readline().split()[0])
+        return uptime_seconds

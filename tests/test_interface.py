@@ -3,13 +3,15 @@
 import os
 import logging
 #from time import sleep
+
 from pathlib import Path
 from tempfile import mkdtemp
 import pytest
 
 from tmv.util import LOG_FORMAT
 from tmv.interface.app import app, socketio, interface_console, interface, buttons_console
-
+from tmv.interface.screen import EInkScreen, OLEDScreen
+from tmv.interface.interface import Interface
 
 TEST_DATA = Path(__file__).parent / "testdata"
 

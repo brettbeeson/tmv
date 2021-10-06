@@ -6,7 +6,7 @@
       "type": "python",
       "request": "attach",
       "connect": {
-        "host": "highqual.local",
+        "host": "phisaver.local",
         "port": 5678
       },
       "pathMappings": [
