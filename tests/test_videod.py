@@ -289,7 +289,7 @@ def test_sched(setup_test):
 def test_multi(setup_multi_test):
     c = """
         locations = ['cam1', 'cam2', 'cam3']
-        file_root = "."
+        tmv_root = "."
         # use tasks defaults       
         [daily-videos]    
         [preview-videos]
@@ -322,7 +322,7 @@ def test_multi_stop(setup_multi_test):
     # Simulate SIGTERMING them
     c = """
     locations = ['cam1', 'cam2', 'cam3']
-    file_root = "."
+    tmv_root = "."
 
     # use tasks defaults       
     [daily-videos]    

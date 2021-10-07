@@ -38,7 +38,7 @@ def test_flip(monkeypatch):
         fdt_global = fdt
         # monkeypatch.setattr(time, 'sleep', sleepless)
         c = tmv.camera.Camera()
-        c.file_root = TMP_DIR + "/test_real/"
+        c.tmv_root = TMP_DIR + "/test_real/"
         cf = """
         [camera]
         on = true

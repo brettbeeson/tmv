@@ -50,14 +50,14 @@ class S3Uploader(FileSystemEventHandler, Tomlable):
     #    upload every time. do this. if necessary "copy" could be done
     #    via a move to a local location
 
-    def __init__(self, destination=None, file_root="", profile=None, endpoint=None):
+    def __init__(self, destination=None, tmv_root="", profile=None, endpoint=None):
         super().__init__()
         self._ExtraArgs = {'ACL': 'public-read'}
         self._dest_bucket = None
         self._dest_root = None   # starts with "/"
         if destination:
             self.destination = destination
-        self.file_root = file_root
+        self.tmv_root = tmv_root
         self.file_filter = "*.jpg"
         self.latest_image = "latest-image.jpg"
         self._s3 = None
@@ -97,7 +97,7 @@ class S3Uploader(FileSystemEventHandler, Tomlable):
 
         if 'camera' in config_dict:
             config = config_dict['camera']
-            self.setattr_from_dict("file_root", config)
+            self.setattr_from_dict("tmv_root", config)
             self.setattr_from_dict("latest_image", config)
 
     @property
@@ -129,7 +129,7 @@ class S3Uploader(FileSystemEventHandler, Tomlable):
         """
 
         if src_file_or_dir is None:
-            src_file_or_dir = self.file_root
+            src_file_or_dir = self.tmv_root
 
         src_file_or_dir = Path(src_file_or_dir)
 
@@ -308,7 +308,7 @@ class S3Uploader(FileSystemEventHandler, Tomlable):
         LOGGER.info(f"Starting daemon. File system observer: {use_observer}")
         if use_observer:
             observer = Observer()
-            observer.schedule(self, self.file_root, recursive=True)
+            observer.schedule(self, self.tmv_root, recursive=True)
             observer.start()
 
         while True:
@@ -431,7 +431,7 @@ def upload_console(cl_args=argv[1:]):
         if args.dest:
             uploader.destination = args.dest
         if args.src:
-            uploader.file_root = args.src
+            uploader.tmv_root = args.src
         if args.include:
             uploader.file_filter = args.include
         if args.dry_run:

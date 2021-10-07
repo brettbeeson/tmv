@@ -17,7 +17,7 @@ city = 'Brisbane'
 interval = 30
 inactive_threshold = 600.0
 file_by_date = true
-file_root = "/home/pi/tmv-data/"
+tmv_root = "/home/pi/tmv-data/"
 overlays = [ "spinny", "image_name"] #,"settings"]
 camera_inactive_action = "WAIT" # "POWER_OFF"
 on = 'dim'
@@ -51,7 +51,7 @@ resolution = '1280x720'
 #
 # [camera]
 # internal: in seconds
-# file_by_date: store under file_root/2020-12-31/
+# file_by_date: store under tmv_root/2020-12-31/
 # inactive_threshold: minimum time, in seconds, we'll power down/sleep/etc if camera inactive
 # camera_inactive_action:
 #   WAIT: just time.sleep()

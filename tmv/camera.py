@@ -42,8 +42,20 @@ except ImportError as exc:
     LOGGER.warning(exc)
 
 
-def ModeButtonFactory(config_dict, software_only):
-    path = config_dict.get('file', MODE_FILE)
+def ModeButtonFactory(config_dict, software_only, root):
+    """[summary]
+
+    Args:
+        config_dict ([type]): [description]
+        software_only ([type]): [description]
+        root (str|Path): Relative path will be set relative to this root (usually tmv_root)
+
+    Returns:
+        
+    """
+    path = Path(config_dict.get('file', MODE_FILE))
+    if not path.is_absolute():    
+        path = root / path
     button = config_dict.get('button', None)
     led = config_dict.get('led', None)
     if button and not software_only:
@@ -52,8 +64,10 @@ def ModeButtonFactory(config_dict, software_only):
         return StatefulButton(path, MODE_BUTTON_STATES, fallback=AUTO)
 
 
-def SpeedButtonFactory(config_dict, software_only):
-    path = config_dict.get('file', SPEED_FILE)
+def SpeedButtonFactory(config_dict, software_only, root):
+    path = Path(config_dict.get('file', SPEED_FILE))
+    if not path.is_absolute:    
+        path = root / path
     button = config_dict.get('button', None)
     led = config_dict.get('led', None)
     if button and not software_only:
@@ -566,7 +580,7 @@ class Camera(Tomlable):
         self.calc_shutter_speed = False
         self.location = None
         self.recent_images = []
-        self._latest_image = "latest-image.jpg"  # relative to file_root
+        self._latest_image = "latest-image.jpg"  # relative to tmv_root
 
         self.run_start = None
         self.light_sensor = LightLevelSensor(0.2, 0.05, max_age=timedelta(minutes=30), freq=timedelta(minutes=5))
@@ -579,7 +593,7 @@ class Camera(Tomlable):
         self.save_images = True
         self._last_camera_settings = []
 
-        self.file_root = os.path.abspath(".")
+        self.tmv_root = os.path.abspath(".")
         self.overlays = ['spinny', 'image_name', 'settings']
         self.camera_inactive_action = CameraInactiveAction.WAIT
         self.inactive_min = timedelta(minutes=30)
@@ -609,8 +623,8 @@ class Camera(Tomlable):
 
     @property
     def latest_image(self):
-        """ return with file_root as the ... file root! """
-        return Path(self.file_root) / self._latest_image
+        """ return with tmv_root as the ... file root! """
+        return Path(self.tmv_root) / self._latest_image
 
     @latest_image.setter
     def latest_image(self, value):
@@ -628,14 +642,11 @@ class Camera(Tomlable):
         if 'log_level' in c:
             LOGGER.setLevel(c['log_level'])
         if 'mode_button' in c:
-            self.mode_button = ModeButtonFactory(c['mode_button'], software_only=True)
+            self.mode_button = ModeButtonFactory(c['mode_button'], software_only=True, root = self.tmv_root)
             LOGGER.debug(f"config'd ModeButton: {self.mode_button}")
         if 'speed_button' in c:
-            self.speed_button = SpeedButtonFactory(c['speed_button'], software_only=True)
+            self.speed_button = SpeedButtonFactory(c['speed_button'], software_only=True, root = self.tmv_root)
             LOGGER.debug(f"config'd SpeedButton: {self.speed_button}")
-        if 'activity' in c:
-            if c['activity']['led']:
-                self.led = gpiozero.LED(int(c['activity']['led']))
         if c.get('pijuice', False):
             try:
                 # optional, for controling power with a PiJuice
@@ -646,7 +657,7 @@ class Camera(Tomlable):
                 LOGGER.warning("Failed to init pijuice:  {exc}. Continuing.")
                 LOGGER.debug("Failed to init pijuice. Continuting.", exc_info=exc)
 
-        self.setattr_from_dict('file_root', c)
+        self.setattr_from_dict('tmv_root', c)
         self.setattr_from_dict('overlays', c)
         self.setattr_from_dict('calc_shutter_speed', c)
         if 'latest_image' in c:
@@ -709,7 +720,7 @@ class Camera(Tomlable):
 
         known_keys = ['log_level', 'sensor', 'picam', 'on', 'off', 'inactive_threshold',
                       'camera_inactive_action', 'interval', 'city', 'pijuice', 'speed_button',
-                      'file_root', 'latest_image', 'overlays', 'calc_shutter_speed', 'mode_button',
+                      'tmv_root', 'latest_image', 'overlays', 'calc_shutter_speed', 'mode_button',
                       'activity']
 
         unknowns = list(k for k in c if k not in known_keys)
@@ -1020,9 +1031,9 @@ class Camera(Tomlable):
         if self.file_by_date:
             folder_naming_format = "%Y-%m-%d"
             subfolder = mark.strftime(folder_naming_format)
-            return os.path.join(self.file_root, subfolder)
+            return os.path.join(self.tmv_root, subfolder)
         else:
-            return self.file_root
+            return self.tmv_root
 
     def dt2filename(self, mark: datetime):
         """ Full filename(including dir) eg. ./cam1/2000-11-01/2000-11-01T00-12-00.jpg"""

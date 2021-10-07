@@ -155,10 +155,10 @@ def poke(file, period=timedelta(seconds=5), freq=timedelta(seconds=0.5)):
 def test_config():
     c = """
     [camera]
-        file_root = '/tmp/tmv-images/camera1'
+        tmv_root = '/tmp/tmv-images/camera1'
         image_suffix = '.jpg'
     [upload]
-        # source = camera.file_root
+        # source = camera.tmv_root
         destination = '""" + BUCKET + """/desto'
         extraargs.ACL = 'public-read'
     """
@@ -171,7 +171,7 @@ def test_config():
 def test_S3Uploader():
     c = """
     [camera]
-        file_root = 'upload_3/'
+        tmv_root = 'upload_3/'
         file_filter = '*.jpg'
     [upload]
         destination = '""" + BUCKET + """/tmp/'
@@ -205,7 +205,7 @@ def test_latest_image(caplog):
     """ check we don't update latest-image.jpg """
     c = """
     [camera]
-        file_root = 'upload_4/'
+        tmv_root = 'upload_4/'
 
         file_filter = '*.jpg'
     [upload]
@@ -231,10 +231,10 @@ def test_errors():
 
     c = """
     [camera]
-        file_root = './test_files_3/'
+        tmv_root = './test_files_3/'
         image_suffix = '.jpg'
     #[upload]
-        # source = camera.file_root
+        # source = camera.tmv_root
     #    destination = BUCKET + '/tmp/'
     #    extraargs.ACL = 'public-read'
     #    move = true
@@ -272,7 +272,7 @@ def test_upload_console(caplog):
 def test_id():
     c = """
     [camera]
-        file_root = './upload_3/'
+        tmv_root = './upload_3/'
     [upload]
          destination = '""" + BUCKET + "/tmp/HOSTNAME" + "'"
 
@@ -281,7 +281,7 @@ def test_id():
     assert up.destination == "tmv.brettbeeson.com.au/tmp/" + str(gethostname())
     c = """
     [camera]
-        file_root = './upload_3/'
+        tmv_root = './upload_3/'
     [upload]
          destination = '""" + BUCKET + """/tmp/xxx'
     """

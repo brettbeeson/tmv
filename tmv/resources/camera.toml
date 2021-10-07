@@ -9,10 +9,10 @@
 #
 # Where to save images
 #
-file_root = "."
+tmv_root = "."
 # Other options...
-#file_root = "/home/pi/tmv-data"
-#file_root = "/var/tmv"
+#tmv_root = "/home/pi/tmv-data"
+#tmv_root = "/var/tmv"
 
 
 #
@@ -182,7 +182,7 @@ awb_mode= 'shade' # fix awb, instead of default 'auto' which changes dynamically
 # The following substiutions are made:
 # UUID :  automatic identifier, probably unique
 # HOSTNAME : hostname of machine
-# (Source location is "file_root" in [camera])
+# (Source location is "tmv_root" in [camera])
 #
 destination = "s3://BUCKET-NAME-TO-SET/HOSTNAME/daily-photos"
 

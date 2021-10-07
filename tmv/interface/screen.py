@@ -30,10 +30,11 @@ class TMVScreen:
         self._screen_image = None
         self.shutdown = False
         self._init_display()
+
+    def start(self):
         self.update_thread_ref = threading.Thread(target=self.update_thread)
         self.update_thread_ref.start()
     
-
     def update_display(self):
         raise NotImplementedError()
 
@@ -79,17 +80,18 @@ class OLEDScreen(TMVScreen):
         self.pages = 2
         self.page = 1
 
-        self.button_update_t = threading.Thread(target=self.button_update_thread)
-        self.button_update_t.start()
-        # unclear how to tidy up properly
         try:
-  
             # https://stackoverflow.com/questions/42732221/how-can-i-use-the-gpiozero-button-when-pressed-function-to-use-a-function-that-i/44746381
-            self.key_3 = Button(self.KEY3_PIN, hold_repeat=True)
-            self.key_3.when_pressed = lambda: self.turn_page(self.key_3, forward=True)
+            self.key_right = Button(self.KEY_RIGHT_PIN, hold_repeat=True)
+            self.key_right.when_pressed = lambda: self.turn_page(self.key_right, forward=True)
+            self.key_left = Button(self.KEY_LEFT_PIN, hold_repeat=True)
+            self.key_left.when_pressed = lambda: self.turn_page(self.key_left, backward=True)
         except RuntimeError as e:
             # Probably not on a pi
             print(e)
+
+        self.start()
+        
 
     def turn_page(self, button, forward=False, backward=False):
         #print([self, button, forward, backward, self.page])
@@ -102,7 +104,6 @@ class OLEDScreen(TMVScreen):
     def update_display(self):
         from luma.core.render import canvas
         with canvas(self._display) as draw:
-
             W = draw.im.size[0]
             H = draw.im.size[1]
             fg_colour = "white"
@@ -119,6 +120,9 @@ class OLEDScreen(TMVScreen):
                 latest_str_time = latest_str.split("T")[1]
             except Exception:  # pylint: disable=broad-except
                 latest_str = ""
+                latest_str_day = ""
+                latest_str_time = ""
+                
 
             if self.page == 1:
                 lines = [

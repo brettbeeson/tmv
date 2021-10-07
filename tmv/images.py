@@ -177,11 +177,11 @@ def exif_datetime_taken(fn):
             (36868, 37522),  # (DateTimeDigitized, SubsecTimeDigitized)
             (306, 37520), ]  # (DateTime, SubsecTime)
     exif = Image.open(fn)._getexif()  # pylint: disable=protected-access
-
+    print(exif)
     for t in tags:
         dat = exif.get(t[0])
         subsub = exif.get(t[1], 0)
-
+        
         # PIL.PILLOW_VERSION >= 3.0 returns a tuple
         dat = dat[0] if isinstance(dat,tuple) else dat
         subsub = subsub[0] if isinstance(subsub, tuple) else subsub

@@ -4,13 +4,15 @@ from datetime import datetime as dt, timedelta             # dt = class, time=cl
 # to enable monkeypatching, don't import "from x.y", but instead "import y" and use "x.y"
 import logging
 import importlib
+import re
 import threading
+import glob
 from time import sleep
 from pathlib import Path
 
 from tmv.buttons import StatefulButton, StatesCircle, ON, OFF
 from tmv.camera import SpeedButtonFactory, ModeButtonFactory
-from tmv.util import Tomlable, interval_speeded
+from tmv.util import Tomlable, interval_speeded, timed_lru_cache
 from tmv.config import *  # pylint: disable=wildcard-import, unused-wildcard-import
 
 LOGGER = logging.getLogger("tmv.interface.interface")
@@ -28,7 +30,7 @@ class Interface(Tomlable):
         self.speed_button.lit_for = timedelta(seconds=30)
         self.camera_activity = StatesCircle(ACTIVITY_FILE, ACTIVITY_STATE, fallback=OFF)
 
-        self.file_root = "."
+        self.tmv_root = "."
         self.has_pijuice = False
         self._latest_image = "latest-image.jpg"
         self.port = 5000
@@ -37,16 +39,19 @@ class Interface(Tomlable):
 
     @property
     def latest_image(self):
-        """ return with file_root as the ... file root! """
-        return Path(self.file_root) / self._latest_image
+        """ return with tmv_root as the ... file root! """
+        return Path(self.tmv_root) / self._latest_image
 
     @property
     def latest_image_time(self):
         """ the filesystem modified time, not the filename-marked time  """
         return dt.fromtimestamp(self.latest_image.stat().st_mtime)
 
+    @timed_lru_cache(seconds=10, maxsize=10)
     def n_images(self):
-        return len(list(Path(self.file_root).glob("*")))
+        # Resurive as often stores in day-named-folders under root
+        return len(glob.glob(self.tmv_root + "/**/*.jpg", recursive=True))
+
 
     @latest_image.setter
     def latest_image(self, value):
@@ -57,15 +62,19 @@ class Interface(Tomlable):
         return interval_speeded(self._interval, self.speed_button.value)
 
     def configd(self, config_dict):
-        c = config_dict  # shortcut
+        
         # read the [camera] to match real camera with this "interface" camera
         if 'camera' in config_dict:
             c = config_dict['camera']  # can accept config in root or [camera]
+        else :
+            c = config_dict
+        self.setattr_from_dict('tmv_root', c)
+        self.setattr_from_dict('latest_image', c)
         if 'mode_button' in c:
-            self.mode_button = ModeButtonFactory(c['mode_button'], software_only=False)
+            self.mode_button = ModeButtonFactory(c['mode_button'], software_only=False, root=self.tmv_root)
             self.mode_button.lit_for = timedelta(seconds=30)
         if 'speed_button' in c:
-            self.speed_button = SpeedButtonFactory(c['speed_button'], software_only=False)
+            self.speed_button = SpeedButtonFactory(c['speed_button'], software_only=False, root=self.tmv_root)
             self.speed_button.lit_for = timedelta(seconds=30)
         
         self.has_pijuice = c.get('pijuice', False)
@@ -76,8 +85,7 @@ class Interface(Tomlable):
             if self._interval.total_seconds() < 10.0:
                 LOGGER.warning("Intervals < 10s are not tested")
 
-        self.setattr_from_dict('file_root', c)
-        self.setattr_from_dict('latest_image', c)
+    
 
         # read the [interface] for specific-to-interface settings
         #

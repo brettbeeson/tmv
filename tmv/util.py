@@ -22,6 +22,8 @@ from enum import Enum
 from pkg_resources import resource_filename
 import toml
 import pytimeparse
+from functools import lru_cache, wraps
+from time import monotonic
 
 from tmv.config import SLOW, MEDIUM, FAST
 
@@ -110,6 +112,41 @@ def log_level_string_to_int(log_level_string):
     assert isinstance(log_level_int, int)
 
     return log_level_int
+
+def timed_lru_cache(
+    _func=None, *, seconds: int = 600, maxsize: int = 128, typed: bool = False
+):
+    """Extension of functools lru_cache with a timeout
+        
+    Parameters:
+    seconds (int): Timeout in seconds to clear the WHOLE cache, default = 10 minutes
+    maxsize (int): Maximum Size of the Cache
+    typed (bool): Same value of different type will be a different entry
+    Source: https://gist.github.com/Morreski/c1d08a3afa4040815eafd3891e16b945
+    """
+
+    def wrapper_cache(f):
+        f = lru_cache(maxsize=maxsize, typed=typed)(f)
+        f.delta = seconds
+        f.expiration = monotonic() + f.delta
+
+        @wraps(f)
+        def wrapped_f(*args, **kwargs):
+            if monotonic() >= f.expiration:
+                f.cache_clear()
+                f.expiration = monotonic() + f.delta
+            return f(*args, **kwargs)
+
+        wrapped_f.cache_info = f.cache_info
+        wrapped_f.cache_clear = f.cache_clear
+        return wrapped_f
+
+    # To allow decorator to be used without arguments
+    if _func is None:
+        return wrapper_cache
+    else:
+        return wrapper_cache(_func)
+
 
 
 def td2str(td):
@@ -495,7 +532,7 @@ def file_by_day_console():
         os.mkdir(args.dest)
     file_by_day(file_list, args.dest, args.move)
 
-
+@timed_lru_cache(seconds=60, maxsize=10)
 def wifi_ssid():
     """ Use iwgetid to get ssid in typical form: 'wlan0     ESSID:"NetComm 0405"\n'"""
     try:
@@ -509,7 +546,7 @@ def wifi_ssid():
         return None
 
 
-def ap_clients(interface='ap0') -> []:
+def ap_clients(interface='ap0'):
     """ Return a list of mac addresses. Only on pi-ish. """
     try:
         p = run(["iw", "dev", interface, "station", "dump"], encoding="UTF-8", check=True, capture_output=True)
@@ -572,6 +609,9 @@ def interval_speeded(interval, speed):
         return interval / SPEED_MULTIPLIER
     raise RuntimeError("Logic error on speed and intervals")
 
+
+
+@timed_lru_cache(seconds=10, maxsize=10)
 def uptime():  
     with open('/proc/uptime', 'r') as f:
         uptime_seconds = float(f.readline().split()[0])

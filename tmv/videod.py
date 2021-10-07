@@ -379,18 +379,18 @@ class TaskRunnerManager(Tomlable):
 
     def __init__(self):
         self.locations = ["."]
-        self.file_root = "."
+        self.tmv_root = "."
         self.vds = {}
         self.interval = self.DEFAULT_INTERVAL
 
     def __str__(self):
-        return f"TaskRunnerManager: locations={self.vds} file_root={self.file_root} interval:{self.interval}"
+        return f"TaskRunnerManager: locations={self.vds} tmv_root={self.tmv_root} interval:{self.interval}"
 
     def __repr__(self):
-        return f"TaskRunnerManager: locations={self.locations} file_root={self.file_root}"
+        return f"TaskRunnerManager: locations={self.locations} tmv_root={self.tmv_root}"
 
     def configd(self, config_dict):
-        self.setattr_from_dict('file_root', config_dict)
+        self.setattr_from_dict('tmv_root', config_dict)
 
         if 'interval' in config_dict:
             # interval specified as seconds: convert to timedelta
@@ -406,11 +406,11 @@ class TaskRunnerManager(Tomlable):
 
     def run(self, runs):
         # start in the specified directory and run forever
-        if not Path(self.file_root).is_dir():
-            LOGGER.error(f"No such dir to start in: {Path(self.file_root).absolute()}")
+        if not Path(self.tmv_root).is_dir():
+            LOGGER.error(f"No such dir to start in: {Path(self.tmv_root).absolute()}")
 
         original_cwd = os.getcwd()
-        file_root_path = Path(self.file_root).absolute()
+        tmv_root_path = Path(self.tmv_root).absolute()
         LOGGER.debug(f"Starting TaskRunner: {str(self)}")
 
         for run in range(0, runs):
@@ -421,8 +421,8 @@ class TaskRunnerManager(Tomlable):
             # run each TaskRunner in sequence 
             for l, vd in self.vds.items():
                 try:
-                    if (file_root_path / l).is_dir():
-                        os.chdir(file_root_path / l)
+                    if (tmv_root_path / l).is_dir():
+                        os.chdir(tmv_root_path / l)
                         LOGGER.debug(f"running tasks in cwd:{os.getcwd()}")
                         s, f = vd.run_tasks()
                         s_total += s
@@ -432,7 +432,7 @@ class TaskRunnerManager(Tomlable):
                     LOGGER.warning(exc)
                     LOGGER.debug(exc, exc_info=exc)
 
-            LOGGER.debug(f"Finished all tasks under {file_root_path}")
+            LOGGER.debug(f"Finished all tasks under {tmv_root_path}")
             os.chdir(original_cwd)
 
 

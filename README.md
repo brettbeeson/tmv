@@ -21,7 +21,7 @@ sudo scripts/install-tmv.sh
 ```
 ### Configure Camera
 The camera writes images to the local storage
-- edit `/etc/tmv/camera.toml` to set file_root, etc.
+- edit `/etc/tmv/camera.toml` to set tmv_root, etc.
 
 ### Optionally, configure Camera Uploads
 The uploader runs on the camera and sends images to an s3 bucket when possible or locally caches.

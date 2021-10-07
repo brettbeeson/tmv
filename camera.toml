@@ -7,10 +7,10 @@
 ###############################################################################
 [camera]
 #
-# Where to save images
+# Where to save images, config, button files, etc
 #
-#file_root = "."
-file_root = "/tmp/tmv"
+#tmv_root = "."
+tmv_root = "/tmp/tmv"
 
 #
 # Hardlink a copy of the latest image - useful for tmv-web to display last image
@@ -23,7 +23,7 @@ latest_image = "latest-image.jpg"
 #interval = 60.0
 
 #
-# Should be store under file_root/(eg)2020-12-31/
+# Should be store under tmv_root/(eg)2020-12-31/
 #
 #file_by_date = true
 
@@ -77,11 +77,6 @@ calc_shutter_speed = true
 #
 #log_level = 'WARNING'
 log_level = 'INFO'
-
-#
-# Show the LED when camera is taking a photo
-#
-#led = false
 
 #
 #   LIGHT|DIM|DARK: settings passed to picam to override the defaults. See PiCamera API docs.
@@ -161,17 +156,15 @@ resolution = '1280x720'
 
 #[camera.mode_button]
 # OLED buttons 16,20,21
-#   file = '/etc/tmv/camera-mode'
 #   button = 17 
     led = 4 # alterative: 18
 
 #[camera.speed_button]
-#   file = '/etc/tmv/camera-speed'
 #   button = 27
 #   led = 10  
 
-#[camera.statusled]
-# led = 9
+#[interface]
+# screen = None | "OLEDScreen"
 
 ###############################################################################
 # Where to upload the images, using tmv-upload
@@ -184,7 +177,7 @@ resolution = '1280x720'
 # The following substiutions are made:
 # UUID :  automatic identifier, probably unique
 # HOSTNAME : hostname of machine
-# (Source location is "file_root" in [camera])
+# (Source location is "tmv_root" in [camera])
 #
 destination = "s3://BUCKET-NAME-TO-SET/HOSTNAME/daily-photos"
 

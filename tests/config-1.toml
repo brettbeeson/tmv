@@ -21,7 +21,7 @@ city = 'Brisbane'
 # The following substiutions are made:
 # UUID :  automatic identifier, probably unique
 # HOSTNAME : hostname of machine
-# (Source location is "file_root" in [camera])
+# (Source location is "tmv_root" in [camera])
 #
 destination = "s3://BUCKET-NAME-TO-SET/data/HOSTNAME/daily-photos"
 
@@ -49,7 +49,7 @@ destination = "s3://BUCKET-NAME-TO-SET/data/HOSTNAME/daily-photos"
 #
 # Where to save images
 #
-file_root = "/tmp/tmv"
+tmv_root = "/tmp/tmv"
 
 #
 # Time in seconds between images
@@ -57,7 +57,7 @@ file_root = "/tmp/tmv"
 interval = 10.0
 
 #
-# Should be store under file_root/(eg)2020-12-31/
+# Should be store under tmv_root/(eg)2020-12-31/
 #
 file_by_date = true
 

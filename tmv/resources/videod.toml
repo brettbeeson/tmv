@@ -5,10 +5,10 @@
 #
 # Path to root of files, relative to cwd or (better for daemons) absolute
 #
-file_root = "."
+tmv_root = "."
 
 #
-# Directories ('cameras') under file_root to run the task within. 
+# Directories ('cameras') under tmv_root to run the task within. 
 # A list of relative paths
 #
 locations = [

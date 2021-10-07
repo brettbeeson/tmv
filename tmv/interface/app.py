@@ -175,7 +175,7 @@ def req_journal():
 @report_errors
 def req_files():
     fls = []
-    for f in Path(interface.file_root).glob("**/*.jpg"):
+    for f in Path(interface.tmv_root).glob("**/*.jpg"):
         fls.append(str(f))
     fls.sort()
     emit("n-files", len(fls))
@@ -300,7 +300,7 @@ def camera_config(configs):
     unlink_safe(cf.with_suffix(".bak"))
     copy(cf, cf.with_suffix(".bak"))
     Path(cf).write_text(configs)
-    # re-read this ourselves, too, to get new file_root, etc
+    # re-read this ourselves, too, to get new tmv_root, etc
     interface.config(cf)
     emit("message", "Saved config.")
 

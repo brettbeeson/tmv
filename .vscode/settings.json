@@ -1,17 +1,5 @@
 {
-    "sshfs.configs": [
-
-        {
-            "name": "lunchbox",
-            "host": "lunchbox",
-            "username": "pi",
-            "privateKeyPath": "/home/bbeeson/.ssh/id_rsa",
-            "root": "/home/pi/oled"
-        },
-        {
-            "name": "unnamed"
-        }
-    ],
+    
     
     "python.pythonPath": "/home/bbeeson/tmv/venv/bin/python",
     "python.linting.enabled": true,
@@ -20,5 +8,19 @@
     "python.testing.unittestEnabled": false,
     "python.testing.pytestEnabled": true,
     "python.linting.pylintEnabled": true,
-    
+ 
+    "sshfs.configs": [
+
+        {
+            "name": "${config:sshEndpoint}",
+            "host": "${config:sshEndpoint}",
+            "username": "pi",
+            "privateKeyPath": "/home/bbeeson/.ssh/id_rsa",
+            "root": "/home/pi/oled"
+        },
+        {
+            "name": "unnamed"
+        }
+    ],
+
 }

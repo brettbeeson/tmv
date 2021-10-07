@@ -6,7 +6,7 @@
       "type": "python",
       "request": "attach",
       "connect": {
-        "host": "phisaver.local",
+        "host": "${config:sshEndpoint}",
         "port": 5678
       },
       "pathMappings": [
