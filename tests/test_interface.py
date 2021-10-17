@@ -7,26 +7,27 @@ import logging
 from pathlib import Path
 from tempfile import mkdtemp
 import pytest
+from tmv.config import MEDIUM
 
 from tmv.util import LOG_FORMAT
-from tmv.interface.app import app, socketio, interface_console, interface, buttons_console
-from tmv.interface.screen import EInkScreen, OLEDScreen
-from tmv.interface.interface import Interface
+from . import running_on_pi
+
 
 TEST_DATA = Path(__file__).parent / "testdata"
 
 
 @pytest.fixture(scope="function")
-def setup_module():
-    # steart flask and scoketio
+def setup_test():
+    # start flask and socketio
+    
     os.chdir(mkdtemp())
-    print("Setting cwd to {}".format(os.getcwd()))
+    print(f"Setting cwd to {os.getcwd()}")
     logging.basicConfig(format=LOG_FORMAT)
     logging.getLogger("tmv.web").setLevel(logging.DEBUG)
 
 
-def test_connection(setup_module):
-
+def test_connection(setup_test):
+    from tmv.interface.app import app, socketio, interface_console, interface, Interface
     cf = Path(TEST_DATA / 'test-interface.toml')
 
     interface.config(cf)
@@ -44,14 +45,15 @@ def test_connection(setup_module):
     r = socketio_test_client.get_received()
     # read config back from server
     assert r[0]['name'] == "camera-config"
-    assert len(r[0]['args'][0]) == len(cf.read_text())
+    assert len(r[0]['args'][0]) == len(cf.read_text(encoding='utf-8'))
 
 
-def test_buttons(setup_module):
-
+def test_buttons(setup_test):
+    from tmv.interface.app import app, socketio, interface_console, interface, Interface
     cf = Path(TEST_DATA / 'test-interface.toml')
 
     interface.config(cf)
+    interface.tmv_root = "."
 
     flask_test_client = app.test_client()
 
@@ -64,43 +66,15 @@ def test_buttons(setup_module):
 
     socketio_test_client.emit("mode", "off")
     socketio_test_client.emit("speed", "fast")
-    m = interface.mode_button.path.read_text()
-    s = interface.speed_button.path.read_text()
+    m = interface.mode_button.path.read_text(encoding='utf-8')
+    s = interface.speed_button.path.read_text(encoding='utf-8')
     assert m == "off"
     assert s == "fast"
 
 
-def test_control_console(setup_module, capsys):
-    """
-    Run buttons console, testing output. Use local button files.
-    """
-
-    local_config = TEST_DATA / "test-interface.toml"  # local buttons
-
-    # default - should create files
-    with pytest.raises(SystemExit) as excinfo:
-        buttons_console(["-c", str(local_config)])
-        assert excinfo.value.code == 0
-    out = capsys.readouterr().out.strip()
-    assert out == "auto\nmedium"
-
-    # set
-    cl = ["-c", str(local_config), "on", "slow"]
-    with pytest.raises(SystemExit) as excinfo:
-        buttons_console(cl)
-        assert excinfo.value.code == 0
-
-    # get (from file - should be the set'd values)
-    with pytest.raises(SystemExit) as excinfo:
-        buttons_console(["-c", str(local_config)])
-        assert excinfo.value.code == 0
-    out = capsys.readouterr().out.strip()
-    assert out == "on\nslow"
-
-
-def manual_test_start_server(setup_module):
+def manual_test_start_server(setup_test):
     """ Test webpage manually """
-
+    from tmv.interface.app import app, socketio, interface_console, interface, Interface
     cf = Path(TEST_DATA / 'test-interface.toml')
     interface.config(cf)
     interface.latest_image = (TEST_DATA / 'interface/latest-image.jpg')
@@ -110,3 +84,18 @@ def manual_test_start_server(setup_module):
 
 # if __name__ == '__main__':
 #    manual_test_start_server(None)
+
+@pytest.mark.skipif(not running_on_pi(), reason="requires a Pi")
+def test_buttons2():
+    from tmv.interface.app import app, socketio, interface_console, interface, Interface
+    """ Test interval change with speed button"""
+    c = Interface()
+    cf = """
+    [interface.mode_button]
+    button = 20
+    """
+
+    c.configs(cf)
+    assert c.mode_button.button == 20
+    assert c.speed_button.value == MEDIUM
+        

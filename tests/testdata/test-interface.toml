@@ -9,8 +9,8 @@
 #
 # Where to save images
 #
-#tmv_root = "."
-tmv_root = "/tmp/tmv"
+tmv_root = "."
+#tmv_root = "/tmp/tmv"
 
 #
 # Hardlink a copy of the latest image - useful for tmv-web to display last image
