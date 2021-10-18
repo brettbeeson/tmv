@@ -1,10 +1,18 @@
 "use strict";
 
-let ws;
 const TMV_SERVER = "http://home.brettbeeson.com.au/"
 
+let ws;
+let current_mode='on';      // camera mode, set on receipt of 'mode' message
+
+// Set mode from string or href/object by emitting a change-mode request
 function mode(e) {
-  let position = e.target.value;
+  let position 
+  if (typeof(e) == 'string') {
+    position = e;
+  } else {
+    position = e.target.value;
+  }
   ws.emit("mode",  position );
   ws.emit("req-mode");
 }
@@ -15,7 +23,24 @@ function speed(e) {
   ws.emit("req-speed");
 }
 
+function set_video_src() {
+  $("#video-img").removeAttr("src");
+  let loc = new URL(window.location); // current url
+  let video_src = loc.protocol + "//" + loc.hostname + ":5001" + "/video"
+  $("#video-img").attr('src',video_src);
+  
+}
+
+function reload_video_src(e) {
+  setTimeout(set_video_src,1000,e);
+}
+
 $(document).ready(function () {
+
+  $("#video-img").removeAttr("src");
+  // todo: automate this button on load-img fail
+//$("#video-img").on("error", alert("fail!")); //() => reload_video_src(this));
+  $("#video-reload").on("click", () => set_video_src() )
 
   $("time.timeago").timeago(); //https://github.com/rmm5t/jquery-timeago
 
@@ -47,28 +72,24 @@ $(document).ready(function () {
       window.open(server,"_blank");
   });
   
-  // manual
-  $("#video-stop").on("click",  () => $("#video-img").attr('src',""))
-  // auto
-  $("#video-start").on("click",  () => $("#video-img").attr('src',"/video"))
-  
+  // on video tab click, shift to video mode
+  // upon non-video-tab click, return to former mode
     $('#pills-tab').on('show.bs.tab', function(e){
     console.log(e.target)
     console.log(e.target.id)
     switch (e.target.id){
       case "pills-video-tab":{
-           $("#video-img").attr('src',"/video")
-           break;
+        mode('video'); 
+        break;
       }
       default:{
-        // browser will no longer request frames. server will timeout.
-        $("#video-img").attr('src',"")
+        if (current_mode=='video') {
+          mode('on'); //previous_mode); // restore former mode before video tab was clicked
+        }
         break;
       }
     }
-  })
-
-  
+  }) 
 
   $("#services").on("click",  () =>     ws.emit("req-services-status"));
   
@@ -217,6 +238,18 @@ $(document).ready(function () {
       ae.blur();
       toggle_active($("#camera-mode input"), tc(msg));     
       ws.emit("req-camera-interval");
+      
+      if (msg !='video' && current_mode=="video") {
+        // we're in video mode: exit it
+        $("#video-img").removeAttr("src");
+        $('#pills-home-tab').tab('show'); // pills-home?
+      }
+      if (msg=='video' && current_mode!='video') {
+        // move to video mode
+        set_video_src()
+        $('#pills-video-tab').tab('show'); 
+      }
+      current_mode = msg
     });
 
     ws.on("speed", function (msg) {
@@ -314,7 +347,7 @@ function statusCheck() {
   setTimeout(statusCheck, 1000);
 }
 
-
+// Title Case
 function tc(str) {
   if (str.length == 0) {
     return "";

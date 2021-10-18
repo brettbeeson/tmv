@@ -12,3 +12,8 @@ sudo systemctl enable rtc-sync
 
 echo Optionally, configure PiJuice:
 echo python3 ~/PiJuice/Software/Source/Utilities/pijuice_util.py  --load < ~/tmv/scripts/pijuice.conf
+
+# the apt installs in /usr so need to copy to our venv. use a symlink
+echo Setting up Python API for venv
+cd ~/tmv/venv/lib/python3.7/site-packages/
+ln -s /usr/lib/python3/dist-packages/pijuice.py .

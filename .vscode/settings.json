@@ -1,6 +1,4 @@
-{
-    
-    
+{    
     "python.pythonPath": "/home/bbeeson/tmv/venv/bin/python",
     "python.linting.enabled": true,
     "sshUser" : "pi",
@@ -22,5 +20,9 @@
             "name": "unnamed"
         }
     ],
+    "python.testing.unittestArgs": [],
+    "python.testing.cwd": "",
+    "python.testing.autoTestDiscoverOnSaveEnabled": false,
+ 
 
 }

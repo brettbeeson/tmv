@@ -113,11 +113,12 @@ def log_level_string_to_int(log_level_string):
 
     return log_level_int
 
+
 def timed_lru_cache(
     _func=None, *, seconds: int = 600, maxsize: int = 128, typed: bool = False
 ):
     """Extension of functools lru_cache with a timeout
-        
+
     Parameters:
     seconds (int): Timeout in seconds to clear the WHOLE cache, default = 10 minutes
     maxsize (int): Maximum Size of the Cache
@@ -146,7 +147,6 @@ def timed_lru_cache(
         return wrapper_cache
     else:
         return wrapper_cache(_func)
-
 
 
 def td2str(td):
@@ -532,6 +532,7 @@ def file_by_day_console():
         os.mkdir(args.dest)
     file_by_day(file_list, args.dest, args.move)
 
+
 @timed_lru_cache(seconds=60, maxsize=10)
 def wifi_ssid():
     """ Use iwgetid to get ssid in typical form: 'wlan0     ESSID:"NetComm 0405"\n'"""
@@ -572,10 +573,9 @@ def stats_console():
 
     p = TMVPiJuice()
 
-
     parser = argparse.ArgumentParser("Interrogate TMV for battery level, etc and print as CSV")
-    parser.add_argument("--interval","-i", type=int, default=10, help="Reading interval in seconds")
-    parser.add_argument("--readings","-n", type=int, default=6, help="Readings to average")
+    parser.add_argument("--interval", "-i", type=int, default=10, help="Reading interval in seconds")
+    parser.add_argument("--readings", "-n", type=int, default=6, help="Readings to average")
     args = parser.parse_args()
     interval = timedelta(seconds=args.interval)
 
@@ -610,9 +610,12 @@ def interval_speeded(interval, speed):
     raise RuntimeError("Logic error on speed and intervals")
 
 
-
 @timed_lru_cache(seconds=10, maxsize=10)
-def uptime():  
-    with open('/proc/uptime', 'r') as f:
+def uptime():
+    with open('/proc/uptime', 'r', encoding='utf-8') as f:
         uptime_seconds = float(f.readline().split()[0])
         return uptime_seconds
+
+def shutdown():
+    os.system("sudo shutdown now") # or systemctl poweroff
+    

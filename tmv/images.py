@@ -11,7 +11,7 @@ from dateutil.rrule import rrule, SECONDLY
 from PIL import Image, ImageColor, ImageDraw, ImageFont
 from tmv.video import SliceType, VideoMaker
 from tmv.util import LOG_FORMAT, LOG_LEVELS, dt2str, next_mark, prev_mark, strptimedelta
-from tmv.config import FONT_FILE, HH_MM
+from tmv.config import FONT_FILE_IMAGE, HH_MM
 
 LOGGER = logging.getLogger("tmv.images")
 
@@ -27,7 +27,7 @@ def stamp(filename, ith):
     assert os.path.exists(filename)
     img = Image.open(filename)
     draw = ImageDraw.Draw(img)
-    font = ImageFont.truetype(FONT_FILE, 20)
+    font = ImageFont.truetype(FONT_FILE_IMAGE, 20)
     draw.pieslice([(0, 0), (100, 100)], ith % 360, ith % 360, fill=None, outline=None)
     draw.arc([(0, 0), (100, 100)], 0, 360)
     w, h = img.size
@@ -98,7 +98,7 @@ class Label(Overlay):
         draw = ImageDraw.Draw(self.im)
         text = self.label
         text_size = 10
-        font = ImageFont.truetype(FONT_FILE, text_size, encoding='unic')
+        font = ImageFont.truetype(FONT_FILE_IMAGE, text_size, encoding='unic')
         # Get the size of the time to write, so we can correctly place it
         text_box_size = draw.textsize(text=text, font=font)
         # centre text

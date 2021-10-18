@@ -17,7 +17,6 @@ sudo apt install -y python3-pip git
 git clone https://github.com/brettbeeson/tmv
 cd tmv
 sudo scripts/install-tmv.sh
-
 ```
 ### Configure Camera
 The camera writes images to the local storage
@@ -39,17 +38,13 @@ You can use a [PiJuice](https://github.com/PiSupply/PiJuice) to power it.
 (- You may need to `echo dtoverlay=i2c-rtc,ds1339 | sudo -a /boot/config.txt` to enable real time clock)
 - `~/tmv/scripts/install-pijuice.sh` to install API and RTC sync via a service
 
-### Optionally, configure autossh
-- `scripts/install-autossh.sh`
-- `sudo vi /etc/systemd/system/autossh.service` to configure
-
 ### Optionally, install timezone awareness:
 - `sudo pip install -U tzupdate` to update your timezone if you travel
 
 ### View Camera
 - browse to [your-pi-ip](http://raspberrypi.local) to see the Camera App and RaspAP. THis allows you to control most everything you need to take photos.
 
-### Optionally, view logs and start manualdetails (ssh to pi first)
+### Optionally, view logs and start manually details (ssh to pi first)
 - `journalctl -f -u 'tmv*'` to check logs in operation
 - `cd ~/tmv` and
 -- `python3 tmv/camera.py` to start camera
@@ -119,10 +114,30 @@ These readings were done from the PiJuice (pj.status.GetIoCurrent) using the cam
 - Base level (idle): 220 mA
 - just camera init in python: 720mA  (so camera on = consumption)
 - just tmv+uploader, no camera: 305mA (tmv-interface @ 2% cpu)
+
 *Summary: the camera should be destroyed / closed() when not in use*
 
-### PiCamera constructed on demand and destoryed (new code)
-- medium speed: 252 mA 
-*Summary: need about a 4000mAh to run for a 18h day*
+### PiCamera constructed on demand and destroyed, medium speed (new code)
+- No screen: 252 mA 
+- OLED Screen off (.hide()): 350mA
+- OLED screen on: 475mA
+
+*Summary: need about a 4000mAh to run for a 18h day or 6000mAh with screen*
+
+### PiCamera constructed on demand and destroyed, OLED screen off (new code)
+
+### PiCamera constructed on demand and destroyed, OLED screen on (new code)
+
+# Development Setup
+Use venv, setuptools and pip. Using Python3.9.
+- * install python3.9 on machine *
+- `cd ~/tmv`
+- `python3 -m venv venv`
+- `. venv/bin/activate`
+- `pip install -e .` # install dependancies in vnev
+
+Using pytest.
+- `pytest --collect-only tests` 
+- `pytest tests`
 
 Inspired by [Claude's Pi-Timolo](https://github.com/pageauc/pi-timolo/). Thanks Claude!

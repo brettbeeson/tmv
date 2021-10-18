@@ -2,6 +2,7 @@
 import logging
 from pathlib import Path
 import itertools
+import time
 
 LOGGER = logging.getLogger("tmv.circstates")
 
@@ -79,16 +80,26 @@ class StatesCircle:
         """
 
         if self.path is None or not self.path.exists():
-            # raise FileNotFoundError("No path set for Stateful.")
+            # no file for some reason: return the in-memory current
             return self._current
 
-        s_str = self.path.read_text(encoding='UTF-8').strip('\n').lower()
-        # find this str in states
+        # get text from file, retrying a but until non-empty
+        tries = 0
+        s_str = ''
+        while tries < 3:
+            s_str = self.path.read_text(encoding='UTF-8').strip('\n').lower()
+            if s_str in [str(s) for s in self._states]:  # pylint:disable=no-else-break
+                break
+            else:
+                time.sleep(.333)  # wait up to a total 1s in case another process is writing
+                tries += 1
+
+        # find this s_str in states
         try:
             state = next(s for s in self._states if str(s.value) == s_str)
         except StopIteration:
             LOGGER.warning(f"'{s_str}' is not a key within {self._states}. Resetting to {self._current}.")
-            self.path.write_text(str(self._current))
+            self.path.write_text(str(self._current),encoding='utf-8')
             return self._current
 
         # move iterator too so 'current' calls get this value
@@ -107,5 +118,5 @@ class StatesCircle:
         if self.path:
             if not self.path.exists():
                 LOGGER.info(f"Creating {str(self.path)}")
-            with self.path.open(mode="w") as f:
+            with self.path.open(mode="w",encoding='utf-8') as f:
                 f.write(str(state.value))

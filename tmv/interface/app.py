@@ -1,47 +1,57 @@
 #!/usr/bin/env python3
 # pylint: disable=line-too-long, logging-fstring-interpolation, dangerous-default-value, logging-not-lazy, global-statement
-from sys import stderr, argv
+
+"""
+A Flask application with:
+- SocketIO communication (e.g. javascript can subscribe to photo updates)
+- HTML/JS server for single page app showing TMV
+- Doesn't run a camera
+"""
+import signal
+import sys
+from sys import exc_info, stderr, argv
 from os import system
 from pathlib import Path
-import debugpy
 from base64 import b64encode
+import threading
 from time import sleep
 from shutil import copy
 import argparse
-from datetime import datetime as dt, timedelta             # dt = class
-from subprocess import CalledProcessError
+from datetime import datetime as dt
 import logging
 from socket import gethostname, gethostbyname
-
-from debugpy import breakpoint
+import debugpy
 from flask_socketio import emit, SocketIO
 from flask import Flask, send_from_directory, Response
 from toml import loads, TomlDecodeError
 
 from tmv.camera import CAMERA_CONFIG_FILE
 from tmv.interface.interface import Interface
-from tmv.buttons import OnOffAuto, Speed
+from tmv.buttons import OnOffAutoVideo, Speed
 from tmv.systemd import Unit
 from tmv.util import run_and_capture, unlink_safe, LOG_LEVELS, LOG_FORMAT, ensure_config_exists
-from tmv.exceptions import ButtonError, PiJuiceError
+from tmv.exceptions import PiJuiceError
 from tmv.interface.wifi import scan, reconfigure, info
-from tmv.interface.screen import EInkScreen, OLEDScreen
 from tmv.video_camera import VideoCamera
+
+LOGGER = logging.getLogger("tmv.interface")
 
 try:
     from tmv.tmvpijuice import TMVPiJuice, pj_call
 except (ImportError, NameError) as e:
-    print(e, file=stderr)
+    LOGGER.warning(f"No PiJuice available: {e}")
 
-LOGGER = logging.getLogger("tmv.interface")
-
+#
+# globals
+# - flask seems easiest to arrange with 'app' global which
+#
 app = Flask("tmv.interface.app", static_url_path="/", static_folder="static")
 app.config['SECRET_KEY'] = 'secret!'
 app.config["EXPLAIN_TEMPLATE_LOADING"] = True
 interface = Interface()
 socketio = SocketIO(app)
-shutdown = False
-next_screen_refresh = dt.max
+
+shutdown = False    # socketio threads: required?
 
 
 def report_errors(func):
@@ -69,7 +79,7 @@ def send_image(broadcast, binary=True):
 
 def broadcast_pijuice_status_thread():
     while not shutdown:
-        sleep(60)
+        socketio.sleep(60)
         req_pj_status()
 
 
@@ -77,56 +87,54 @@ def broadcast_image_thread():
     """
     Poll / watch for new image and send to all clients
     """
-    global next_screen_refresh
     image_mtime_was = None
     image_mtime_is = None
     while not shutdown:
-        sleep(1)
+        socketio.sleep(1)
         try:
-            if interface:
+            if interface and interface.latest_image:
                 im = Path(interface.latest_image)
                 if im.exists():
                     image_mtime_is = im.stat().st_mtime
                     if image_mtime_was is None or image_mtime_is > image_mtime_was:
                         send_image(broadcast=True)
                         image_mtime_was = image_mtime_is
-                        #next_screen_refresh = dt.now() + timedelta(seconds=60)
+
         except FileNotFoundError as exc:
             socketio.emit('warning', f"{interface.latest_image}: {repr(exc)}")
+            socketio.sleep(10)
             LOGGER.warning(exc)
 
 
 def broadcast_buttons_thread():
-    global next_screen_refresh
     mode_was = None
     speed_was = None
+    global interface
     while not shutdown:
-        sleep(1)
+        socketio.sleep(1)  # not time.sleep()
         if interface and interface.mode_button:
             if interface.mode_button.ready():
                 mode_is = interface.mode_button.value
                 if mode_was is None or mode_is != mode_was:
                     LOGGER.debug(f"Mode changed to {mode_is}")
+                    interface.poke()
                     req_mode()
                     mode_was = mode_is
-                    next_screen_refresh = dt.now() + timedelta(seconds=1)
 
         if interface and interface.speed_button:
             if interface.speed_button.ready():
                 speed_is = interface.speed_button.value
                 if speed_was is None or speed_is != speed_was:
                     LOGGER.debug(f"speed changed to {speed_is}")
+                    interface.poke()
                     req_speed()
                     speed_was = speed_is
-                    next_screen_refresh = dt.now() + timedelta(seconds=1)
 
 
-# index page
+# Serve the single page app
 @app.route("/")
 def index():
     return send_from_directory("static", "index.html")
-
-# all other paths - this is REQUIRED on some environments, others not!
 
 
 @app.route('/<path:path>')
@@ -189,8 +197,6 @@ def req_latest_image_time():
     mt = dt.fromtimestamp(ts)
     mt_str = mt.isoformat()
     emit("latest-image-time", mt_str)
-    #td = dt.now() - mt
-    # emit("latest-image-ago", f"{naturaldelta(td)} ago")
 
 
 @socketio.on('req-n-files')
@@ -203,7 +209,7 @@ def req_n_files():
 @report_errors
 def set_mode(pos: str):
     if interface and interface.mode_button:
-        interface.mode_button.value = OnOffAuto(pos.lower())
+        interface.mode_button.value = OnOffAutoVideo(pos.lower())
         interface.mode_button.set_LED()
     else:
         raise RuntimeError("No button available")
@@ -212,6 +218,7 @@ def set_mode(pos: str):
 @socketio.on('req-mode')
 @report_errors
 def req_mode():
+    LOGGER.debug(f"emitting mode: {str(interface.mode_button.value)}")
     socketio.emit('mode', str(interface.mode_button.value))
 
 
@@ -220,7 +227,6 @@ def req_mode():
 def set_speed(pos: str):
     if interface and interface.speed_button:
         interface.speed_button.value = Speed(pos.lower())
-        interface.speed_button.set_LED()
     else:
         raise RuntimeError("No button available")
 
@@ -250,21 +256,19 @@ def req_camera_config():
     if config_path is None:
         raise RuntimeError("No config path available")
     else:
-        emit('camera-config', config_path.read_text())
+        emit('camera-config', config_path.read_text(encoding='utf-8'))
 
 
 @socketio.on('req-camera-name')
 @report_errors
 def req_camera_name():
     emit('camera-name', gethostname())
-#    emit('message', f"hostname: {gethostname()}")
 
 
 @socketio.on('req-camera-ip')
 @report_errors
 def req_camera_ip():
     emit('camera-ip', gethostbyname(gethostname()))
-#    emit('message', f"IP: {gethostbyname(gethostname())}")
 
 
 @socketio.on('restart-hw')
@@ -308,14 +312,14 @@ def camera_config(configs):
 @socketio.on('req-wpa-supplicant')
 @report_errors
 def req_wpa_supplicant():
-    emit('wpa-supplicant', Path("/etc/wpa_supplicant/wpa_supplicant.conf").read_text())
+    emit('wpa-supplicant', Path("/etc/wpa_supplicant/wpa_supplicant.conf").read_text(encoding='utf-8'))
 
 
 @socketio.on('wpa-supplicant')
 @report_errors
 def wpa_supplicant(wpa_supplicant_text):
     fn = Path("/etc/wpa_supplicant/wpa_supplicant.conf")
-    fn.write_text(wpa_supplicant_text)
+    fn.write_text(wpa_supplicant_text, encoding='utf-8')
     emit('message', f"Saved to {fn}. Consider a reconfigure.")
 
 
@@ -342,7 +346,7 @@ def req_network_info():
 
 
 @socketio.on('connect')
-@report_errors
+#@report_errors
 def connect():
     emit('message', 'Hello from TMV!')
     try:
@@ -369,11 +373,16 @@ def req_pj_status():
         s['ioVoltage'] = pj_call(tmv_pj.status.GetIoVoltage)
         s['ioCurrent'] = pj_call(tmv_pj.status.GetIoCurrent)
         s['wakeupOnCharge'] = pj_call(tmv_pj.power.GetWakeUpOnCharge)
-        LOGGER.info(s)
+        #LOGGER.debug(s)
         socketio.emit('pj-status', s)
     except (NameError, PiJuiceError) as e:
         LOGGER.warning(e)
         LOGGER.debug(e, exc_info=e)
+
+#
+# Video
+#
+
 
 def gen(camera):
     """Video streaming generator function."""
@@ -382,6 +391,7 @@ def gen(camera):
         yield (b'--frame\r\n'
                b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
 
+
 @app.route('/video')
 def video_feed():
     """Video streaming route. Put this in the src attribute of an img tag."""
@@ -389,136 +399,86 @@ def video_feed():
                     mimetype='multipart/x-mixed-replace; boundary=frame')
 
 
-def start_socketio_threads():
-    socketio.threads = []
-    socketio.threads.append(socketio.start_background_task(broadcast_buttons_thread))
-    socketio.threads.append(socketio.start_background_task(broadcast_image_thread))
-    if interface.has_pijuice:
-        socketio.threads.append(socketio.start_background_task(broadcast_pijuice_status_thread))
+@app.route('/hidescreen')
+def screen_down():
+    interface.screen._display.hide()
+    return Response("ok")
+
+
+def stop_server(signum, _):
+    LOGGER.info(f"Caught {signal.Signals(signum).name}. Stopping server.")
+    socketio.stop()
 
 
 def interface_console(cl_args=argv[1:]):
+    """
+    Run without gunicorn in development mode. 
+    """
     parser = argparse.ArgumentParser("Interface (screen, web, web-socket server) to TMV interface.")
     parser.add_argument('--log-level', '-ll', default='WARNING', type=lambda s: LOG_LEVELS(s).name, nargs='?', choices=LOG_LEVELS.choices())
-    parser.add_argument('--config-file', '-cf', default=CAMERA_CONFIG_FILE)
+    parser.add_argument('--config-file', '-cf', default='/etc/tmv/' + CAMERA_CONFIG_FILE)
     parser.add_argument("--debug", default=False, action='store_true')
     args = parser.parse_args(cl_args)
+
+    global interface  # pylint: disable=global-statement
 
     logging.basicConfig(format=LOG_FORMAT)
     logging.getLogger("tmv").setLevel(args.log_level)
     logging.getLogger('werkzeug').setLevel(logging.WARNING)  # turn off excessive logs (>=WARNING is ok)
 
+    signal.signal(signal.SIGINT, stop_server)
+    signal.signal(signal.SIGTERM, stop_server)
+
     try:
         if args.debug:
             debug_port = 5678
-            debugpy.listen(("0.0.0.0",debug_port))
+            debugpy.listen(("0.0.0.0", debug_port))
             print(f"Waiting for debugger attach on {debug_port}")
             debugpy.wait_for_client()
             debugpy.breakpoint()
-        
+
         ensure_config_exists(args.config_file)
-        global interface  # pylint: disable=global-statement
-        LOGGER.info(f"config file: {Path(args.config_file).absolute()}")
+        LOGGER.info(f"Using config file: {Path(args.config_file).absolute()}")
         interface.config(args.config_file)
-        interface.mode_button.illuminate()
-        interface.speed_button.illuminate()
-        
+
         # reset to cli values, which override config file
         if args.log_level != 'WARNING':  # str comparison
             logging.getLogger("tmv").setLevel(args.log_level)
 
-
-
         # let's roll!
+        LOGGER.info(f"Starting socketio threads")
         start_socketio_threads()
+        LOGGER.info(f"Starting flask and socketio at 0.0.0.0:{interface.port}")
         socketio.run(app, host="0.0.0.0", port=interface.port, debug=(args.log_level == logging.DEBUG))
-        while True:
-            sleep(1)
 
     except (FileNotFoundError, TomlDecodeError) as exc:
+        LOGGER.debug(exc, exc_info=exc)
         print(exc, file=stderr)
         return 1
     except KeyboardInterrupt as exc:
+        LOGGER.debug(exc, exc_info=exc)
+        print(exc, file=stderr)
         return 0
     except Exception as exc:  # pylint: disable=broad-except
+        LOGGER.debug(exc, exc_info=exc)
         print(exc, file=stderr)
-        LOGGER.debug("Exiting", exc_info=exc)
         return 1
     finally:
         LOGGER.info("Stopping server and threads")
+        # use a thread event?
         global shutdown  # pylint:disable = global-statement
         shutdown = True
+        if interface:
+            interface.stop()
+        sleep(2)  # allow to stop nicely
 
 
-def buttons_console(cl_args=argv[1:]):
-    try:
-        parser = argparse.ArgumentParser(
-            "Check and control TMV buttons.")
-        parser.add_argument('-c', '--config-file', default=CAMERA_CONFIG_FILE)
-        parser.add_argument('-v', '--verbose', action="store_true")
-        parser.add_argument('-r', '--restart', action="store_true", help="restart service to (e.g.) re-read config")
-        parser.add_argument('mode', type=OnOffAuto, choices=list(OnOffAuto), nargs="?")
-        parser.add_argument('speed', type=Speed, choices=list(Speed), nargs="?")
-        args = (parser.parse_args(cl_args))
-
-        if args.verbose:
-            print(args)
-
-        ensure_config_exists(args.config_file)
-
-        c = Interface()
-        c.config(args.config_file)
-        c.mode_button.illuminate()
-        c.speed_button.illuminate()
-
-        if args.verbose:
-            print(c.mode_button)
-            print(c.speed_button)
-
-        if args.mode:
-            try:
-                c.mode_button.value = args.mode
-            except ButtonError as e:
-                print(e)
-        else:
-            print(c.mode_button.value)
-
-        if args.speed:
-            try:
-                c.speed_button.value = args.speed
-            except ButtonError as e:
-                print(e)
-        else:
-            print(c.speed_button.value)
-
-        if args.restart:
-            if args.verbose:
-                print("Restarting camera and upload")
-            ctlr = Unit("tmv-camera.service")
-            ctlr.restart()
-            ctlr = Unit("tmv-upload.service")
-            ctlr.restart()
-
-        exit(0)
-
-    except PermissionError as exc:
-        print(f"{exc}: check your file access permissions. Try root.", file=stderr)
-        if args.verbose:
-            raise  # to get stack trace
-        exit(10)
-    except CalledProcessError as exc:
-        print(f"{exc}: check your execute systemd permissions. Try root.", file=stderr)
-        if args.verbose:
-            raise  # to get stack trace
-        exit(20)
-    # except Exception as exc:
-    #    print(exc, file=stderr)
-    #    if args.verbose:
-    #        raise  # to get stack trace
-    #
-    #     exit(30)
+def start_socketio_threads():
+    socketio.start_background_task(target=broadcast_buttons_thread)  # hangs (with eventlet?) so use std threads
+    socketio.start_background_task(target=broadcast_image_thread)
+    if interface.has_pijuice:
+        socketio.start_background_task(target=broadcast_pijuice_status_thread)
 
 
 if __name__ == '__main__':
-    breakpoint()
-    interface_console(argv[1:])
+    sys.exit(interface_console())

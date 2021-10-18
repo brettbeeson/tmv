@@ -22,7 +22,6 @@ setuptools.setup(
     entry_points={
         'console_scripts': [
             "tmv-camera=tmv.camera:camera_console",
-            "tmv-buttons = tmv.interface:buttons_console",
             "tmv-video-compile=tmv.video:video_compile_console",
             "tmv-video-join=tmv.video:video_join_console",
             "tmv-video-info=tmv.videotools:video_info_console",
@@ -44,14 +43,20 @@ setuptools.setup(
     # extras_require=extras
 
     
-    # flask, boto3 is installed seperately as it hangs / doesn't install
+    # flask?
     
     install_requires=['astral', 'toml', 'python-dateutil', 'pytimeparse',
-                      'Pillow', 'watchdog',  'freezegun',
-                       'flask-socketio', 'python-socketio',
+                      'Pillow', 'watchdog',  'freezegun', 'flask',
+                      'flask-socketio',# 'python-socketio',
                       'ascii_graph',
                       'gpiozero', 'RPi.GPIO',
-                      'debugpy'],
+                      'nptime','transitions',
+                      'debugpy',
+                      'pytest','boto3',
+                      'luma','luma.emulator','luma.oled',
+                      'picamera',
+                      'eventlet'  # ==0.30.2 avoid ALREADY_HANDLED bug with new version
+                      ],
 
     python_requires='>=3.6',
 

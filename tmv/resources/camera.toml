@@ -7,18 +7,9 @@
 ###############################################################################
 [camera]
 #
-# Where to save images
+# Where to save images, config, button files, etc
 #
-tmv_root = "."
-# Other options...
-#tmv_root = "/home/pi/tmv-data"
-#tmv_root = "/var/tmv"
-
-
-#
-# Hardlink a copy of the latest image - useful for tmv-web to display last image
-#
-latest_image = "latest-image.jpg"
+tmv_root = "/tmp/tmv"
 
 #
 # Time in seconds between images
@@ -26,8 +17,12 @@ latest_image = "latest-image.jpg"
 #interval = 60.0
 
 #
+# Should be store under tmv_root/(eg)2020-12-31/
+#
+#file_by_date = true
+
+#
 # The minimum time, in seconds, we'll power down/sleep/etc if camera inactive
-# Otherwise, 
 #
 #inactive_threshold = 1800.0 # 30 minutes
 
@@ -61,7 +56,7 @@ city = 'Brisbane'
 # [ "spinny", "image_name", "settings",]
 #
 # overlays = []
-overlays = [ "spinny", "image_name","simple_settings","bottom_band"]
+overlays = [ "spinny", "image_name","simple_settings"]
 
 #
 # Use the light sensor to estimate shutter speed
@@ -69,18 +64,17 @@ overlays = [ "spinny", "image_name","simple_settings","bottom_band"]
 # Only applied to LIGHT|DIM|DARK settings when 'exposure_mode="off"''
 #
 #calc_shutter_speed = false
-calc_shutter_speed = true
+
 
 #
 # Camera logging: DEBUG, INFO, WARNING, ERROR, CRITAL
 #
 #log_level = 'WARNING'
-log_level = 'INFO'
+
 
 #
 #   LIGHT|DIM|DARK: settings passed to picam to override the defaults. See PiCamera API docs.
 #
-# 
 #    The defaults are which are:
 #       awb_mode= 'auto', #    'off','auto','sunlight','cloudy','shade','tungsten','fluorescent','incandescent','flash','horizon'
 #       exposure_mode= 'auto', # 'off','auto','night','nightpreview','backlight','spotlight','sports','snow','beach','verylong','fixedfps','antishake','fireworks'
@@ -114,23 +108,21 @@ log_level = 'INFO'
 # ---- 16:9 --> 1920x1080 (partial FOV) or 1640x922 (full FOV) or 1280x720 (partial) FOV
 #
 [camera.picam.LIGHT]
-iso = 200 # prevent iso changes between frames
+iso = 200
+exposure_mode = "auto"
 resolution = '1280x720'
-awb_mode= 'sunlight' # fix awb, instead of default 'auto' which changes dynamically
 
 [camera.picam.DIM]
-iso = 200 # prevent iso changes between frames. 
-
+iso = 200
+exposure_mode = "auto"
 framerate = 1.0 # max ss=1
 resolution = '1280x720'
-awb_mode= 'sunlight' # fix awb, instead of default 'auto' which changes dynamically
 
 [camera.picam.DARK]
-iso = 1600 # prevent iso changes between frames
-exposure_mode = "night" # or, set to "off" to set TMV calculate exposure time (usually long and better)
+iso = 1600
+exposure_mode = "night"
 framerate = 0.25 # max ss=4
 resolution = '1280x720'
-awb_mode= 'shade' # fix awb, instead of default 'auto' which changes dynamically
 
 #
 #   The camera is used to sense light and determine the next photo's settings
@@ -156,20 +148,25 @@ awb_mode= 'shade' # fix awb, instead of default 'auto' which changes dynamically
 #light = 0.2
 #save_images = false
 
-#[camera.mode_button]
-#   file = '/etc/tmv/camera-mode'
-#   button = 17
-#   led = 4 # alterative: 18
+#
+# Buttons are implemented as files and need no configuration
+# Optionally specify a button pin (for input) and an led pin (for output)
+# Waveshare OLED buttons 16,20,21
+#
+[interface.mode_button]
+#   button = 0
+#   led = 0
 
-#[camera.speed_button]
-#   file = '/etc/tmv/camera-speed'
-#   button = 27
-#   led = 10  
+[interface.speed_button]
+#   button = 0
+#   led = 0  
 
-#[camera.activity]
-# led = 9
-
-
+#
+# Use a screen to show output. mode_button and speed_button are independent of
+# the screen and should be configured above. 
+#
+[interface]
+# screen = None | "OLEDScreen"
 
 ###############################################################################
 # Where to upload the images, using tmv-upload
@@ -198,33 +195,6 @@ destination = "s3://BUCKET-NAME-TO-SET/HOSTNAME/daily-photos"
 # interval = 60
 
 #
-# Choose from DEBUG, INFO, WARNING, ERROR, CRITAL
+# Upload service logging. Choose from DEBUG, INFO, WARNING, ERROR, CRITAL
 #
 #log_level = 'WARNING'
-
-[interface]
-
-#
-# Web server and socketio server
-#
-#port = 5000
-
-#
-# Choose from DEBUG, INFO, WARNING, ERROR, CRITAL
-#
-#log_level = 'WARNING'
-
-################################################################################
-# Snippet: using a screen
-###############################################################################
-#[camera.mode_button]
-#   file = 'camera-mode'
-#   button = 6
-#[camera.speed_button]
-#   file = '/etc/tmv/camera-speed'
-#   button = 5
-#[camera.activity
-#   led = 0
-#[ interface ]
-# screen = true
-  

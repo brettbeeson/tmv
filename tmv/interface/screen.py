@@ -1,23 +1,34 @@
 # pylint: disable=import-outside-toplevel,protected-access, line-too-long, logging-fstring-interpolation, logging-not-lazy, unused-import
+from os import system
 from time import sleep
-from random import randrange
 import threading
 import logging
+from sys import stderr
 from datetime import datetime as dt, timedelta
-from collections import namedtuple
 from socket import gethostname
 
-from gpiozero import Button
-from luma.oled.device import sh1106
-from luma.core.interface.serial import spi
+from tmv.interface.app import shutdown_hw
+
+LOGGER = logging.getLogger("tmv.screen")
+
 from pkg_resources import resource_filename
 from PIL import Image, ImageFont
 from PIL.ImageDraw import Draw
+try:
+    from tmv.tmvpijuice import TMVPiJuice, pj_call
+except ModuleNotFoundError as e:
+    LOGGER.warning(f"pijuice not available: {e}")
+try:
+    from gpiozero import Button
+    from luma.oled.device import sh1106  # pylint: disable=no-name-in-module, import-error
+    from luma.core.interface.serial import spi
+except ModuleNotFoundError as e:
+    LOGGER.warning(f"luma or gpiozero not installed: {e}")
 
 from tmv.config import *  # pylint: disable=wildcard-import, unused-wildcard-import
-from tmv.util import wifi_ssid, strike, dt2str, uptime
+from tmv.exceptions import PiJuiceError
+from tmv.util import shutdown, wifi_ssid, strike, dt2str, uptime
 
-LOGGER = logging.getLogger("tmv.screen")
 
 class TMVScreen:
     """ Any screen should subclass and implement _init_display and update_display()
@@ -29,18 +40,26 @@ class TMVScreen:
         self._interface = interface
         self._screen_image = None
         self.shutdown = False
+        self.update_thread_ref = None
+        self.last_button_press = dt.now() # used to determine auto-dim
+        self.auto_off_interval = timedelta(seconds=60)
         self._init_display()
+        self.hidden = False
 
     def start(self):
-        self.update_thread_ref = threading.Thread(target=self.update_thread)
+        self.update_thread_ref = threading.Thread(target=self.update_thread, daemon=True)
         self.update_thread_ref.start()
-    
+
+    def stop(self):
+        self.shutdown = True
+        self.update_thread_ref.join()
+        self.update_thread_ref = None
+
     def update_display(self):
         raise NotImplementedError()
 
     def _init_display(self):
         raise NotImplementedError()
-      
 
     def update_thread(self):
         """
@@ -48,14 +67,26 @@ class TMVScreen:
         """
         next_screen_refresh = dt.now()
         refresh_period = timedelta(seconds=0.1)
-        
+
         while not self.shutdown:
             if dt.now() > next_screen_refresh:
-                self.update_display()
-                next_screen_refresh = dt.now() + refresh_period
+                if dt.now() < self.last_button_press + self.auto_off_interval:
+                    if self.hidden:
+                        self._display.show()
+                        self.hidden = False
+                    try:
+                        self.update_display()
+                    except RuntimeError as e:
+                        LOGGER.warning(e)
+                    next_screen_refresh = dt.now() + refresh_period
+                else:
+                    # timeout so hide if required
+                    if not self.hidden:
+                        self.hidden = True
+                        self._display.hide()
             else:
                 sleep(refresh_period.total_seconds())
-
+        LOGGER.debug("update_thread received shutdown: stopping ")
 
 
 class OLEDScreen(TMVScreen):
@@ -86,33 +117,47 @@ class OLEDScreen(TMVScreen):
             self.key_right.when_pressed = lambda: self.turn_page(self.key_right, forward=True)
             self.key_left = Button(self.KEY_LEFT_PIN, hold_repeat=True)
             self.key_left.when_pressed = lambda: self.turn_page(self.key_left, backward=True)
-        except RuntimeError as e:
+            
+            #self.key_up = Button(self.KEY_UP_PIN)
+            #self.key_up.when_pressed = self._display.hide
+            self.key_down = Button(self.KEY_DOWN_PIN)
+            self.key_down.hold_time = 3
+            self.key_down.when_held = shutdown
+    
+        except RuntimeError as ex:
             # Probably not on a pi
-            print(e)
+            LOGGER.error(ex)
 
         self.start()
-        
 
-    def turn_page(self, button, forward=False, backward=False):
-        #print([self, button, forward, backward, self.page])
+    def stop(self):
+        # unless we manually cleanup Buttons (gpiozero), we can a 'reusing pin' error
+        LOGGER.debug("OLEDScreen stopping")
+        super().stop()
+        self._display.cleanup()  # redundant accortding to https://luma-oled.readthedocs.io/en/latest/api-documentation.html#luma.oled.device.ssd1306.cleanup
+        # redundant too?
+        self.key_right.close()
+        self.key_left.close()
+
+    def turn_page(self, __button, forward=False, backward=False):
         self.page += forward * 1 + backward * -1
         if self.page < 1:
-            self.page = self.pages 
+            self.page = self.pages
         if self.page > self.pages:
             self.page = 1
+        self.last_button_press = dt.now()
 
     def update_display(self):
+        # todo: add a _display.hide() when not in use
         from luma.core.render import canvas
         with canvas(self._display) as draw:
             W = draw.im.size[0]
-            H = draw.im.size[1]
-            fg_colour = "white"
+            #H = draw.im.size[1]
             text_size = 12
-            small_text_size = 8
+            #small_text_size = 8
             line_height = text_size + 1
-            small_line_height = small_text_size + 1
-            font = ImageFont.truetype(FONT_FILE, text_size, encoding='unic')
-            small_font = ImageFont.truetype(FONT_FILE, small_text_size, encoding='unic')
+
+            font = ImageFont.truetype(FONT_FILE_SCREEN, text_size, encoding='unic')
 
             try:
                 latest_str = dt2str(self._interface.latest_image_time)
@@ -122,13 +167,11 @@ class OLEDScreen(TMVScreen):
                 latest_str = ""
                 latest_str_day = ""
                 latest_str_time = ""
-                
 
             if self.page == 1:
                 lines = [
                     f"Mode: {str(self._interface.mode_button.value)}",
                     f"Int : {int(self._interface.interval.total_seconds())}s ({self._interface.speed_button.value})",
-                    
                     f"Imgs: {self._interface.n_images()} images",
                     f"Date: {latest_str_day}",
                     f"Time: {latest_str_time}"]
@@ -138,16 +181,24 @@ class OLEDScreen(TMVScreen):
                     xy = (xy[0], xy[1] + line_height)
 
                 # RHS
-                #print ((self._interface.camera_activity.value,self._interface.camera_activity.value==ON))
-                if self._interface.camera_activity.value == ON:
-                    draw.arc([(W-10,0),(W-1,10-1)],start=0,end=360,fill='white')
-
+                if self._interface.activity.value == ON:
+                    draw.arc([(W - 10, 0), (W - 1, 10 - 1)], start=0, end=360, fill='white')
 
             elif self.page == 2:
-                lines = [ f"Name  : {gethostname()}",
-                          f"Images: {self._interface.n_images()}",
-                          f"Wifi  : {wifi_ssid()}",
-                          f"Uptime: {uptime():.0f}"]
+                lines = [f"Name  : {gethostname()}",
+                         f"Wifi  : {wifi_ssid()}",
+                         f"Uptime: {uptime()/60:.0f}m"]
+                if self._interface.has_pijuice:
+                    try:
+                        tmv_pj = TMVPiJuice()
+                        s = pj_call(tmv_pj.status.GetStatus)
+                        s['chargeLevel'] = pj_call(tmv_pj.status.GetChargeLevel)
+                        lines.append(f"Batt  : {s['chargeLevel']}")
+                        lines.append(f"Juice : {s['battery']}")
+                    except (NameError, PiJuiceError) as ex:        
+                        pass
+                        #LOGGER.debug(ex, exc_info=ex)
+                    
                 xy = (0, 0)
                 for line in lines:
                     draw.text(xy=xy, text=line, fill="white", font=font)
@@ -160,142 +211,4 @@ class OLEDScreen(TMVScreen):
         except (NameError, ImportError) as e:
             LOGGER.error(f"luma library not installed? Exception: {e}")
 
-    def button_update_thread(self):
-        pass
-        # while True:
-        #    if not GPIO.input(self.KEY_RIGHT_PIN)
-
-
-"""
-class FakeOLEDScreen(OLEDScreen):
-    def _init_display(self):
-        from luma.emulator.device import capture, gifanim
-        # gif
-        self._gif = ''.join(random.choices(string.ascii_uppercase + string.digits, k=3)) + ".gif"
-        self._display = gifanim(filename= self._gif, duration=0.1)#,mode="1")
-        # images
-        #self._display = capture()
-        return
-"""
-
-
-class EInkScreen(TMVScreen):
-    """Control an adafruit eink bonnet to show tmv stats, images, etc"""
-
-    def test(self):
-        try:
-            from adafruit_epd.epd import Adafruit_EPD
-            self._display.fill(Adafruit_EPD.WHITE)
-            self._display.fill_rect(0, 0, randrange(20, 60), randrange(20, 60), Adafruit_EPD.BLACK)
-            self._display.hline(randrange(20, 60), randrange(20, 60), randrange(20, 60), Adafruit_EPD.BLACK)
-            self._display.vline(randrange(20, 60), randrange(20, 60), randrange(20, 60), Adafruit_EPD.BLACK)
-            self._display.display()
-        except (NameError, ImportError) as e:
-            LOGGER.error(f"Could not create a screen: {e}")
-            LOGGER.debug("Could not create a screen", exc_info=e)
-
-    def update_display(self):
-        self.update_image()
-        self._display.image(self._screen_image)
-        self._display.display()
-
-    def update_image(self):
-        """ Read latest image and stats, and display 
-                              |->     w/2            <-|
-           ------------------------------------------------
-           | name
-           | on/off/auto
-        h  | interval                   PHOTO IMAGE
-           | apname
-           | wifiname
-           ------------------------------------------------
-
-        """
-
-        # make photo image
-        if self._screen_image:
-            # get latest image generally
-            photo_image = Image.open(str(self._interface.latest_image))
-            # dither
-            photo_image = photo_image.convert('1')  # convert image to black and white
-        else:
-            # show logo on first refresh
-            photo_image = Image.open(str(self._logo_filename))
-            # threshold
-            photo_image = photo_image.point(lambda x: 0 if x < 128 else 255, '1')
-
-        photo_image.thumbnail((self._display.width // 2, self._display.height))
-
-        # make full screen size image
-        self._screen_image = Image.new('RGB', (self._display.width, self._display.height))
-        self._screen_image.paste(photo_image, (self._display.width // 2, (self._display.height - photo_image.height) // 2))
-
-        # make LHS info bit
-        fg_colour = (0, 0, 0)
-        bg_colour = (255, 255, 255)
-        info_image = Image.new('RGB', (self._display.width - photo_image.width, self._display.height), color=bg_colour)
-        info_image_draw = Draw(info_image)
-        text_size = 22
-        small_text_size = 13
-        line_height = text_size + 1
-        small_line_height = small_text_size + 1
-        font = ImageFont.truetype(FONT_FILE, text_size, encoding='unic')
-        small_font = ImageFont.truetype(FONT_FILE, small_text_size, encoding='unic')
-
-        lines = [gethostname(),
-                 str(self._interface.mode_button.value),
-                 f"{int(self._interface.interval.total_seconds())}s",
-                 f"{self._interface.n_images()} images"]
-
-        xy = (0, 0)
-        for line in lines:
-            info_image_draw.text(xy=xy, text=line, fill=fg_colour, font=font)
-            xy = (xy[0], xy[1] + line_height)
-
-        try:
-            latest_str = dt2str(self._interface.latest_image_time)
-        except Exception:  # pylint: disable=broad-except
-            latest_str = ""
-
-        lines = [wifi_ssid() or "no wifi",
-                 latest_str]
-        for line in lines:
-            info_image_draw.text(xy=xy, text=line, fill=fg_colour, font=small_font)
-            xy = (xy[0], xy[1] + small_line_height)
-
-        self._screen_image.paste(info_image, (0, 0))
-
-    def screen_image_save(self):
-        fn = "screen_image.png"
-        self._screen_image.save(fn)
-        return fn
-
-    def _init_display(self):
-        try:
-            import digitalio
-            import busio
-            import board
-            from adafruit_epd.epd import Adafruit_EPD
-            from adafruit_epd.ssd1675 import Adafruit_SSD1675
-
-            spi = busio.SPI(board.SCK, MOSI=board.MOSI, MISO=board.MISO)
-            ecs = digitalio.DigitalInOut(board.CE0)
-            dc = digitalio.DigitalInOut(board.D22)
-            rst = digitalio.DigitalInOut(board.D27)
-            busy = digitalio.DigitalInOut(board.D17)
-            srcs = None
-            # 2.13" HD mono display
-            self._display = Adafruit_SSD1675(122, 250, spi, cs_pin=ecs, dc_pin=dc, sramcs_pin=srcs, rst_pin=rst, busy_pin=busy,)
-            self._display.rotation = 1
-            LOGGER.debug("Adafruit_SSD1675 screen ready")
-        except (NameError, ImportError) as e:
-            LOGGER.error(f"Could not create a screen: {e}")
-            LOGGER.debug("Could not create a screen", exc_info=e)
-
-
-if __name__ == '__main__':
-    print("h1")
-    screen = EInkScreen(None)
-    screen.update_image()
-    screen.update_display()
-    sleep(5)
+    

@@ -17,20 +17,22 @@ MEDIUM = Speed.MEDIUM
 FAST = Speed.FAST
 
 
-class OnOffAuto(Enum):
+class OnOffAutoVideo(Enum):
     """ Like a machine button toggle  """
     ON = 'on'
     OFF = 'off'
     AUTO = 'auto'
+    VIDEO = 'video'
 
     def __str__(self):
         return str(self.value)
 
 
 # Shortcuts
-ON = OnOffAuto.ON
-OFF = OnOffAuto.OFF
-AUTO = OnOffAuto.AUTO
+ON = OnOffAutoVideo.ON
+OFF = OnOffAutoVideo.OFF
+AUTO = OnOffAutoVideo.AUTO
+VIDEO = OnOffAutoVideo.VIDEO
 
 SPEED_BUTTON_STATES = [
     State(Speed.SLOW, on_time = 0.1, off_time = 1),
@@ -41,6 +43,7 @@ MODE_BUTTON_STATES = [
     State(ON, on_time=2, off_time=.1),
     State(OFF, on_time=.1, off_time=2),
     State(AUTO, on_time=.2, off_time=.2),
+    State(VIDEO, on_time=.5, off_time=.5),
 ]
 
 ACTIVITY_STATE = [
@@ -60,8 +63,8 @@ ACTIVITY_LED = 9
 CAMERA_CONFIG_FILE = "camera.toml"
 
 
-#FONT_FILE = resource_filename(__name__, 'resources/FreeSans.ttf')
-FONT_FILE = resource_filename(__name__, 'resources/mplus-1m-regular.ttf')
+FONT_FILE_IMAGE = resource_filename(__name__, 'resources/FreeSans.ttf')
+FONT_FILE_SCREEN = resource_filename(__name__, 'resources/mplus-1m-regular.ttf')
 
 
 HH_MM = "%H:%M"

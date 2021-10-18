@@ -97,7 +97,7 @@ class StatefulHWButton(StatefulButton):
         """
         Resets the dormancy counter.
         """
-        LOGGER.debug("button pushed!")
+        #LOGGER.debug("button pushed!")
 
         moment = dt.now()
 
@@ -108,8 +108,7 @@ class StatefulHWButton(StatefulButton):
         self.last_pressed = dt.now()
 
     def set_LED(self):
-        LOGGER.debug(f"set_LED: {self.led}")
-        if self.led is None:
+        if not self.led:
             return
         current = self.value
         try:

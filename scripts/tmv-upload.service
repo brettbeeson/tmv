@@ -10,7 +10,7 @@ Restart=always
 # Wait a bit before restart
 RestartSec=60
 User=pi
-ExecStart=/usr/local/bin/tmv-upload --daemon --config-file /etc/tmv/camera.toml
+ExecStart=/home/pi/tmv/venv/bin/tmv-upload --daemon --config-file /etc/tmv/camera.toml
 
 [Install]
 WantedBy=multi-user.target

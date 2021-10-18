@@ -3,14 +3,20 @@ from time import sleep
 import logging
 from os import system
 
-from _datetime import time, datetime as dt  # class
+from datetime import time, datetime as dt  # class
 from dateutil.tz import tzutc
 from pijuice import PiJuice  # pylint: disable=import-error
 
 from tmv.exceptions import PiJuiceError
+from tmv.util import timed_lru_cache
 
 LOGGER = logging.getLogger("tmv.tmvpijuice")
 
+
+@timed_lru_cache(seconds=60, maxsize=10)
+def pj_status():
+    p = TMVPiJuice()
+    return pj_call(p.status.GetStatus)
 
 def pj_check(pyjuice_response, raise_errors):
     """ Raise an error if response has errors"""
@@ -35,7 +41,7 @@ def pj_call(method):
         raise PiJuiceError("pijuice failed without an error code.")
 
 
-class TMVPiJuice(PiJuice):
+class TMVPiJuice(PiJuice):  # NameError
     """ Extend PiJuice functionality for TMV Camera use """
 
     def __init__(self, led='D2', lum=64, raise_errors=False):
