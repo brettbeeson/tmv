@@ -55,8 +55,8 @@ setuptools.setup(
                       'pytest','boto3',
                       'luma','luma.emulator','luma.oled',
                       'picamera',
-                      'eventlet'  # ==0.30.2 avoid ALREADY_HANDLED bug with new version
-                      ],
+                      'eventlet',  # ==0.30.2 avoid ALREADY_HANDLED bug with new version
+    ],
 
     python_requires='>=3.6',
 

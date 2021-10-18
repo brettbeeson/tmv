@@ -9,7 +9,7 @@
 #
 # Where to save images, config, button files, etc
 #
-tmv_root = "/tmp/tmv"
+tmv_root = "/tmp/"
 
 #
 # Time in seconds between images
@@ -34,6 +34,11 @@ tmv_root = "/tmp/tmv"
 #   EXIT: call system exit
 #
 #camera_inactive_action = "WAIT"
+
+#
+# Use a pijuice!
+# 
+# pijuice = false 
 
 #
 # When to turn on and off photo taking?

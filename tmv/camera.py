@@ -1147,7 +1147,7 @@ class Camera(Tomlable, Machine):
         if self.camera_inactive_action == CameraInactiveAction.POWER_OFF:
             # Turn off power and wakeup later
             if self._pijuice is not None:
-                LOGGER.warning("Powering off in 60s")
+                LOGGER.warning(f"Powering off in 60s. Waking at {waketime}.")
                 time.sleep(60)
                 self._pijuice.wakeup_enable(waketime)  # pass wakeup as a (local) time
                 self._pijuice.power_off()

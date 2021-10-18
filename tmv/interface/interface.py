@@ -19,7 +19,7 @@ class Interface(Tomlable):
     """Represents the interface to the camera (not the camera itself), such as the config file, buttons and screen    """
 
     def __init__(self):
-        print("Interface start")
+        LOGGER.info("Interface __init__ entered")
         super().__init__()
         self._interval = timedelta(seconds=60)
         self.latest_image = Path('latest-image.jpg')

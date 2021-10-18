@@ -196,8 +196,7 @@ class OLEDScreen(TMVScreen):
                         lines.append(f"Batt  : {s['chargeLevel']}")
                         lines.append(f"Juice : {s['battery']}")
                     except (NameError, PiJuiceError) as ex:        
-                        pass
-                        #LOGGER.debug(ex, exc_info=ex)
+                        LOGGER.warning(ex, exc_info=ex)
                     
                 xy = (0, 0)
                 for line in lines:

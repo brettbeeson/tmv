@@ -168,6 +168,7 @@ def restart_service():
     sleep(3)
     emit("message", f"Camera status: {c.status()}")
     emit("message", f"Upload status: {u.status()}")
+    sleep(3)
     i.restart()
 
 

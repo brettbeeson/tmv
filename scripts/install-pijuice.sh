@@ -17,3 +17,8 @@ echo python3 ~/PiJuice/Software/Source/Utilities/pijuice_util.py  --load < ~/tmv
 echo Setting up Python API for venv
 cd ~/tmv/venv/lib/python3.7/site-packages/
 ln -s /usr/lib/python3/dist-packages/pijuice.py .
+
+echo Installing smbus required by pijuice package
+cd ~/tmv
+source venv/bin/activate
+pip install smbus

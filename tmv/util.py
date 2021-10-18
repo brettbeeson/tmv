@@ -599,7 +599,7 @@ def stats_console():
 
 def interval_speeded(interval, speed):
     # Factor between intervals wrt speeds
-    SPEED_MULTIPLIER = 10
+    SPEED_MULTIPLIER = 5
 
     if speed.value == SLOW:
         return interval * SPEED_MULTIPLIER

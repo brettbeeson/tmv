@@ -15,9 +15,9 @@ sudo pip3 install pillow
 echo Installing TMV in a venv
 python3 -m venv venv
 source venv/bin/activate
-echo Requests (instead of setup.py where 2.21.0 - not 2.25.1 - is installed)
+echo Requests : instead of setup.py where 2.21.0 - not 2.25.1 - is installed
 pip install --upgrade requests
-python setup.py -e .
+pip install -e .
 #python setup.py .
 
 echo Installing TMV services
