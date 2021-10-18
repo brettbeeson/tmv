@@ -1,3 +1,4 @@
+tests/tmv-testdata/
 build/
 dist/
 *.log
