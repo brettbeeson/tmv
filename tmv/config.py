@@ -11,6 +11,9 @@ class Speed(Enum):
     def __str__(self):
         return str(self.value)
 
+# Factor between intervals wrt speeds
+SPEED_MULTIPLIER = 5
+
 # Shortcuts
 SLOW = Speed.SLOW
 MEDIUM = Speed.MEDIUM

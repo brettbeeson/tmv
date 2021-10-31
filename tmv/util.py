@@ -25,7 +25,7 @@ import pytimeparse
 from functools import lru_cache, wraps
 from time import monotonic
 
-from tmv.config import SLOW, MEDIUM, FAST
+from tmv.config import SLOW, MEDIUM, FAST, SPEED_MULTIPLIER
 
 
 class LOG_LEVELS(Enum):
@@ -598,9 +598,6 @@ def stats_console():
 
 
 def interval_speeded(interval, speed):
-    # Factor between intervals wrt speeds
-    SPEED_MULTIPLIER = 5
-
     if speed.value == SLOW:
         return interval * SPEED_MULTIPLIER
     if speed.value == MEDIUM:

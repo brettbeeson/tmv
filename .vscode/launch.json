@@ -6,7 +6,8 @@
       "type": "python",
       "request": "attach",
       "connect": {
-        "host": "${config:sshEndpoint}",
+        "user":"${config:sshUser}",
+        "host": "${config:sshEndpoint}.local",
         "port": 5678
       },
       "pathMappings": [

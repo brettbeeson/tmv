@@ -5,7 +5,8 @@ const TMV_SERVER = "http://home.brettbeeson.com.au/"
 let ws;
 let current_mode='on';      // camera mode, set on receipt of 'mode' message
 
-// Set mode from string or href/object by emitting a change-mode request
+// Set mode from string or href/object 
+// (The server will broadcast a mode update so expect that)
 function mode(e) {
   let position 
   if (typeof(e) == 'string') {
@@ -14,13 +15,11 @@ function mode(e) {
     position = e.target.value;
   }
   ws.emit("mode",  position );
-  ws.emit("req-mode");
 }
 
 function speed(e) {
   let position = e.target.value;
   ws.emit("speed", position );
-  ws.emit("req-speed");
 }
 
 function set_video_src() {
@@ -31,9 +30,9 @@ function set_video_src() {
   
 }
 
-function reload_video_src(e) {
-  setTimeout(set_video_src,1000,e);
-}
+//function reload_video_src(e) {
+//  setTimeout(set_video_src,1000,e);
+//}
 
 $(document).ready(function () {
 
@@ -52,8 +51,7 @@ $(document).ready(function () {
   var wifieditor = ace.edit("wifieditor");
   wifieditor.setTheme("ace/theme/xcode");
   wifieditor.setFontSize(16);
-  //wifieditor.session.setMode("ace/mode/wpa?");
-  
+    
   $("#pj-status").on("click",  () =>  ws.emit("req-pj-status"));
 
   toastr.options.positionClass = "toast-bottom-center";
@@ -72,25 +70,18 @@ $(document).ready(function () {
       window.open(server,"_blank");
   });
   
-  // on video tab click, shift to video mode
-  // upon non-video-tab click, return to former mode
-    $('#pills-tab').on('show.bs.tab', function(e){
-    console.log(e.target)
-    console.log(e.target.id)
-    switch (e.target.id){
-      case "pills-video-tab":{
-        mode('video'); 
-        break;
-      }
-      default:{
-        if (current_mode=='video') {
-          mode('on'); //previous_mode); // restore former mode before video tab was clicked
-        }
-        break;
-      }
-    }
-  }) 
 
+  // on video tab click, shift to video mode
+  $('#pills-video-tab').on('click', function (e) {
+    e.preventDefault()
+    mode('video'); 
+  })
+  // upon home-tab click, return to 'camera' mode (on)
+  $('#pills-home-tab').on('click', function (e) {
+    e.preventDefault()
+    mode('on'); 
+  })
+     
   $("#services").on("click",  () =>     ws.emit("req-services-status"));
   
   $("#journal").on("click",  () =>     ws.emit("req-journal"));
@@ -198,11 +189,11 @@ $(document).ready(function () {
       ws.emit("req-speed");
       ws.emit("req-camera-name");
       ws.emit("req-camera-interval");
+      ws.emit("req-image");
     });
 
     ws.on("pj-status", json => {
       append_to_textarea($("#log-textarea"),"PIJUICE INFO",JSON.stringify(json, undefined, 4));
-      
       $("#pj-battery-status").text(json.battery)
       $("#pj-battery-level").text("Battery: " + json.chargeLevel + "%")
       
@@ -242,7 +233,7 @@ $(document).ready(function () {
       if (msg !='video' && current_mode=="video") {
         // we're in video mode: exit it
         $("#video-img").removeAttr("src");
-        $('#pills-home-tab').tab('show'); // pills-home?
+        $('#pills-home-tab').tab('show'); 
       }
       if (msg=='video' && current_mode!='video') {
         // move to video mode

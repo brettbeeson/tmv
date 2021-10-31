@@ -80,7 +80,8 @@ class StatefulHWButton(StatefulButton):
                 self.led = LED(led_pin)
 
         except Exception as e:
-            print(f"Exception but continuing:{e}", file=stderr)
+            LOGGER.warning(f"Exception but continuing:{e}")
+            LOGGER.debug(f"Exception but continuing:{e}", exc_info=True)
 
     def __str__(self):
         return f"StatefulHWButton: {vars(self)}"

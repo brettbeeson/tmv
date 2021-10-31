@@ -20,6 +20,7 @@ from freezegun import freeze_time
 import dateutil
 
 import tmv
+from tmv.config import SPEED_MULTIPLIER
 import tmv.util
 from tmv.util import today_at, tomorrow_at
 from tmv.camera import ActiveTimes, Camera, CameraInactiveAction, FakePiCamera, LightLevel, Timed, calc_pixel_average, camera_console
@@ -81,9 +82,9 @@ def test_speeds(setup_test):
     c.configs(cf)
     assert c.interval == timedelta(seconds=100)
     c.speed_button.value = SLOW
-    assert c.interval == timedelta(seconds=1000)
+    assert c.interval == timedelta(seconds=100 * SPEED_MULTIPLIER)
     c.speed_button.value = FAST
-    assert c.interval == timedelta(seconds=10)
+    assert c.interval == timedelta(seconds=100 / SPEED_MULTIPLIER)
 
 
 def test_write_config(setup_test):

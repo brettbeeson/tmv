@@ -1,4 +1,5 @@
 tests/tmv-testdata
+tests/testdata
 build/
 dist/
 *.log

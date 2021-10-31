@@ -9,11 +9,10 @@ A Flask application with:
 """
 import signal
 import sys
-from sys import exc_info, stderr, argv
+from sys import stderr, argv
 from os import system
 from pathlib import Path
 from base64 import b64encode
-import threading
 from time import sleep
 from shutil import copy
 import argparse
@@ -63,8 +62,9 @@ def report_errors(func):
             emit('warning', f"Error: {exc}")
     return wrappers
 
-
-def send_image(broadcast, binary=True):
+@socketio.on('req-image')
+@report_errors
+def send_image(broadcast=False, binary=True):
     if interface is None or interface.latest_image is None or not Path(interface.latest_image).exists():
         return
     im = Path(interface.latest_image)
@@ -89,6 +89,8 @@ def broadcast_image_thread():
     """
     image_mtime_was = None
     image_mtime_is = None
+    #send_image(broadcast=True) # first up, broadcast current image
+
     while not shutdown:
         socketio.sleep(1)
         try:
@@ -189,8 +191,8 @@ def req_files():
     fls.sort()
     emit("n-files", len(fls))
     emit("files", fls)
-
-
+ 
+    
 @socketio.on('req-latest-image-time')
 @report_errors
 def req_latest_image_time():
@@ -209,6 +211,7 @@ def req_n_files():
 @socketio.on('mode')
 @report_errors
 def set_mode(pos: str):
+    LOGGER.debug(f"set_mode to: {pos}")
     if interface and interface.mode_button:
         interface.mode_button.value = OnOffAutoVideo(pos.lower())
         interface.mode_button.set_LED()
@@ -350,6 +353,8 @@ def req_network_info():
 #@report_errors
 def connect():
     emit('message', 'Hello from TMV!')
+    return
+    # don't force feed
     try:
         send_image(broadcast=False)
         req_mode()

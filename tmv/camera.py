@@ -4,8 +4,6 @@ from signal import signal, SIGINT, SIGTERM
 import argparse
 
 from io import BytesIO
-from socket import SocketIO
-import socket
 from sys import maxsize, argv
 from enum import Enum
 import datetime  # for datetime.time
@@ -35,7 +33,7 @@ from tmv.circstates import StatesCircle
 
 from tmv.streamer import StreamingHandler, StreamingOutput, TMVStreamingServer
 from tmv.util import penultimate_unique, next_mark, LOG_FORMAT, LOG_LEVELS
-from tmv.util import Tomlable, setattrs_from_dict, sleep_until, ensure_config_exists, interval_speeded
+from tmv.util import Tomlable, setattrs_from_dict, ensure_config_exists, interval_speeded
 from tmv.exceptions import ConfigError, PiJuiceError, SignalException, PowerOff
 from tmv.buttons import ON, OFF, AUTO, VIDEO, StatefulButton
 from tmv.config import *  # pylint: disable=wildcard-import, unused-wildcard-import
@@ -838,6 +836,7 @@ class Camera(Tomlable, Machine):
             self.light_sense_outstanding = True
         if next_image_mark <= next_sense_mark:
             # capture image
+
             settings = {** self.picam_defaults, ** self.picam[self.light_sensor.level.name]}
             LOGGER.debug(f"self.calc_shutter_speed={self.calc_shutter_speed} settings['exposure_mode']={settings['exposure_mode']}")
             if self.calc_shutter_speed and settings['exposure_mode'] == 'off':
@@ -846,26 +845,36 @@ class Camera(Tomlable, Machine):
                 settings['shutter_speed'] = self.shutter_speed_from_last()
                 if settings['shutter_speed'] is None:
                     settings['shutter_speed'] = self.shutter_speed_from_sensor()
-            while dt.now() < next_image_mark:
-                # busy sleep (in case the speed is changed) until we're ready to go
+            
+            # busy sleep (in case the speed is changed) until we're ready to go
+            while dt.now() < next_image_mark and self.mode_button.value == self.current_mode:
                 next_image_mark = next_mark(self.interval, instant)
                 time.sleep(self.busy_sleep_s)
-            with self.get_camera() as cam:
-                set_picam(cam, settings)
-                self.settle()
-                self.capture_image(cam, next_image_mark)
+            
+            # don't take a photo if mode was changed whilst waiting
+            if self.mode_button.value == self.current_mode:
+                with self.get_camera() as cam:
+                    set_picam(cam, settings)
+                    self.settle()
+                    self.capture_image(cam, next_image_mark)
         else:
             # run light sensor
-            sleep_until(next_sense_mark, instant)
-            with self.get_camera() as cam:
-                set_picam(cam, {** self.picam_defaults, ** self.picam_sensing})
-                self.capture_light(cam, next_sense_mark)
+
+            # non-busy sleep
+            while dt.now() < next_sense_mark and self.mode_button.value == self.current_mode :
+                time.sleep(self.busy_sleep_s)
+
+            # don't take a photo if mode was changed whilst waiting
+            if self.mode_button.value == self.current_mode: 
+                with self.get_camera() as cam:
+                    set_picam(cam, {** self.picam_defaults, ** self.picam_sensing})
+                    self.capture_light(cam, next_sense_mark)
 
     def state_video_loop(self):
         """Stream a video in a thread until mode button ain't VIDEO no more"""
         LOGGER.debug(f"Starting video at :{self.video_port}")
         # use self.CameraClass for mocking but haven't done video mock
-        with self.CameraClass(resolution='640x480', framerate=10) as camera:
+        with self.CameraClass(resolution='640x480', framerate=5) as camera:
             # StreamingOutput (class) is used to output the frames
             # We attach the camera stream to it and then pass to Server
             output = StreamingOutput()
@@ -1082,9 +1091,10 @@ class Camera(Tomlable, Machine):
                 text = pformat(get_picam(self._last_camera_settings))
                 text = f"level={self.light_sensor._current_level} avg={pxavg:.3f}"
                 try:
+                    LOGGER.debug(f"self._last_camera_settings = {self._last_camera_settings}")
                     text += f" es {self._last_camera_settings['exposure_speed']/1000000:.3f} iso={self._last_camera_settings['iso']} exp={self._last_camera_settings['exposure_mode']}"
-                except KeyError as e:
-                    LOGGER.warning(f"Unable to get picam settings for overlay: {e}")
+                except KeyError as ex:
+                    LOGGER.warning(f"Unable to get picam settings for overlay: {ex}")
                 text_size = 10
                 font = ImageFont.truetype(FONT_FILE_IMAGE, text_size, encoding='unic')
                 tw, th = draw.textsize(text=text, font=font)
@@ -1139,7 +1149,7 @@ class Camera(Tomlable, Machine):
     def finish(self):
         """
         Camera finished, so undertake requested action(exit, etc)
-        Doesn't return
+        Doesn't return unless interrupt (e.g. mode change during 60s before power down)
         """
         waketime = self.active_timer.waketime()
         if self.camera_inactive_action == CameraInactiveAction.EXCEPTION:
@@ -1148,7 +1158,12 @@ class Camera(Tomlable, Machine):
             # Turn off power and wakeup later
             if self._pijuice is not None:
                 LOGGER.warning(f"Powering off in 60s. Waking at {waketime}.")
-                time.sleep(60)
+                power_off_at = dt.now() + timedelta(seconds=60)               
+                # busy wait, returning if mode changes (abort shutdown)
+                while dt.now() < power_off_at:
+                    if self.mode_button.value != self.current_mode:
+                        return
+                    time.sleep(self.busy_sleep_s)   
                 self._pijuice.wakeup_enable(waketime)  # pass wakeup as a (local) time
                 self._pijuice.power_off()
             else:
