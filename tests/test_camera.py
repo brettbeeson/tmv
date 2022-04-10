@@ -420,12 +420,12 @@ def test_image_verify(setup_test, caplog):
 
 
 def test_fake(monkeypatch, setup_test):
-  
+
     with freeze_time(parse("2000-01-01 12:00:00")) as fdt:
         global FDT
         FDT = fdt
         monkeypatch.setattr(time, 'sleep', sleepless)
-        c = Camera(sw_cam=True) 
+        c = Camera(sw_cam=True)
         c.file_by_date = False
         c._interval = timedelta(minutes=10)
 
@@ -449,6 +449,7 @@ def test_fake(monkeypatch, setup_test):
         # one hour more of 6 photos per hour
         assert len(images) == 6 + 1 + 6 + 6
         assert Path("./latest-image.jpg").is_file()
+
 
 def check_test_fake2(monkeypatch, setup_test):
     s = 3
@@ -523,7 +524,6 @@ def test_low_light_sense(monkeypatch, setup_test):
         monkeypatch.setattr(time, 'sleep', sleepless)
         c = Camera(sw_cam=True)
 
-        
         c.file_by_date = False
         c._interval = timedelta(hours=1)
         c.light_sensor.light = 0.6
@@ -722,14 +722,8 @@ def test_overlays(monkeypatch, setup_test):
         #c._camera.height = 900
         c.configs(cf)
         c.file_by_date = False
-    
+
         run_until(c, fdt, today_at(13))
-
-
-
-
-    
-
 
 
 def run_times(camera, fdt, n):
@@ -752,4 +746,3 @@ def run_until(camera, fdt, until, reset_camera=None):
             else:
                 raise
         fdt.tick(timedelta(seconds=1))
-

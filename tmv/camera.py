@@ -1104,12 +1104,17 @@ class Camera(Tomlable, Machine):
                 y = height - th * 2
                 draw.text(xy=(x, y), text=text, fill=text_colour, font=font)
             if 'spinny' in self.overlays:
-                # Draw a small circle with a minute hand, for continuity checking. Plus it looks cool.
+                # Draw circles with a hour and minute hand, for continuity checking. Plus it looks cool.
                 # 1px off corner x1    y1              x2      y2
                 bounding_box = [(1, height - band_height), (band_height, height - 1)]
+                # hour hand
+                draw.pieslice(bounding_box, mark.hour / 12 * 360 - 90,
+                              mark.hour / 12 * 360 - 90 -1, fill=None, outline=text_colour, width=2) 
+                draw.arc(bounding_box, 0, 360, fill=text_colour)
+                bounding_box = [(1+band_height, height - band_height), (1+band_height*2, height - 1)]
                 # minute hand
                 draw.pieslice(bounding_box, mark.minute / 60 * 360 - 90,
-                              mark.minute / 60 * 360 - 90, fill=None, outline=text_colour, width=2)
+                              mark.minute / 60 * 360 - 90-1, fill=None, outline=text_colour, width=2)
                 draw.arc(bounding_box, 0, 360, fill=text_colour)
             if 'image_name' in self.overlays:
                 text = os.path.basename(self.dt2basename(mark))
