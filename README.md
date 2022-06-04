@@ -28,11 +28,11 @@ The camera writes images to the local storage
 - add a cron job via `crontab -e`
 - this will move image files to your server
 
-`
-# cron
+```
+# crontab entries
 */10 * * * * rclone -v move --include '**/*T*.jpg' ~/tmv-data aws:tmv-data/highqual >> ~/rclone.log 2>&1
 */10 * * * * rclone rmdirs ~/tmv-data
-`
+```
 
 
 
