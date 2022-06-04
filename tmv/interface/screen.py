@@ -41,7 +41,7 @@ class TMVScreen:
         self._screen_image = None
         self.shutdown = False
         self.update_thread_ref = None
-        self.last_button_press = dt.now() # used to determine auto-dim
+        self.last_button_press = dt.now()  # used to determine auto-dim
         self.auto_off_interval = timedelta(seconds=60)
         self._init_display()
         self.hidden = False
@@ -64,28 +64,26 @@ class TMVScreen:
     def update_thread(self):
         """
         Display key parameters and image on the screen and react to screen button presses
+        We're not updating on 'mark' but sleeping fixed amount: prioritize low CPU
         """
-        next_screen_refresh = dt.now()
-        refresh_period = timedelta(seconds=0.1)
 
         while not self.shutdown:
-            if dt.now() > next_screen_refresh:
-                if dt.now() < self.last_button_press + self.auto_off_interval:
-                    if self.hidden:
-                        self._display.show()
-                        self.hidden = False
-                    try:
-                        self.update_display()
-                    except RuntimeError as e:
-                        LOGGER.warning(e)
-                    next_screen_refresh = dt.now() + refresh_period
-                else:
-                    # timeout so hide if required
-                    if not self.hidden:
-                        self.hidden = True
-                        self._display.hide()
+
+            if dt.now() < self.last_button_press + self.auto_off_interval:
+                # button recently pressed: wakeup if required; show screen
+                if self.hidden:
+                    self._display.show()
+                    self.hidden = False
+                try:
+                    self.update_display()
+                except RuntimeError as exc:
+                    LOGGER.warning(exc)    
             else:
-                sleep(refresh_period.total_seconds())
+                # sleep mode
+                if not self.hidden:
+                    self.hidden = True
+                    self._display.hide()
+            sleep(1.0)
         LOGGER.debug("update_thread received shutdown: stopping ")
 
 
@@ -117,13 +115,13 @@ class OLEDScreen(TMVScreen):
             self.key_right.when_pressed = lambda: self.turn_page(self.key_right, forward=True)
             self.key_left = Button(self.KEY_LEFT_PIN, hold_repeat=True)
             self.key_left.when_pressed = lambda: self.turn_page(self.key_left, backward=True)
-            
+
             #self.key_up = Button(self.KEY_UP_PIN)
             #self.key_up.when_pressed = self._display.hide
             self.key_down = Button(self.KEY_DOWN_PIN)
             self.key_down.hold_time = 3
             self.key_down.when_held = shutdown
-    
+
         except RuntimeError as ex:
             # Probably not on a pi
             LOGGER.error(ex)
@@ -132,12 +130,12 @@ class OLEDScreen(TMVScreen):
 
     def stop(self):
         # unless we manually cleanup Buttons (gpiozero), we can a 'reusing pin' error
-        LOGGER.debug("OLEDScreen stopping")
         super().stop()
-        self._display.cleanup()  # redundant accortding to https://luma-oled.readthedocs.io/en/latest/api-documentation.html#luma.oled.device.ssd1306.cleanup
+        LOGGER.debug("OLEDScreen stopped")
+        #self._display.cleanup()  # redundant accortding to https://luma-oled.readthedocs.io/en/latest/api-documentation.html#luma.oled.device.ssd1306.cleanup
         # redundant too?
-        self.key_right.close()
-        self.key_left.close()
+        #self.key_right.close()
+        #self.key_left.close()
 
     def turn_page(self, __button, forward=False, backward=False):
         self.page += forward * 1 + backward * -1
@@ -195,9 +193,9 @@ class OLEDScreen(TMVScreen):
                         s['chargeLevel'] = pj_call(tmv_pj.status.GetChargeLevel)
                         lines.append(f"Batt  : {s['chargeLevel']}")
                         lines.append(f"Juice : {s['battery']}")
-                    except (NameError, PiJuiceError) as ex:        
+                    except (NameError, PiJuiceError) as ex:
                         LOGGER.warning(ex, exc_info=ex)
-                    
+
                 xy = (0, 0)
                 for line in lines:
                     draw.text(xy=xy, text=line, fill="white", font=font)
@@ -209,5 +207,3 @@ class OLEDScreen(TMVScreen):
             self._display = sh1106(serial, rotate=2)  # 2 = 180deg
         except (NameError, ImportError) as e:
             LOGGER.error(f"luma library not installed? Exception: {e}")
-
-    

@@ -42,8 +42,8 @@ class Task(Tomlable):
     def configd(self, config_dict):
         """ Parse common Task config items """
         # overwrite default specified in constructor
-        self.src_path = config_dict.get("src_path", self.src_path)
-        self.dest_path = config_dict.get("dest_path", self.dest_path)
+        self.src_path = Path(config_dict.get("src_path", self.src_path))
+        self.dest_path = Path(config_dict.get("dest_path", self.dest_path))
         # to consider: try to avoid as the "run()" method would sometimes not run
         # probably need a "ready()" method in this class
         # self.interval = config_dict.get("interval",self.dest_path)
@@ -260,8 +260,8 @@ class PreviewVideosTask(Task):
             if preview_filename.is_file() and preview_filename.stat().st_mtime >= v.stat().st_mtime:
                 pass
             else:
-                LOGGER.info(f"Creating preview at {Path(preview_filename).absolute()}")
-                # ?? touch the preview file so that if we fail, we don't keep trying later runs?
+                LOGGER.info(f"Creating preview at {Path(preview_filename).absolute()} with vf={self.filters}")
+                # touch the preview file so that if we fail, we don't keep trying later runs
                 preview_filename.touch()
                 ffmpeg_run(str(v), str(preview_filename), vf=self.filters)
 
@@ -471,9 +471,11 @@ def videod_console(cl_args=sys.argv[1:]):
             shutil.copy(resource_filename(__name__, 'resources/videod.toml'), args.config_file)
             LOGGER.warning("Writing default config file to {}.".format(args.config_file))
 
+        print(LOGGER.getEffectiveLevel())
         manager = TaskRunnerManager()
         manager.config(args.config_file)
-        tmv.video.LOGGER.setLevel(LOGGER.getEffectiveLevel() + 10)  # less logging for video when running as daemon
+        LOGGER.setLevel(args.log_level) # args override
+        #tmv.video.LOGGER.setLevel(LOGGER.getEffectiveLevel() + 10)  # less logging for video when running as daemon
         manager.run(args.runs)
 
     except SignalException as e:

@@ -1,0 +1,76 @@
+###############################################################################
+# TMV: Videod configuration
+###############################################################################
+
+#
+# Path to root of files, relative to cwd or (better for daemons) absolute
+#
+tmv_root = "/mnt/tmv.brettbeeson.com.au"
+
+#
+# Directories ('cameras') under tmv_root to run the task within. 
+# A list of relative paths
+#
+locations = [
+    "tripod"
+]
+
+#
+# How often to run (seconds)
+#
+#interval = 600 
+
+#
+# Choose from DEBUG, INFO, WARNING, ERROR, CRITAL
+#
+#log_level = 'WARNING'
+log_level = 'INFO'
+
+###############################################################################
+# Video : Tasks : What to do in each location
+# Each uncommented [task] will run with the defaults shown
+###############################################################################
+
+# 
+# All tasks optionally take the following. They have defaults.
+# Specify dest_dir
+# 
+# src_dir 
+# dest_dir
+#[daily-videos]
+
+# minterpolate = False
+# fps = 25
+# speedup = None
+
+#[recap-videos]
+# create = [{ label, days, [ speedup ], [ fps = 25] }]
+#                       rel     input           output
+# dur_real  dur_video   speed   frames          frames           
+#                               @1/60fps_real   @25fps_video   
+# 7 days    1 min       x7.2    10800           1500               keep 50% of frames
+# 30 days   2 min       x14.4   43200           3000               keep 10%
+# 1 year    10 min      x35.0   525600          15000              keep 3%
+#
+#create = [
+#            {label: "Last 7 days in a minute", days: 7, speed: 10080, 'fps':25},    
+#            {label: "Last 30 days in two minutes", days: 30, 'speedup': 21600, 'fps':25},  
+#            {label: "Complete", days: 0, speedup: 52560, 'fps':25}  
+#]
+
+[preview-videos]
+   filters.scale="-1:720"
+   filters.fps = "fps=25"
+   filters.setpts = "1.0*PTS"
+#   dest_path = "720p"
+   dest_path = "preview"
+
+#[diagonal-videos]
+# when not specified the default is auto
+# sliceage = '1 hour'
+
+#[most-recent]
+# add symlnks to recent files
+
+#[cleanup]
+# delete any files which are zero length and over an house old

@@ -1,6 +1,7 @@
 {
   "version": "0.2.0",
   "configurations": [
+  
      {
       "name": "Python: Remote Attach",
       "type": "python",
@@ -40,6 +41,21 @@
       "justMyCode": false
     },
     {
+      "name": "Video Preview Local Run",
+      "type": "python",
+      "request": "launch",
+      "program": "${workspaceFolder}//venv/bin/tmv-videod",
+      "args": [
+        "--config-file",
+        "${workspaceFolder}/tests/testdata/videod-preview-test.toml",
+        "--log-level",
+        "DEBUG"
+      ],
+      "cwd": "/tmp",
+      "console": "integratedTerminal",
+      "justMyCode": false
+    },
+    {
       "name": "Python: RunAndAttach",
       "type": "python",
       "request": "attach",
@@ -69,5 +85,6 @@
       "preLaunchTask": "copyAndStartOnRemoteInterface",
       "postDebugTask": "cleanupOnRemote"
     },
+    
   ],
 }

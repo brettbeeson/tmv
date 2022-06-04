@@ -78,8 +78,11 @@ def send_image(broadcast=False, binary=True):
 
 
 def broadcast_pijuice_status_thread():
-    while not shutdown:
-        socketio.sleep(60)
+    while True:
+        for i in range(60):
+            if shutdown:
+                return
+            socketio.sleep(1)
         req_pj_status()
 
 
@@ -111,7 +114,7 @@ def broadcast_image_thread():
 def broadcast_buttons_thread():
     mode_was = None
     speed_was = None
-    global interface
+    #global interface
     while not shutdown:
         socketio.sleep(1)  # not time.sleep()
         if interface and interface.mode_button:
@@ -420,6 +423,8 @@ def interface_console(cl_args=argv[1:]):
     """
     Run without gunicorn in development mode. 
     """
+    
+    
     parser = argparse.ArgumentParser("Interface (screen, web, web-socket server) to TMV interface.")
     parser.add_argument('--log-level', '-ll', default='WARNING', type=lambda s: LOG_LEVELS(s).name, nargs='?', choices=LOG_LEVELS.choices())
     parser.add_argument('--config-file', '-cf', default='/etc/tmv/' + CAMERA_CONFIG_FILE)
@@ -446,7 +451,7 @@ def interface_console(cl_args=argv[1:]):
         ensure_config_exists(args.config_file)
         LOGGER.info(f"Using config file: {Path(args.config_file).absolute()}")
         interface.config(args.config_file)
-
+        
         # reset to cli values, which override config file
         if args.log_level != 'WARNING':  # str comparison
             logging.getLogger("tmv").setLevel(args.log_level)
@@ -456,7 +461,7 @@ def interface_console(cl_args=argv[1:]):
         start_socketio_threads()
         LOGGER.info(f"Starting flask and socketio at 0.0.0.0:{interface.port}")
         socketio.run(app, host="0.0.0.0", port=interface.port, debug=(args.log_level == logging.DEBUG))
-
+        
     except (FileNotFoundError, TomlDecodeError) as exc:
         LOGGER.debug(exc, exc_info=exc)
         print(exc, file=stderr)
@@ -474,6 +479,7 @@ def interface_console(cl_args=argv[1:]):
         # use a thread event?
         global shutdown  # pylint:disable = global-statement
         shutdown = True
+        sleep(1)  # allow to stop nicely
         if interface:
             interface.stop()
         sleep(2)  # allow to stop nicely

@@ -86,4 +86,4 @@ class TMVPiJuice(PiJuice):  # NameError
         return utc_time
 
     def wakeup_disable(self):
-        self.pj_check(self.rtcAlarm.SetWakeupEnabled(False), self.raise_errors)
+        pj_check(self.rtcAlarm.SetWakeupEnabled(False), self.raise_errors)

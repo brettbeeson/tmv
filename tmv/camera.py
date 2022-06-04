@@ -560,7 +560,7 @@ class SunCalc(Timed):
 class Camera(Tomlable, Machine):
     """ A timelapse camera with a real/synth/dummy camera"""
 
-    busy_sleep_s = 1  # testing with sleepless required >0.1
+    busy_sleep_s = .2  # testing with sleepless required >0.1
 
     # Defaults as per docs. Note:
     # - awb_gains: get/set, unknown default
@@ -664,7 +664,7 @@ class Camera(Tomlable, Machine):
 
     def settle(self):
         # sleep a bit unless a FakeCamera
-        time.sleep((self.CameraClass is not FakePiCamera) * 1)
+        time.sleep((self.CameraClass is not FakePiCamera) * 0.5)
         
     @property
     def interval(self):
@@ -770,6 +770,8 @@ class Camera(Tomlable, Machine):
         assert self.state == 'starting'
         assert isinstance(self.tmv_root,Path)
         self.run_started_at = dt.now()
+        if self._pijuice:
+            self._pijuice.wakeup_disable() # ensure no false wakeups if alarm was set before running 
         # Run the light sensor so we know what to do on the first loop
         if self.mode_button.value == AUTO or self.mode_button.value == ON:
             with self.get_camera() as cam:
@@ -796,7 +798,6 @@ class Camera(Tomlable, Machine):
                 time.sleep(self.busy_sleep_s)
             elif self.state == "video":
                 self.state_video_loop()
-                
             elif self.state == "active":
                 self.state_active_loop()
             elif self.state == "inactive":
@@ -891,10 +892,10 @@ class Camera(Tomlable, Machine):
                 server_thread.start()
                 while self.mode_button.value == VIDEO:
                     time.sleep(self.busy_sleep_s)
-            except IOError as e:
+            except IOError as exc:
                 # Image server failed but we're ok to continue TMV
                 # if e.errno == 98 => bind error
-                LOGGER.warning(e)
+                LOGGER.warning(exc)
                 time.sleep(10) # we'll try again on next loop, so don't thrash
             finally:
                 LOGGER.debug("Stopping video. Leaves socket OPEN??? sometimes")
@@ -909,8 +910,11 @@ class Camera(Tomlable, Machine):
     def dispatch_mode_button_transitions(self):
         mode = self.mode_button.value  # get once as reads a file and could change
         if mode != self.current_mode:
-            LOGGER.debug(f"Changing mode to {mode}")
+            LOGGER.debug(f"Changing mode to {mode}. Disabling pijuice wakeup")
             self.current_mode = mode
+            if self._pijuice:
+                # we only what to wakeup in auto mode, and coming from auto mode it might still be set
+                self._pijuice.wakeup_disable()
         if mode == ON:
             self.mode_to_on()  # state will be active now (i.e. on ==> force active)
         elif mode == OFF:
@@ -923,7 +927,7 @@ class Camera(Tomlable, Machine):
             else:
                 self.mode_to_inactive()
         elif mode == VIDEO:
-            time.sleep(3) # don't start video if just scrolling past in button UI
+            time.sleep(5) # don't start video if just scrolling past in button UI
             if mode  == "video":
                 self.mode_to_video()
         else:
@@ -1089,7 +1093,7 @@ class Camera(Tomlable, Machine):
             if 'simple_settings' in self.overlays:
                 # Draw some of picam's settings
                 text = pformat(get_picam(self._last_camera_settings))
-                text = f"level={self.light_sensor._current_level} avg={pxavg:.3f}"
+                text = f"sensor={self.light_sensor.pixel_average():.3f} level={self.light_sensor._current_level} px_avg={pxavg:.3f}"
                 try:
                     LOGGER.debug(f"self._last_camera_settings = {self._last_camera_settings}")
                     text += f" es {self._last_camera_settings['exposure_speed']/1000000:.3f} iso={self._last_camera_settings['iso']} exp={self._last_camera_settings['exposure_mode']}"

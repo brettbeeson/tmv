@@ -139,6 +139,7 @@ class VideoMaker:
         self.sliceage = None
         self.start = dt.min
         self.end = dt.max
+        self.validate_images = True
 
     def __str__(self):
         return f"{type(self).__name__}: videos:{self.videos}  speedup:{self.speedup}" + \
@@ -178,11 +179,13 @@ class VideoMaker:
                 if (self.end_time >= datetime_taken.time() >= self.start_time and
                         self.end >= datetime_taken >= self.start):
                     tlf = TLFile(fn, datetime_taken)
-                    if tlf.valid():
-                        self.images.append(tlf)
+                    if self.validate_images:
+                        if tlf.valid():
+                            self.images.append(tlf)
+                        else:
+                            raise ImageError("Invalid image")
                     else:
-                        raise ImageError("Invalid image")
-
+                        self.images.append(tlf)
             except ImageError as exc:
                 n_errors += 1
                 LOGGER.warning(f"Ignoring {Path(fn).absolute()}: {exc}")
@@ -195,9 +198,10 @@ class VideoMaker:
             LOGGER.warning(f"No dates available for {n_errors}/{len(self._file_list)} files. Ignoring them.")
         return self.images.sort()
 
-    def files_from_glob(self, file_glob: (str, list)):
+    def files_from_glob(self, file_glob):        
         """
          From a glob-string or list of them, add the filenames of images matching the globs
+         file_glob: : (str, list)
          """
         if not isinstance(file_glob, list):
             file_glob = [file_glob]
@@ -767,11 +771,12 @@ def video_compile_console(cl_args=sys.argv[1:]):
     parser.add_argument("--end-time", type=lambda s: dt.strptime(s, HH_MM).time(), default=time.max, help="Consider images before HH:MM each day")
     parser.add_argument('--log-level', '-ll', default='WARNING', type=lambda s: LOG_LEVELS(s).name, choices=LOG_LEVELS.choices())
     parser.add_argument("--force", "-f", action='store_true', default=False, help="Force overwrite of existing videos")
+    parser.add_argument("--no-validate-images", action='store_true', default=False, help="Don't check headers of images for sanity. Can speedup things.")
     parser.add_argument("--slice", choices=SliceType.names(), default="Concat")
     parser.add_argument("--fps", default=25, type=int, help="Output images at this Frames Per Second. (Implies --vsync cfr).")
     parser.add_argument("--speedup", "-s", default=None, type=int, help="Speed up video by this much: it's the ratio of real:video duration")
     parser.add_argument("--vsync", default="cfr-even", choices=['cfr-even', 'cfr-padded', 'vfr'], type=str, help="cfr-even uses start and end time, and makes frames are equally spaced. cfr-padded uses maximum framerate and pads slow bits. vfr uses exact time of each frame (less robust)")
-    parser.add_argument("--sliceage", default=None, type=strptimedelta, help="For Diagonal slice types, HH:MM to show each day. Default to auto-slice, the value to make a 'smooth' slice")
+    parser.add_argument("--sliceage", default=None, type=strptimedelta, help="For Diagonal slice types, MM:SS or \"1 minute\" to show each day. Default to auto-slice, the value to make a 'smooth' slice")
     parser.add_argument("--motion-blur", "-b", action='store_true', default=False, help="FFMPEG Filter to motion-blur video to reduce jerkiness. Ya jerk.")
     parser.add_argument("--output", "-o", type=str, help="Output here. Create this file (an extension is added) or folder (if multiple files are written)")
     parser.add_argument('--filenames', action="store_true", help="Write the videos created to stdout")
@@ -790,6 +795,7 @@ def video_compile_console(cl_args=sys.argv[1:]):
         mm.sliceage = args.sliceage
         mm.start = args.start
         mm.end = args.end
+        mm.validate_images = not args.no_validate_images
 
         mm.load_videos()
 
