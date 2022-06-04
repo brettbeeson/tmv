@@ -23,7 +23,7 @@ The camera writes images to the local storage
 - edit `/etc/tmv/camera.toml` to set tmv_root, etc.
 
 ### Optionally, configure Camera Uploads
-*tmv-uploader* is discontinued. Use rclone
+Use rclone:
 - install and configure rclone, using sftp (i.e. scp) with password file specified (ssh-agent didn't work)
 - add a cron job via `crontab -e`
 - this will move image files to your server
@@ -33,7 +33,7 @@ The camera writes images to the local storage
 */10 * * * * rclone -v move --include '**/*T*.jpg' ~/tmv-data aws:tmv-data/highqual >> ~/rclone.log 2>&1
 */10 * * * * rclone rmdirs ~/tmv-data
 ```
-
+*Note: tmv-uploader is discontinued. *
 
 
 ### Optionally, make the Pi an access point
