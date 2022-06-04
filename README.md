@@ -23,9 +23,15 @@ The camera writes images to the local storage
 - edit `/etc/tmv/camera.toml` to set tmv_root, etc.
 
 ### Optionally, configure Camera Uploads
-The uploader runs on the camera and sends images to an s3 bucket when possible or locally caches.
-- again edit `/etc/tmv/camera.toml` to set s3 upload details such as destination, profile and endpoint
-- the directory /home/pi/.aws/ should contain your s3 credentials
+*tmv-uploader* is discontinued. Use rclone
+- install and configure rclone, using sftp (i.e. scp) with password file specified (ssh-agent didn't work)
+- add a cron job via `crontab -e`
+`
+*/10 * * * * rclone -v move --include '**/*T*.jpg' ~/tmv-data aws:tmv-data/highqual >> ~/rclone.log 2>&1
+*/10 * * * * rclone rmdirs ~/tmv-data
+`
+- this will move image files to your server
+
 
 ### Optionally, make the Pi an access point
 Use a out-of-the-box such as [RaspAP](https://github.com/billz/raspap-webgui)(didn't work for me on PiZero) or manually:
