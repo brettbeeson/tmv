@@ -13,7 +13,7 @@ Type=simple
 Restart=always
 # Wait a bit before restart
 RestartSec=60
-User=bbeeson
+User=ubuntu
 ExecStart=/usr/local/bin/tmv-videod --config-file /etc/tmv/videod.toml
 
 [Install]
