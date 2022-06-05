@@ -30,7 +30,7 @@ Use rclone:
 
 ```
 # crontab entries
-*/10 * * * * rclone -v move --include '**/*T*.jpg' ~/tmv-data aws:tmv-data/highqual >> ~/rclone.log 2>&1
+*/10 * * * * rclone -v move --include '**/*T*.jpg' ~/tmv-data aws:tmv-data/$HOSTNAME/daily-photos >> ~/rclone.log 2>&1
 */10 * * * * rclone rmdirs ~/tmv-data
 ```
 *Note: tmv-uploader is discontinued. *
