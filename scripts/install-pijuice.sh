@@ -22,3 +22,6 @@ echo Installing smbus required by pijuice package
 cd ~/tmv
 source venv/bin/activate
 pip install smbus
+
+echo Run the following to install rtc module
+echo `echo dtoverlay=i2c-rtc,ds1339 | sudo tee -a /boot/config.txt`

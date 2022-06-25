@@ -44,7 +44,7 @@ Use a out-of-the-box such as [RaspAP](https://github.com/billz/raspap-webgui)(di
 ### Optionally, configure a PiJuice
 You can use a [PiJuice](https://github.com/PiSupply/PiJuice) to power it. 
 - Install and enable the pijuice (refer to the docs)
-(- You may need to `echo dtoverlay=i2c-rtc,ds1339 | sudo -a /boot/config.txt` to enable real time clock)
+-  You need to `echo dtoverlay=i2c-rtc,ds1339 | sudo tee -a /boot/config.txt` to enable real time clock (too scary to do in script)
 - `~/tmv/scripts/install-pijuice.sh` to install API and RTC sync via a service
 
 ### Optionally, install timezone awareness:
