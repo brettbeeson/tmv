@@ -35,29 +35,29 @@
     <body>
 
         <nav class="navbar navbar-expand-md navbar-dark fixed-top bg-dark">
-            <a class="navbar-brand mr-auto" href="#">
-                <img src="/favicon.ico" width="50" height="50"
-                    class="d-inline-block align-middle" alt="">
-                Time Made Visible
-            </a>
+            <div class="d-none d-sm-block"> <!-- hide on small and below -->
+                <a class="navbar-brand mr-auto" href="#">
+                    <img src="/favicon.ico" width="50" height="50"
+                        class="d-inline-block align-middle" alt="">
+                    Time Made Visible
+                </a>
+            </div>
 
             <button class="btn btn-secondary" type="pill" disabled>
                 <span id="connection-spinner" class="slow-spin spinner-grow
                     spinner-grow-sm" role="status" aria-hidden="true"></span>
                 <span id="connection-status">Connecting</span>
             </button>
-           
-            <ul class="navbar-nav ml-auto">
-                <button class="navbar-toggler" type="button"
-                    data-toggle="collapse" data-target="#navbarCollapse"
-                    aria-controls="navbarCollapse" aria-expanded="false"
-                    aria-label="Toggle navigation">
-                    <span class="navbar-toggler-icon"></span>
-                </button>
-
-
-
-                <div class="collapse navbar-collapse" id="navbarCollapse">
+                        
+            
+            <button class="navbar-toggler" type="button"
+                data-toggle="collapse" data-target="#navbarCollapse">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            
+            <div class="collapse navbar-collapse" id="navbarCollapse">
+            
+                <ul class="navbar-nav ml-auto">
                     <ul class="nav nav-pills" id="pills-tab" role="tablist">
                         <li class="nav-item">
                             <a class="nav-link active" id="pills-home-tab"
@@ -97,57 +97,58 @@
                                 Server</a>
                         </li>
                     </ul>
-
-                </div>
-            </ul>
+                </ul>
+            </div> <!-- collapse-->
         </nav>
 
-
-        <nav class="navbar fixed-bottom navbar-light bg-light">
-            <div class="form-group mb-2">
-                <label for="camera-mode">Camera</label>
-                <div id="camera-mode" class="btn-group btn-group-toggle"
-                    data-toggle="buttons">
-                    <label class="btn btn-secondary">
-                        <input type="radio" value="On" name="options"
-                            id="camera-on" autocomplete="off">On
-                    </label>
-                    <label class="btn btn-secondary">
-                        <input type="radio" value="Off" name="options"
-                            id="camera-off" autocomplete="off">Off
-                    </label>
-                    <label class="btn btn-secondary">
-                        <input type="radio" value="Auto" name="options"
-                            id="camera-auto" autocomplete="off">Auto
-                    </label>
+        <div class="d-none d-sm-block"> <!-- hide on small and below -->
+            <nav class="navbar fixed-bottom navbar-light bg-light">
+                
+                <div class="form-group mb-2">
+                    <label for="camera-mode">Camera</label>
+                    <div id="camera-mode" class="btn-group btn-group-toggle"
+                        data-toggle="buttons">
+                        <label class="btn btn-secondary">
+                            <input type="radio" value="On" name="options"
+                                id="camera-on" autocomplete="off">On
+                        </label>
+                        <label class="btn btn-secondary">
+                            <input type="radio" value="Off" name="options"
+                                id="camera-off" autocomplete="off">Off
+                        </label>
+                        <label class="btn btn-secondary">
+                            <input type="radio" value="Auto" name="options"
+                                id="camera-auto" autocomplete="off">Auto
+                        </label>
+                    </div>
                 </div>
-            </div>
 
 
-            <div class="form-group mb-2">
-                <span id="camera-name">                </span>
-            <span id="new-image-indicator" class="ml-5 spinner-border spinner-border-sm text-primary hidden" role="status"></span>
-            </div>
-            
-            <div class="form-group mb-2">
-                <label for="camera-speed" class="ml-auto">Speed</label>
-                <div id="camera-speed" class="btn-group btn-group-toggle"
-                    data-toggle="buttons">
-                    <label class="btn btn-secondary active">
-                        <input type="radio" name="options" id="speed-slow"
-                            autocomplete="off" value="Slow">Slow
-                    </label>
-                    <label class="btn btn-secondary">
-                        <input type="radio" name="options" id="upload-Medium"
-                            value="Medium">Medium
-                    </label>
-                    <label class="btn btn-secondary">
-                        <input type="radio" name="options" id="upload-fast"
-                            value="Fast">Fast
-                    </label>
+                <div class="form-group mb-2">
+                    <span id="camera-name">                </span>
+                <span id="new-image-indicator" class="ml-5 spinner-border spinner-border-sm text-primary hidden" role="status"></span>
                 </div>
-            </div>
-        </nav>
+                
+                <div class="form-group mb-2">
+                    <label for="camera-speed" class="ml-auto">Speed</label>
+                    <div id="camera-speed" class="btn-group btn-group-toggle"
+                        data-toggle="buttons">
+                        <label class="btn btn-secondary active">
+                            <input type="radio" name="options" id="speed-slow"
+                                autocomplete="off" value="Slow">Slow
+                        </label>
+                        <label class="btn btn-secondary">
+                            <input type="radio" name="options" id="upload-Medium"
+                                value="Medium">Medium
+                        </label>
+                        <label class="btn btn-secondary">
+                            <input type="radio" name="options" id="upload-fast"
+                                value="Fast">Fast
+                        </label>
+                    </div>
+                </div>
+            </nav>
+    </div>
 
         <div class="container">
             <div class="row justify-content-center">
@@ -162,18 +163,19 @@
                                     <img src="favicon.ico" id="image" />
                                 </figure>
                             </div>
-                            <div class="row mt-1 justify-content-center figure-caption">
-                                    <span  id="latest-image-time"></span> &nbsp;|&nbsp;
-                                    <span id="latest-image-ago" class="timeago"></span>
-                            </div>
-                            <div class="row mt-1 justify-content-center figure-caption">
-                                    <span  id="camera-interval"></span>
-                            </div>
-                            <div class="row mt-1 justify-content-center figure-caption">
-                                    <span  id="pj-battery-level"></span>  &nbsp;&nbsp;
-                                    <span  id="pj-battery-status"></span>  
-                                    
-                            </div>                                                      
+                            
+                                <div class="row mt-1 justify-content-center figure-caption">
+                                        <span  id="latest-image-time"></span> &nbsp;|&nbsp;
+                                        <span id="latest-image-ago" class="timeago"></span>
+                                </div>
+                                <div class="row mt-1 justify-content-center figure-caption">
+                                        <span  id="camera-interval"></span>
+                                </div>
+                                <div class="row mt-1 justify-content-center figure-caption">
+                                        <span  id="pj-battery-level"></span>  &nbsp;&nbsp;
+                                        <span  id="pj-battery-status"></span>  
+                                </div>                                         
+                            
                         </div>
 
                         <div class="tab-pane fade" id="pills-settings"

@@ -8,6 +8,7 @@ StartLimitIntervalSec=0
 User=pi
 WorkingDirectory=/home/pi/tmv
 ExecStart=/home/pi/tmv/venv/bin/tmv-interface --config-file /etc/tmv/camera.toml
+#ExecStart=/usr/local/bin/tmv-cameratmv-interface --config-file /etc/tmv/camera.toml
 
 Restart=always
 # Wait a bit before restart

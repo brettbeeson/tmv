@@ -20,6 +20,7 @@ from collections.abc import MutableSequence
 from pprint import pformat
 from pathlib import Path
 from math import exp, sqrt, tau
+import traceback
 import debugpy
 
 from transitions import Machine
@@ -650,14 +651,14 @@ class Camera(Tomlable, Machine):
         }
 
         # state machine setup
-        states = ['starting', 'started', 'active', 'inactive', 'video', 'finished']
+        states = ['starting', 'started', 'active', 'inactive', 'off', 'video', 'finished']
         transitions = [
             # trigger       source      dest conditionsw
             #['start', 'starting', 'started'],
-            ['mode_to_off', '*', 'inactive'],
+            ['mode_to_off', '*', 'off'],
             ['mode_to_video', '*', 'video'],
-            ['mode_to_on', ['active', 'started', 'inactive', 'video'], 'active'],
-            ['mode_to_active', ['started', 'active', 'inactive', 'video'], 'active'],
+            ['mode_to_on', ['active', 'off', 'started', 'inactive', 'video'], 'active'],
+            ['mode_to_active', ['started', 'off','active', 'inactive', 'video'], 'active'],
             ['mode_to_inactive', ['started', 'inactive', 'active', 'video'], 'inactive'],
         ]
         Machine.__init__(self, states=states, initial='starting', transitions=transitions)
@@ -681,7 +682,7 @@ class Camera(Tomlable, Machine):
 
         self.tmv_root = Path(c.get('tmv_root', '.'))
         os.chdir(str(self.tmv_root))
-        LOGGER.info(f"changing to dir: {self.tmv_root}")
+        LOGGER.info(f"Changing to dir: {self.tmv_root}")
 
         if c.get('pijuice', False):
             try:
@@ -792,7 +793,7 @@ class Camera(Tomlable, Machine):
 
             # if mode button changes, run a transition
             self.dispatch_mode_button_transitions()
-
+            
             # run the current state
             if self.state == "started":
                 time.sleep(self.busy_sleep_s)
@@ -800,15 +801,15 @@ class Camera(Tomlable, Machine):
                 self.state_video_loop()
             elif self.state == "active":
                 self.state_active_loop()
+            elif self.state == "off":
+                # do nothing via a long sleep
+                time.sleep(self.busy_sleep_s * 5)
             elif self.state == "inactive":
                 # if inactive for too long, end finished state.
-                # unless we're in "WAIT" inactive mode
                 if self.active_timer.waketime() - dt.now() >= self.inactive_min and \
                         self.camera_inactive_action != CameraInactiveAction.WAIT:
+                    LOGGER.debug(f"inactive for {self.active_timer.waketime() - dt.now()}. Finishing.")
                     self.finish()
-                time.sleep(self.busy_sleep_s)
-            elif self.state == "off":
-                # wait until not OFF
                 time.sleep(self.busy_sleep_s)
             else:
                 raise RuntimeError(f"Unexpected state of {self.state}")
@@ -918,7 +919,7 @@ class Camera(Tomlable, Machine):
         if mode == ON:
             self.mode_to_on()  # state will be active now (i.e. on ==> force active)
         elif mode == OFF:
-            self.mode_to_off()  # state will be inactive now (i.e. off ==> force inactive)
+            self.mode_to_off()
         elif mode == AUTO:
             # note that two triggers with inverse conditions for Machine don't work (second one never runs)
             # so do it manually here
@@ -1160,13 +1161,14 @@ class Camera(Tomlable, Machine):
         Camera finished, so undertake requested action(exit, etc)
         Doesn't return unless interrupt (e.g. mode change during 60s before power down)
         """
+        #LOGGER.debug(''.join(traceback.format_stack()[-20:]))
         waketime = self.active_timer.waketime()
         if self.camera_inactive_action == CameraInactiveAction.EXCEPTION:
-            raise PowerOff("Camera finished. Wake was at {}".format(waketime))
+            raise PowerOff(f"Camera finished. Mode: {self.current_mode}. Wake at {waketime}".format())
         if self.camera_inactive_action == CameraInactiveAction.POWER_OFF:
             # Turn off power and wakeup later
             if self._pijuice is not None:
-                LOGGER.warning(f"Powering off in 60s. Waking at {waketime}.")
+                LOGGER.warning(f"Camera finished. Mode: {self.current_mode}. Powering off in 60s. Waking at {waketime}.")
                 power_off_at = dt.now() + timedelta(seconds=60)               
                 # busy wait, returning if mode changes (abort shutdown)
                 while dt.now() < power_off_at:
@@ -1178,7 +1180,7 @@ class Camera(Tomlable, Machine):
             else:
                 raise PiJuiceError("Trying to sleep but no pijuice available. Set pijuice=true in config perhaps?")
         elif self.camera_inactive_action == CameraInactiveAction.EXIT:
-            LOGGER.info("Camera finished. Exiting. Wake was at {}".format(waketime))
+            LOGGER.info(f"Camera finished. Exiting. Wake was at {waketime}")
             sys.exit(4)
         else:
             raise RuntimeError(f"Unexpected camera_inactive_action of {self.camera_inactive_action}")
@@ -1295,6 +1297,7 @@ def camera_console(cl_args=argv[1:]):
 
     logging.basicConfig(format=LOG_FORMAT)  # set all debuggers, level=args.log_level)
     ensure_config_exists(args.config_file)
+    LOGGER.info("Using config: {args.config_file}")
 
     if args.debug:
         debug_port = 5678

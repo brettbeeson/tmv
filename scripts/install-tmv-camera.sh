@@ -2,6 +2,7 @@
 
 # run as pi
 user=pi
+echo Using user "$user" 
 
 # make a tmv group to allow pi (a member of tmv) to write to config files
 echo Adding tmv group

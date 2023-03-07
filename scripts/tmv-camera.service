@@ -15,6 +15,7 @@ Restart=always
 RestartSec=60
 User=pi
 ExecStart=/home/pi/tmv/venv/bin/tmv-camera --config-file /etc/tmv/camera.toml 
+#ExecStart=/usr/local/bin/tmv-camera --config-file /etc/tmv/camera.toml 
 
 [Install]
 WantedBy=multi-user.target
