@@ -47,14 +47,14 @@ setuptools.setup(
     
     install_requires=['astral', 'toml', 'python-dateutil', 'pytimeparse',
                       'Pillow', 'watchdog',  'freezegun', 'flask',
-                      'flask-socketio',# 'python-socketio',
+                     # 'flask-socketio',# 'python-socketio',
                       'ascii_graph',
-                      'gpiozero', 'RPi.GPIO',
+                      #'gpiozero', 'RPi.GPIO',
                       'nptime','transitions',
                       'debugpy',
                       'pytest','boto3',
-                      'luma','luma.emulator','luma.oled',
-                      'picamera',
+                     # 'luma','luma.emulator','luma.oled',
+                      '#picamera',
                       'eventlet',  # ==0.30.2 avoid ALREADY_HANDLED bug with new version
     ],
 
